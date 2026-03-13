@@ -1,241 +1,273 @@
 import streamlit as st
 import pandas as pd
-from datetime import date
-from base_datos import obtener_proyectos, conectar, actualizar_avance_real
+from datetime import datetime
+import io
+from base_datos import conectar, obtener_proyectos, actualizar_avance_real
 
-# 1. DICCIONARIO MAESTRO DE ICONOS (FUNCIONALIDAD PRESERVADA)
+# =========================================================
+# 1. CONFIGURACIÓN Y DICCIONARIOS MAESTROS
+# =========================================================
 MAPEO_HITOS = {
-    "Diseñado": "🗺️", 
-    "Fabricado": "🪚",
-    "Material en Obra": "🚛",
-    "Material en Ubicación": "📍",
-    "Instalación de Estructura": "📦", 
-    "Instalación de Puertas o Frentes": "🗄️",
-    "Revisión y Observaciones": "🔍",
-    "Entrega": "🤝"
+    "Diseñado": "🗺️", "Fabricado": "🪚", "Material en Obra": "🚛",
+    "Material en Ubicación": "📍", "Instalación de Estructura": "📦", 
+    "Instalación de Puertas o Frentes": "🗄️", "Revisión y Observaciones": "🔍", "Entrega": "🤝"
 }
 
-# 2. LEYENDA TÉCNICA (FUNCIONALIDAD PRESERVADA)
-LEYENDA_DETALLADA = {
-    "🗺️": "Diseño (Plano Técnico)",
-    "🪚": "Fabricación (Taller)",
-    "🚛": "En Obra (Descargado)",
-    "📍": "En Ubicación (Frente de trabajo)",
-    "📦": "Estructura (Cajón base)",
-    "🗄️": "Frentes (Mueble cerrado)",
-    "🔍": "Revisión y atención de Observaciones (Post-instalación)",
-    "🤝": "Entrega (Conformidad Cliente)"
-}
+HITOS_LIST = list(MAPEO_HITOS.keys())
 
+def obtener_fecha_formateada():
+    return datetime.now().strftime("%d/%m/%Y")
+
+# =========================================================
+# 2. LÓGICA DE CASCADA (REGISTRO ATÓMICO)
+# =========================================================
+def registrar_hitos_cascada(p_id, hito_final, fecha_str):
+    supabase = conectar()
+    try:
+        # Aseguramos que p_id sea un entero de Python puro (evita tipos de numpy)
+        safe_p_id = int(p_id)
+        
+        # Validamos que la fecha no sea un valor nulo de Pandas (NaN)
+        safe_fecha = str(fecha_str) if pd.notnull(fecha_str) else obtener_fecha_formateada()
+        
+        idx_limite = HITOS_LIST.index(hito_final)
+        hitos_a_marcar = HITOS_LIST[:idx_limite + 1]
+        
+        for h in hitos_a_marcar:
+            # UPSERT con datos limpios
+            supabase.table("seguimiento").upsert({
+                "producto_id": safe_p_id, 
+                "hito": str(h), 
+                "fecha": safe_fecha
+            }, on_conflict="producto_id, hito").execute()
+            
+    except Exception as e:
+        # Esto nos dará más detalle si el error persiste
+        st.error(f"Error detallado en cascada: {e}")
+
+# =========================================================
+# 3. INTERFAZ PRINCIPAL
+# =========================================================
 def mostrar(supervisor_id=None):
+    # CSS para Sticky Header, Scroll y Estética de Métricas
+    st.markdown("""
+        <style>
+        .sticky-top { position: sticky; top: 0; background: white; z-index: 1000; padding: 10px 0; border-bottom: 3px solid #FF8C00; }
+        .scroll-area { max-height: 600px; overflow-y: auto; overflow-x: hidden; border: 1px solid #eee; padding: 10px; border-radius: 5px; }
+        .metric-box { background-color: #f8f9fa; padding: 10px; border-radius: 5px; text-align: center; border: 1px solid #dee2e6; margin-bottom: 5px; }
+        </style>
+    """, unsafe_allow_html=True)
+    
     st.header("📈 Panel de Seguimiento Matricial")
+    supabase = conectar()
 
-    def mostrar(supervisor_id=None):
-        st.header("📈 Panel de Seguimiento Matricial")
-
-    # --- SECCIÓN 1: SELECCIÓN DE PROYECTO (SIMPLIFICADA) ---
-    with st.container(border=True):
-        c1, c2 = st.columns([3, 1])
-        bus_p = c1.text_input("🔍 Buscar proyecto o cliente...", key="bus_seg_proy", placeholder="Escriba nombre o cliente...")
-        
-        # Switch para ver todos o solo activos (Sustituye al selectbox anterior)
-        ver_todos = c2.toggle("Ver todos", value=False, help="Muestra también proyectos cerrados")
-        
-        # Filtrado lógico desde base_datos
+    # --- BLOQUE 1 (PLEGABLE): SELECCIÓN DE PROYECTO ---
+    with st.expander("📁 1. SELECCIÓN DE PROYECTO", expanded=True):
+        c1, c2, c3 = st.columns([2, 2, 1])
+        bus_p = c1.text_input("🔍 Buscar proyecto o cliente...", key="bus_seg_proy")
         df_p = obtener_proyectos(bus_p, supervisor_id=supervisor_id)
-        if not ver_todos:
+        
+        solo_activos = c3.toggle("Solo activos", value=True)
+        if solo_activos and not df_p.empty:
             df_p = df_p[df_p['estatus'] == 'Activo']
 
-    if df_p.empty:
-        st.info("No se encontraron proyectos."); return
+        if df_p.empty:
+            st.info("No hay proyectos."); return
 
-    opciones = {f"{r['proyecto_text']} — {r['cliente']}": r['id'] for _, r in df_p.iterrows()}
-    sel_p_nom = st.selectbox("Seleccione Proyecto:", ["Seleccione..."] + list(opciones.keys()))
+        opciones = {f"{r['proyecto_text']} — {r['cliente']}": r['id'] for _, r in df_p.iterrows()}
+        sel_p_nom = c2.selectbox("Elija Proyecto:", ["Seleccione..."] + list(opciones.keys()))
 
-    # --- VALIDACIÓN CRÍTICA PARA DEFINIR p_data ---
     if sel_p_nom == "Seleccione...":
-        st.write("Seleccione un proyecto para ver los detalles."); return
+        st.info("💡 Por favor, seleccione un proyecto para cargar la matriz."); return
 
-    # Definición de p_data (Aquí se soluciona el NameError)
     id_p = opciones[sel_p_nom]
     p_data = df_p[df_p['id'] == id_p].iloc[0]
 
-    # --- SECCIÓN 2: HERRAMIENTAS Y FILTROS (REPLEGABLE) ---
-    with st.expander("🛠️ Configuración de Avance y Filtros de Producto", expanded=False):
-        f1, f2 = st.columns(2)
-        fecha_avance = f1.date_input("📅 Fecha de registro:", date.today())
-        bus_prod = f2.text_input("🔍 Buscar producto...", placeholder="Ej: Cocina, MDF, Cajón")
+    # --- BLOQUE 2 (PLEGABLE): CONFIGURACIÓN, PONDERACIÓN E IMPORTACIÓN ---
+    with st.expander("🛠️ 2. HERRAMIENTAS, PONDERACIÓN E IMPORTACIÓN", expanded=False):
+        t1, t2, t3 = st.tabs(["⚖️ Ponderación de Etapas", "🔍 Filtros de Matriz", "📥 Importar Avances"])
         
-        f3, f4 = st.columns(2)
-        solo_pendientes = f3.toggle("🔴 Ver solo pendientes", value=False)
-        
-        opciones_filtro = {"Sin grupo": None, "Ubicación": "ubicacion", "Tipo": "tipo"}
-        label_agrupar = f4.radio("📂 Agrupar por:", list(opciones_filtro.keys()), horizontal=True)
-        columna_tecnica = opciones_filtro[label_agrupar]
-        
-        st.info("💡 **Guía:** " + " | ".join([f"{k} {v}" for k, v in LEYENDA_DETALLADA.items()]))
+        with t1:
+            st.write("Ajuste el peso (%) de cada etapa según el esfuerzo real:")
+            cols_w = st.columns(4)
+            pesos = {h: cols_w[i % 4].number_input(f"{h} (%)", value=12.5, step=0.5, key=f"w_{h}") for i, h in enumerate(HITOS_LIST)}
+            if sum(pesos.values()) != 100:
+                st.warning(f"⚠️ La suma actual es {sum(pesos.values())}%. Ajuste para llegar a 100%.")
 
-    # --- SECCIÓN 3: CABECERA DE CONTROL (MÉTRICAS) ---
-    st.divider()
-    col_t1, col_t2 = st.columns([3, 1])
-    with col_t1:
-        st.title(f"🚀 {p_data['proyecto_text']}")
-        st.subheader(f"👤 Cliente: {p_data['cliente']}")
-    with col_t2:
-        st.metric("Avance Total", f"{int(p_data['avance'])}%")
-        st.progress(p_data['avance']/100)
-
-        # --- SECCIÓN 4: CARGA DE DATOS EN TIEMPO REAL ---
-    HITOS_LIST = list(MAPEO_HITOS.keys())
-        
-        # Forzamos una conexión nueva cada vez que se entra a este bloque
-    with conectar() as conn_viva:
-            prods = pd.read_sql_query("SELECT * FROM productos WHERE proyecto_id=?", conn_viva, params=(id_p,))
+        with t2:
+            f1, f2, f3 = st.columns(3)
+            opciones_filtro = {"Sin grupo": None, "Ubicación": "ubicacion", "Tipo": "tipo"}
+            columna_tecnica = opciones_filtro[f1.selectbox("📂 Agrupar por:", list(opciones_filtro.keys()))]
+            bus_capa1 = f2.text_input("🔍 Filtro Primario (Zona/Tipo):")
+            bus_capa2 = f3.text_input("🔍 Refinar Búsqueda:")
             
-            # RELECTURA CRÍTICA: Aquí es donde se "pintan" los checks
-            query_viva = "SELECT s.* FROM seguimiento s JOIN productos p ON s.producto_id = p.id WHERE p.proyecto_id = ?"
-            segs = pd.read_sql_query(query_viva, conn_viva, params=(id_p,))
+        with t3:
+            archivo_excel = st.file_uploader("📥 Cargar Seguimiento Excel", type=["xlsx"])
+            if archivo_excel:
+                df_imp = pd.read_excel(archivo_excel)
+                # Normalización de encabezados para el Match
+                df_imp.columns = [str(c).lower().replace('ó','o').replace('á','a').strip() for c in df_imp.columns]
+                
+                if st.button("🚀 Procesar Importación Rápida"):
+                    prods_db = supabase.table("productos").select("id, ubicacion, tipo, ml").eq("proyecto_id", id_p).execute()
+                    prods_df = pd.DataFrame(prods_db.data)
+                    
+                    # --- OPTIMIZACIÓN: CARGA POR LOTES ---
+                    registros_masivos = []
+                    fecha_hoy = obtener_fecha_formateada()
 
-        # Filtros de búsqueda (se aplican sobre los datos frescos)
-    if bus_prod:
-            prods = prods[prods['ubicacion'].str.contains(bus_prod, case=False, na=False) | 
-                          prods['tipo'].str.contains(bus_prod, case=False, na=False)]
+                    for _, row_ex in df_imp.iterrows():
+                        match = prods_df[
+                            (prods_df['ubicacion'].astype(str).str.lower().str.strip() == str(row_ex.get('ubicacion','')).lower().strip()) & 
+                            (prods_df['tipo'].astype(str).str.lower().str.strip() == str(row_ex.get('tipo','')).lower().strip()) & 
+                            (abs(prods_df['ml'] - float(row_ex.get('ml', 0))) < 0.05)
+                        ]
+                        
+                        if not match.empty:
+                            p_id = int(match.iloc[0]['id'])
+                            # Identificar hito máximo para aplicar cascada
+                            hito_max = None
+                            for h in reversed(HITOS_LIST):
+                                col_ex = h.lower().replace('ñ','n').replace('ó','o').replace('á','a')
+                                if str(row_ex.get(col_ex, "")).upper() not in ["", "NAN", "NO", "NONE"]:
+                                    hito_max = h
+                                    break
+                            
+                            if hito_max:
+                                # Agrupamos todos los hitos previos en la lista masiva
+                                idx_limite = HITOS_LIST.index(hito_max)
+                                for i in range(idx_limite + 1):
+                                    registros_masivos.append({
+                                        "producto_id": p_id,
+                                        "hito": HITOS_LIST[i],
+                                        "fecha": fecha_hoy
+                                    })
 
-    if solo_pendientes:
-            def esta_pendiente(p_id):
-                num_checks = len(segs[segs['producto_id'] == p_id])
-                return num_checks < len(HITOS_LIST)
-            prods = prods[prods['id'].apply(esta_pendiente)]
+                    # ENVÍO ÚNICO A LA BASE DE DATOS (CON LIMPIEZA DE DUPLICADOS)
+                    if registros_masivos:
+                        try:
+                            # CORRECCIÓN: Eliminamos duplicados dentro de la lista de registros
+                            # antes de enviarlos a Supabase para evitar el error 21000
+                            df_limpio = pd.DataFrame(registros_masivos).drop_duplicates(subset=['producto_id', 'hito'])
+                            registros_finales = df_limpio.to_dict(orient='records')
 
-    # --- LÓGICA DE SEGURIDAD Y PERMISOS ---
-    with conectar() as conn:
-            cierre = conn.execute(
-                "SELECT 1 FROM cierres_diarios WHERE proyecto_id = ? AND fecha = ?",
-                (id_p, fecha_avance.isoformat())
-            ).fetchone()
-        
-    esta_guardado = cierre is not None
-    user_rol = st.session_state.get('rol', 'Supervisor')
-    es_jefe = user_rol in ['Administrador', 'Gerente']
+                            # Upsert masivo seguro
+                            supabase.table("seguimiento").upsert(registros_finales, on_conflict="producto_id, hito").execute()
+                            
+                            st.success(f"✅ Se procesaron {len(df_imp)} productos correctamente.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error en carga masiva: {e}")
+                    else:
+                        st.warning("No se encontraron coincidencias para importar.")
 
-    # Definimos quien puede editar
-    bloqueo_edicion = esta_guardado and not es_jefe
+        st.divider()
+        nota_proy = st.text_area("📝 Notas u Observaciones del Proyecto:", value=p_data.get('partida', ''))
 
-    # --- SECCIÓN 5: MARCADO RÁPIDO (SIN BOTÓN REFRESCAR) ---
-    st.divider()
-    st.write("### ⚡ Marcado Rápido")
-    st.caption(f"Presiona ✅ para marcar los {len(prods)} ítems filtrados.")
-        
-        # RELECTURA CRÍTICA (Directa de DB antes de pintar)
-    with conectar() as conn_fresca:
-            query_fresca = "SELECT s.* FROM seguimiento s JOIN productos p ON s.producto_id = p.id WHERE p.proyecto_id = ?"
-            segs = pd.read_sql_query(query_fresca, conn_fresca, params=(id_p,))
+    # --- CARGA DE DATOS ---
+    res_base = supabase.table("productos").select("*").eq("proyecto_id", id_p).execute()
+    prods_all = pd.DataFrame(res_base.data)
+    ids_list = prods_all['id'].tolist() if not prods_all.empty else []
+    segs_res = supabase.table("seguimiento").select("*").in_("producto_id", ids_list).execute()
+    segs = pd.DataFrame(segs_res.data) if segs_res.data else pd.DataFrame(columns=['producto_id','hito','fecha','observaciones'])
 
-        # Contenedor de la matriz
-    with st.container(border=True):
-            cols_h = st.columns([2.5] + [1]*8)
-            cols_h[0].write("**Producto**")
+    # Aplicación de Capas de Filtro
+    prods_filt = prods_all.copy()
+    if not prods_filt.empty:
+        if bus_capa1: prods_filt = prods_filt[prods_filt['ubicacion'].str.contains(bus_capa1, case=False) | prods_filt['tipo'].str.contains(bus_capa1, case=False)]
+        if bus_capa2: prods_filt = prods_filt[prods_filt['ubicacion'].str.contains(bus_capa2, case=False) | prods_filt['tipo'].str.contains(bus_capa2, case=False)]
+
+    # --- LÓGICA DE AVANCES % (TOTAL Y FILTRADO) ---
+    def calcular_avance(df_m, df_s, t_pesos):
+        if df_m.empty: return 0.0
+        puntos = 0
+        for _, m in df_m.iterrows():
+            hechos = df_s[df_s['producto_id'] == m['id']]['hito'].tolist()
+            puntos += sum([t_pesos.get(h, 0) for h in hechos])
+        return round(puntos / len(df_m), 2)
+
+    pct_total = calcular_avance(prods_all, segs, pesos)
+    pct_parcial = calcular_avance(prods_filt, segs, pesos)
+
+    # =========================================================
+    # 4. ACCIONES GLOBALES E INDICADORES (STICKY)
+    # =========================================================
+    st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
+    
+    # Fila 1: Acciones
+    a1, a2, a3 = st.columns([1.5, 1.5, 2])
+    fecha_reg = a1.date_input("📅 Fecha Registro:", datetime.now())
+    if a2.button("💾 GUARDAR AVANCE", use_container_width=True, type="primary"):
+        actualizar_avance_real(id_p)
+        ahora = datetime.now()
+        supabase.table("cierres_diarios").insert({"proyecto_id": id_p, "fecha": ahora.strftime("%d/%m/%Y"), "hora": ahora.strftime("%H:%M:%S"), "cerrado_por": st.session_state.get('id_usuario', 0)}).execute()
+        supabase.table("proyectos").update({"partida": nota_proy, "avance": pct_total}).eq("id", id_p).execute()
+        st.success("Avance guardado."); st.rerun()
+
+    # Exportación con Formato Maestro (ñ, tildes y columnas)
+    df_exp = prods_filt.copy().rename(columns={'proyecto_id': 'Id Proyecto', 'ubicacion': 'Ubicacion', 'tipo': 'Tipo', 'ctd': 'Ctd'})
+    for h in HITOS_LIST:
+        df_exp[h] = df_exp['id'].apply(lambda x: segs[(segs['producto_id']==x) & (segs['hito']==h)]['fecha'].iloc[0] if not segs[(segs['producto_id']==x) & (segs['hito']==h)].empty else "")
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_exp[['Id Proyecto', 'Ubicacion', 'Tipo', 'Ctd', 'ml'] + HITOS_LIST].to_excel(writer, index=False, sheet_name='Seguimiento')
+    a3.download_button(label="📥 EXPORTAR SEGUIMIENTO", data=output.getvalue(), file_name=f"Seguimiento_{sel_p_nom}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+
+    # Fila 2: Indicadores de Avance % (Justo encima del encabezado)
+    m1, m2 = st.columns(2)
+    m1.markdown(f"<div class='metric-box'><b>% AVANCE TOTAL PROYECTO</b><br><span style='font-size:22px; color:#FF8C00;'>{pct_total}%</span></div>", unsafe_allow_html=True)
+    m2.markdown(f"<div class='metric-box'><b>% AVANCE SELECCIÓN (FILTRO)</b><br><span style='font-size:22px; color:#2E86C1;'>{pct_parcial}%</span></div>", unsafe_allow_html=True)
+
+    # Fila 3: Encabezado de Matriz
+    cols_h = st.columns([3] + [0.7]*8 + [2])
+    cols_h[0].write("**Producto / Medida**")
+    for i, hito in enumerate(HITOS_LIST):
+        with cols_h[i+1]:
+            if st.button("✅", key=f"bk_{hito}"):
+                for pid in prods_filt['id'].tolist(): registrar_hitos_cascada(pid, hito, fecha_reg.strftime("%d/%m/%Y"))
+                st.rerun()
+            st.write(MAPEO_HITOS[hito])
+    cols_h[-1].write("**Nota**")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # =========================================================
+    # 5. MATRIZ DE PRODUCTOS (SCROLL)
+    # =========================================================
+    st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
+    
+    def render_prods(df_render):
+        rol = st.session_state.rol
+        for _, prod in df_render.iterrows():
+            cols = st.columns([3] + [0.7]*8 + [2])
+            cols[0].markdown(f"**{prod['ubicacion']}** {prod['tipo']} `{prod['ml']} ml`", unsafe_allow_html=True)
             
             for i, hito in enumerate(HITOS_LIST):
-                with cols_h[i+1]:
-                    # El botón se deshabilita solo si el reporte está guardado y no eres jefe
-                    if st.button("✅", key=f"bulk_{hito}", use_container_width=True, disabled=bloqueo_edicion):
-                        if not prods.empty:
-                            # ... (tu código de INSERT OR IGNORE se mantiene igual)
-                            ids_filtrados = prods['id'].tolist()
-                            f_str = fecha_avance.isoformat()
-                            with conectar() as conn:
-                                for p_id in ids_filtrados:
-                                    conn.execute(
-                                        "INSERT OR IGNORE INTO seguimiento (producto_id, hito, fecha) VALUES (?,?,?)",
-                                        (p_id, hito, f_str)
-                                    )
-                                    # INYECCIÓN INSTANTÁNEA: Marcamos el estado en memoria
-                                    st.session_state[f"mat_{p_id}_{hito}"] = True
-                                conn.commit()
-                            
-                            actualizar_avance_real(id_p)
-                            st.toast(f"¡{hito} actualizado!", icon="🚀")
-                            st.rerun() 
-                    
-                    st.write(f"**{MAPEO_HITOS[hito]}**")
+                match = segs[(segs['producto_id'] == prod['id']) & (segs['hito'] == hito)]
+                en_db = not match.empty
+                posteriores = HITOS_LIST[i+1:]
+                tiene_posterior = not segs[(segs['producto_id'] == prod['id']) & (segs['hito'].isin(posteriores))].empty
+                bloqueo = (en_db and rol == "Supervisor") or (en_db and tiene_posterior)
 
-    # --- SECCIÓN 6: RENDERIZADO DE MATRIZ (REACTIVIDAD TOTAL) ---
-    grupos = [None] if columna_tecnica is None else prods[columna_tecnica].unique()
-
-    for g in grupos:
-            if g: 
-                st.markdown(f"#### 📁 {label_agrupar}: {g}")
+                if cols[i+1].checkbox("Ok", key=f"c_{prod['id']}_{hito}", value=en_db, label_visibility="collapsed", disabled=bloqueo):
+                    if not en_db:
+                        registrar_hitos_cascada(prod['id'], hito, fecha_reg.strftime("%d/%m/%Y"))
+                        st.rerun()
+                elif en_db and not tiene_posterior and rol != "Supervisor":
+                    supabase.table("seguimiento").delete().eq("producto_id", prod['id']).eq("hito", hito).execute()
+                    st.rerun()
             
-            df_mostrar = prods if columna_tecnica is None else prods[prods[columna_tecnica] == g]
+            obs = match['observaciones'].iloc[0] if en_db and 'observaciones' in match.columns else ""
+            cols[-1].text_input("N", value=obs, key=f"o_{prod['id']}", label_visibility="collapsed")
 
-            for _, prod in df_mostrar.iterrows():
-                with st.container(border=True):
-                    cols = st.columns([2.5] + [1]*8)
-                    cols[0].markdown(f"**{prod['ubicacion']}** \n {prod['tipo']}")
-                    
-                    for i, hito in enumerate(HITOS_LIST):
-                        # 1. Identificadores y estado actual
-                        key_check = f"mat_{prod['id']}_{hito}"
-                        en_db = not segs[(segs['producto_id'] == prod['id']) & (segs['hito'] == hito)].empty
-                        
-                        # 2. Inicialización de memoria (Solo si no existe)
-                        if key_check not in st.session_state:
-                            st.session_state[key_check] = en_db
-
-                        # --- EL CANDADO PREVENTIVO ---
-                        user_rol = st.session_state.get('rol', 'Supervisor')
-                        
-                        # REGLA: Si ya está marcado (en_db) y NO es jefe, el check se bloquea.
-                        # Esto impide que el supervisor siquiera pueda intentar desmarcarlo.
-                        bloqueado = en_db and user_rol not in ['Administrador', 'Gerente']
-
-                        # 3. DIBUJO DEL CHECKBOX CON 'DISABLED'
-                        # Al usar 'disabled', evitamos que el usuario genere el conflicto de estado
-                        # En la Sección 6, dentro del bucle de hitos:
-                        if cols[i+1].checkbox("Ok", key=key_check, label_visibility="collapsed", disabled=bloqueo_edicion):
-                            if not en_db:
-                                with conectar() as conn:
-                                    conn.execute("INSERT OR IGNORE INTO seguimiento (producto_id, hito, fecha) VALUES (?,?,?)",
-                                                (prod['id'], hito, fecha_avance.isoformat()))
-                                    conn.commit()
-                                actualizar_avance_real(id_p)
-                                st.rerun()
-                        else:
-                            if en_db:
-                                # El 'disabled' del checkbox ya protege esta acción para supervisores si está guardado
-                                with conectar() as conn:
-                                    conn.execute("DELETE FROM seguimiento WHERE producto_id=? AND hito=?", (prod['id'], hito))
-                                    conn.commit()
-                                actualizar_avance_real(id_p)
-                                st.rerun()
-    st.divider()
-    if not esta_guardado:
-        if st.button("💾 Guardar Avance", use_container_width=True, type="primary"):
-            with conectar() as conn:
-                user_id = st.session_state.get('usuario_id', 0)
-                conn.execute("INSERT INTO cierres_diarios (proyecto_id, fecha, cerrado_por) VALUES (?,?,?)",
-                            (id_p, fecha_avance.isoformat(), user_id))
-                conn.commit()
-            st.success("✅ Avance guardado y protegido."); st.rerun()
+    if columna_tecnica:
+        for n, g in prods_filt.groupby(columna_tecnica):
+            st.markdown(f"#### 📂 {n}"); render_prods(g)
     else:
-        st.warning(f"🔐 Reporte guardado. Edición limitada a Gerencia.")
-        if es_jefe:
-            if st.button("🔓 Reabrir Reporte para Edición", use_container_width=True):
-                with conectar() as conn:
-                    conn.execute("DELETE FROM cierres_diarios WHERE proyecto_id=? AND fecha=?", 
-                                (id_p, fecha_avance.isoformat()))
-                    conn.commit()
-                st.rerun()
+        render_prods(prods_filt)
 
-        # --- SECCIÓN 7: EXPORTACIÓN (FUNCIONALIDAD PRESERVADA) ---
-    st.divider()
-    csv = prods.copy()
-    for h in HITOS_LIST:
-            csv[h] = csv['id'].apply(lambda x: "SI" if not segs[(segs['producto_id'] == x) & (segs['hito'] == h)].empty else "NO")
-    st.download_button(
-            "📥 Descargar Reporte de Avance (CSV)", 
-            csv.to_csv(index=False).encode('utf-8'), 
-            f"Seguimiento_{p_data['proyecto_text']}.csv",
-            use_container_width=True
-        )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+
+
+

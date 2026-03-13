@@ -1,12 +1,14 @@
 import streamlit as st
-import pandas as pd # Importante para la pestaña de Lista
+import pandas as pd
 from base_datos import conectar
 
 def mostrar():
     st.header("👤 Gestión de Usuarios y Perfil")
+    supabase = conectar()
     
-    # --- SECCIÓN 1: PERFIL UNIVERSAL (Visible para Supervisor, Gerente y Admin) ---
-    # Todos los colaboradores de Practiformas pueden gestionar su propia clave aquí.
+    # =========================================================
+    # SECCIÓN 1: PERFIL UNIVERSAL (Autogestión de Clave)
+    # =========================================================
     with st.expander("👤 Mi Perfil y Seguridad", expanded=True):
         st.write(f"**Usuario actual:** {st.session_state.get('usuario', 'No definido')}")
         st.write(f"**Nombre:** {st.session_state.get('nombre_real', 'No definido')}")
@@ -20,28 +22,23 @@ def mostrar():
             confirmar_clave = st.text_input("Confirmar Nueva Contraseña:", type="password")
             
             if st.form_submit_button("Actualizar mi contraseña"):
-                # Validar clave actual contra la base de datos
-                with conectar() as conn:
-                    datos = conn.execute(
-                        "SELECT contrasena FROM usuarios WHERE nombre_usuario = ?", 
-                        (st.session_state.usuario,)
-                    ).fetchone()
+                # Ajuste Nube: Consulta de validación
+                res = supabase.table("usuarios").select("contrasena").eq("nombre_usuario", st.session_state.usuario).execute()
+                datos = res.data[0] if res.data else None
                 
-                if datos and datos[0] == clave_actual:
+                if datos and datos['contrasena'] == clave_actual:
                     if nueva_clave == confirmar_clave and nueva_clave != "":
-                        with conectar() as conn:
-                            conn.execute(
-                                "UPDATE usuarios SET contrasena = ? WHERE nombre_usuario = ?", 
-                                (nueva_clave, st.session_state.usuario)
-                            )
-                            conn.commit()
+                        # Ajuste Nube: Update de contraseña
+                        supabase.table("usuarios").update({"contrasena": nueva_clave}).eq("nombre_usuario", st.session_state.usuario).execute()
                         st.success("✅ Tu contraseña ha sido actualizada correctamente.")
                     else:
                         st.error("❌ Las nuevas contraseñas no coinciden o están vacías.")
                 else:
                     st.error("❌ La contraseña actual es incorrecta.")
 
-    # --- SECCIÓN 2: CONTROL DE EQUIPO (RESTRICCIÓN: Solo Administrador) ---
+    # =========================================================
+    # SECCIÓN 2: CONTROL DE EQUIPO (Restringido a Admin)
+    # =========================================================
     rol_actual = st.session_state.get('rol', 'Invitado')
 
     if rol_actual == "Administrador":
@@ -66,30 +63,44 @@ def mostrar():
                 if st.form_submit_button("Registrar en el Sistema"):
                     if u_nombre and u_pass and u_real:
                         try:
-                            with conectar() as conn:
-                                conn.execute(
-                                    "INSERT INTO usuarios (nombre_usuario, contrasena, rol, nombre_real) VALUES (?,?,?,?)",
-                                    (u_nombre, u_pass, u_rol, u_real)
-                                )
+                            # Ajuste Nube: Inserción de nuevo registro
+                            supabase.table("usuarios").insert({
+                                "nombre_usuario": u_nombre,
+                                "contrasena": u_pass,
+                                "rol": u_rol,
+                                "nombre_real": u_real
+                            }).execute()
                             st.success(f"✅ {u_real} registrado como {u_rol}.")
                         except Exception:
-                            st.error("Error: El usuario ya existe.")
+                            st.error("Error: El nombre de usuario ya existe en la base de datos.")
                     else:
                         st.warning("Por favor, complete todos los campos.")
 
         with tab2:
             st.subheader("Colaboradores con acceso")
             try:
-                df_u = pd.read_sql_query("SELECT nombre_real as 'Nombre', nombre_usuario as 'Usuario', rol as 'Rol' FROM usuarios", conectar())
+                # Ajuste Nube: Lectura de tabla para DataFrame
+                res_u = supabase.table("usuarios").select("nombre_real, nombre_usuario, rol").execute()
+                df_u = pd.DataFrame(res_u.data)
+                
                 if not df_u.empty:
+                    # Renombrar columnas para la visualización original
+                    df_u.columns = ['Nombre', 'Usuario', 'Rol']
                     st.dataframe(df_u, use_container_width=True, hide_index=True)
                 else:
                     st.info("No hay otros usuarios registrados.")
             except Exception:
-                st.error("Error al cargar la lista de equipo.")
+                st.error("Error al cargar la lista de equipo desde la nube.")
 
-        # Herramienta de rescate de cuentas
+        # =========================================================
+        # SECCIÓN 3: HERRAMIENTA DE RESCATE (Reset Maestro)
+        # =========================================================
         seccion_seguridad()
+
+def seccion_security_nube(user, password):
+    """Función auxiliar para ejecutar el cambio en la nube."""
+    supabase = conectar()
+    supabase.table("usuarios").update({"contrasena": password}).eq("nombre_usuario", user).execute()
 
 def seccion_seguridad():
     st.markdown("---")
@@ -103,12 +114,11 @@ def seccion_seguridad():
             
             if submitted:
                 if user_to_change and new_pass:
-                    with conectar() as conn:
-                        conn.execute(
-                            "UPDATE usuarios SET contrasena = ? WHERE nombre_usuario = ?", 
-                            (new_pass, user_to_change)
-                        )
-                        conn.commit()
-                    st.success(f"✅ La contraseña de **{user_to_change}** ha sido actualizada.")
+                    try:
+                        # Ajuste Nube: Update maestro
+                        seccion_security_nube(user_to_change, new_pass)
+                        st.success(f"✅ La contraseña de **{user_to_change}** ha sido actualizada.")
+                    except Exception as e:
+                        st.error(f"Error al actualizar: {e}")
                 else:
                     st.error("Por favor, rellena ambos campos.")

@@ -1,172 +1,143 @@
-import sqlite3
+import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+from datetime import date
+from supabase import create_client
+
+# =========================================================
+# 1. CONEXIÓN Y CONFIGURACIÓN
+# =========================================================
 
 def conectar():
-    # Eliminamos cualquier rastro de caché con isolation_level=None
-    conn = sqlite3.connect('carpinteria_v2.db', timeout=30, isolation_level=None)
-    conn.execute('PRAGMA foreign_keys = ON')
-    # Modo WAL permite que Streamlit lea mientras la base de datos escribe
-    conn.execute('PRAGMA journal_mode = WAL') 
-    return conn
+    url = st.secrets["supabase"]["url"]
+    key = st.secrets["supabase"]["key"]
+    return create_client(url, key)
 
 def inicializar_bd():
-    with conectar() as conn:
-        cursor = conn.cursor()
-        
-        # 1. Tabla: Usuarios (Roles: Administrador, Gerente, Supervisor)
-        cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre_usuario TEXT UNIQUE NOT NULL,
-            contrasena TEXT NOT NULL,
-            rol TEXT NOT NULL,
-            nombre_real TEXT)''')
+    """Función mantenida para evitar errores de importación."""
+    pass
 
-        # 2. Tabla: Proyectos (17 columnas contractuales + supervisor)
-        cursor.execute('''CREATE TABLE IF NOT EXISTS proyectos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, cliente TEXT, proyecto_text TEXT, partida TEXT,
-            f_ini TEXT, f_fin TEXT, estatus TEXT DEFAULT 'Activo', avance REAL DEFAULT 0.0,
-            p_dis_i TEXT, p_dis_f TEXT, p_fab_i TEXT, p_fab_f TEXT, 
-            p_tra_i TEXT, p_tra_f TEXT, p_ins_i TEXT, p_ins_f TEXT, p_ent_i TEXT, p_ent_f TEXT,
-            supervisor_id INTEGER,
-            UNIQUE(cliente, proyecto_text),
-            FOREIGN KEY (supervisor_id) REFERENCES usuarios (id))''')
-        
-        # 3. Tabla: Productos
-        cursor.execute('''CREATE TABLE IF NOT EXISTS productos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, proyecto_id INTEGER,
-            ubicacion TEXT, tipo TEXT, ctd INTEGER, ml REAL,
-            FOREIGN KEY (proyecto_id) REFERENCES proyectos (id) ON DELETE CASCADE)''')
+# =========================================================
+# 2. GESTIÓN DE USUARIOS
+# =========================================================
 
-        # 4. Tabla: Seguimiento (Hitos técnicos)
-        cursor.execute('''CREATE TABLE IF NOT EXISTS seguimiento (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, producto_id INTEGER, hito TEXT, fecha TEXT,
-            FOREIGN KEY (producto_id) REFERENCES productos (id) ON DELETE CASCADE,
-            UNIQUE(producto_id, hito))''')
-
-        # 5. Tabla: Registro de Cierres (El candado) ---
-        # Esta tabla anotará qué proyecto y qué fecha ya no se pueden tocar
-        cursor.execute('''CREATE TABLE IF NOT EXISTS cierres_diarios (
-            proyecto_id INTEGER,
-            fecha TEXT,
-            cerrado_por INTEGER,
-            PRIMARY KEY (proyecto_id, fecha),
-            FOREIGN KEY (proyecto_id) REFERENCES proyectos (id) ON DELETE CASCADE)''')
-
-        # Admin por defecto (Seguridad inicial)
-        try:
-            cursor.execute("INSERT INTO usuarios (nombre_usuario, contrasena, rol, nombre_real) VALUES (?,?,?,?)",
-                         ('admin', 'admin123', 'Administrador', 'Karen Paola'))
-        except: pass
-        
-        # Parche para asegurar columna supervisor en bases de datos existentes
-        try:
-            cursor.execute("ALTER TABLE proyectos ADD COLUMN supervisor_id INTEGER")
-        except: pass
-        
-        conn.commit()
-
-# --- GESTIÓN DE PROYECTOS ---
-
-def obtener_proyectos(busqueda="", supervisor_id=None):
-    with conectar() as conn:
-        query = "SELECT * FROM proyectos WHERE 1=1"
-        params = []
-        if supervisor_id is not None:
-            query += " AND supervisor_id = ?"
-            params.append(supervisor_id)
-        if busqueda:
-            query += " AND (proyecto_text LIKE ? OR cliente LIKE ? OR estatus LIKE ?)"
-            term = f"%{busqueda}%"
-            params.extend([term, term, term])
-        return pd.read_sql_query(query, conn, params=params)
-
-def actualizar_proyecto(id_p, campos):
-    with conectar() as conn:
-        cols = ", ".join([f"{k}=?" for k in campos.keys()])
-        conn.execute(f"UPDATE proyectos SET {cols} WHERE id=?", (*campos.values(), id_p))
-        conn.commit()
-
-def eliminar_proyecto(id_p):
-    with conectar() as conn:
-        # ON DELETE CASCADE se encarga de productos y seguimientos
-        conn.execute("DELETE FROM proyectos WHERE id=?", (id_p,))
-        conn.commit()
-
-# --- GESTIÓN DE PRODUCTOS ---
-
-def agregar_producto_manual(id_p, u, t, c, m):
-    with conectar() as conn:
-        conn.execute("INSERT INTO productos (proyecto_id, ubicacion, tipo, ctd, ml) VALUES (?,?,?,?,?)", 
-                     (id_p, u, t, c, m))
-        conn.commit()
-
-def actualizar_producto(id_prod, u, t, c, m):
-    with conectar() as conn:
-        conn.execute("UPDATE productos SET ubicacion=?, tipo=?, ctd=?, ml=? WHERE id=?", 
-                     (u, t, c, m, id_prod))
-        conn.commit()
-
-def eliminar_producto(id_prod):
-    with conectar() as conn:
-        conn.execute("DELETE FROM productos WHERE id=?", (id_prod,))
-        conn.commit()
-
-# --- GESTIÓN DE SEGUIMIENTO Y AVANCE ---
-
-def actualizar_avance_real(id_p):
-    with conectar() as conn:
-        conn.commit()
-        total_prod = conn.execute("SELECT COUNT(*) FROM productos WHERE proyecto_id=?", (id_p,)).fetchone()[0]
-        if total_prod == 0: return
-        query_checks = """
-            SELECT COUNT(s.id) FROM seguimiento s
-            JOIN productos p ON s.producto_id = p.id
-            WHERE p.proyecto_id = ?
-        """
-        checks = conn.execute(query_checks, (id_p,)).fetchone()[0]
-        nuevo_avance = (checks / (total_prod * 8)) * 100
-        conn.execute("UPDATE proyectos SET avance=? WHERE id=?", (nuevo_avance, id_p))
-        conn.commit()
-
-def obtener_gantt_real_data(id_p):
-    mapeo = {"Diseño": ["Diseñado"], "Fabricación": ["Fabricado"], "Traslado": ["Material en Obra", "Material en Ubicación"], 
-              "Instalación": ["Instalación de Estructura", "Instalación de Puertas o Frentes", "Revisión y Observaciones"], "Entrega": ["Entrega"]}
-    reales = []
-    with conectar() as conn:
-        for etapa, hitos in mapeo.items():
-            h_list = ','.join(['?']*len(hitos))
-            query = f"SELECT MIN(s.fecha), MAX(s.fecha) FROM seguimiento s JOIN productos p ON s.producto_id = p.id WHERE s.hito IN ({h_list}) AND p.proyecto_id = ?"
-            res = conn.execute(query, (*hitos, id_p)).fetchone()
-            if res and res[0]:
-                reales.append({"Etapa": etapa, "Inicio": res[0], "Fin": res[1]})
-    return pd.DataFrame(reales)
-
-# --- GESTIÓN DE USUARIOS ---
+def validar_usuario(usuario, clave):
+    supabase = conectar()
+    res = supabase.table("usuarios").select("*").eq("nombre_usuario", usuario).eq("contrasena", clave).execute()
+    return res.data[0] if res.data else None
 
 def obtener_supervisores():
-    with conectar() as conn:
-        # Ahora incluimos a Administradores y Gerentes en la lista de posibles responsables
-        query = """
-            SELECT id, nombre_real, rol 
-            FROM usuarios 
-            WHERE rol IN ('Administrador', 'Gerente', 'Supervisor')
-        """
-        return pd.read_sql_query(query, conn)
-    
-def obtener_resumen_inventario(id_proyecto):
-    """Calcula la sumatoria de cantidades y metros lineales de un proyecto."""
-    with conectar() as conn:
-        query = "SELECT SUM(ctd), SUM(ml) FROM productos WHERE proyecto_id = ?"
-        res = conn.execute(query, (id_proyecto,)).fetchone()
-        # Retornamos (0, 0) si no hay productos aún
-        return (res[0] or 0, res[1] or 0)
-    
+    supabase = conectar()
+    res = supabase.table("usuarios").select("id, nombre_real, rol").in_("rol", ['Administrador', 'Gerente', 'Supervisor']).execute()
+    return pd.DataFrame(res.data)
+
+# =========================================================
+# 3. GESTIÓN DE PROYECTOS
+# =========================================================
+
+def obtener_proyectos(busqueda="", supervisor_id=None):
+    supabase = conectar()
+    query = supabase.table("proyectos").select("*")
+    if supervisor_id:
+        query = query.eq("supervisor_id", supervisor_id)
+    res = query.execute()
+    df = pd.DataFrame(res.data)
+    if not df.empty and busqueda:
+        df = df[df['proyecto_text'].str.contains(busqueda, case=False) | df['cliente'].str.contains(busqueda, case=False)]
+    return df
+
+def actualizar_proyecto(id_p, campos):
+    supabase = conectar()
+    supabase.table("proyectos").update(campos).eq("id", id_p).execute()
+
+def eliminar_proyecto(id_p):
+    supabase = conectar()
+    supabase.table("proyectos").delete().eq("id", id_p).execute()
+
 def obtener_datos_reporte(id_proyecto):
-    """Extrae el inventario detallado para exportación."""
-    with conectar() as conn:
-        query = """
-            SELECT ubicacion AS Ubicación, tipo AS Tipo, ctd AS Cantidad, ml AS 'Metros Lineales'
-            FROM productos WHERE proyecto_id = ?
-        """
-        return pd.read_sql_query(query, conn, params=(id_proyecto,))
+    """Extrae el inventario detallado desde la nube para exportación a Excel y WhatsApp."""
+    try:
+        supabase = conectar()
+        res = supabase.table("productos").select("ubicacion, tipo, ctd, ml").eq("proyecto_id", id_proyecto).execute()
+        
+        df = pd.DataFrame(res.data)
+        if not df.empty:
+            # Renombramos las columnas para que el Excel se vea profesional
+            df.columns = ['Ubicación', 'Tipo', 'Cantidad', 'Metros Lineales']
+            return df
+        return pd.DataFrame() # Devuelve un DataFrame vacío si no hay datos
+    except Exception as e:
+        st.error(f"Error al generar reporte: {e}")
+        return pd.DataFrame()
+
+# =========================================================
+# 4. GESTIÓN DE PRODUCTOS Y AVANCE
+# =========================================================
+
+def agregar_producto_manual(id_p, u, t, c, m):
+    supabase = conectar()
+    supabase.table("productos").insert({"proyecto_id": id_p, "ubicacion": u, "tipo": t, "ctd": c, "ml": m}).execute()
+
+def obtener_resumen_inventario(id_proyecto):
+    """Calcula la sumatoria de cantidades y metros lineales de un proyecto desde la nube."""
+    try:
+        supabase = conectar()
+        # Traemos solo las columnas necesarias para ahorrar ancho de banda
+        res = supabase.table("productos").select("ctd, ml").eq("proyecto_id", id_proyecto).execute()
+        
+        if res.data:
+            df = pd.DataFrame(res.data)
+            total_ctd = df['ctd'].sum()
+            total_ml = df['ml'].sum()
+            return total_ctd, total_ml
+        return 0, 0
+    except Exception as e:
+        # En caso de error, devolvemos ceros para que la app no colapse
+        return 0, 0
+
+def actualizar_avance_real(id_p):
+    supabase = conectar()
+    prods = supabase.table("productos").select("id").eq("proyecto_id", id_p).execute()
+    total = len(prods.data)
+    if total == 0: return
+    ids = [p['id'] for p in prods.data]
+    segs = supabase.table("seguimiento").select("id").in_("producto_id", ids).execute()
+    nuevo_avance = (len(segs.data) / (total * 8)) * 100
+    supabase.table("proyectos").update({"avance": nuevo_avance}).eq("id", id_p).execute()
+    
+def obtener_gantt_real_data(id_p):
+    supabase = conectar()
+    prods = supabase.table("productos").select("id").eq("proyecto_id", id_p).execute()
+    ids = [p['id'] for p in prods.data]
+    res = supabase.table("seguimiento").select("hito, fecha").in_("producto_id", ids).execute()
+    return pd.DataFrame(res.data)
+
+# =========================================================
+# 5. GESTIÓN DE INCIDENCIAS
+# =========================================================
+
+def registrar_incidencia_detallada(proy_id, tipo_inc, motivo, piezas, materiales, user_id):
+    supabase = conectar()
+    inc = supabase.table("incidencias").insert({
+        "proyecto_id": proy_id, "tipo_requerimiento": tipo_inc, 
+        "categoria": motivo, "fecha_reporte": date.today().isoformat(), "usuario_id": user_id
+    }).execute()
+    inc_id = inc.data[0]['id']
+    if piezas:
+        for p in piezas:
+            p['incidencia_id'] = inc_id
+            supabase.table("detalles_piezas").insert(p).execute()
+    if materiales:
+        for m in materiales:
+            m['incidencia_id'] = inc_id
+            supabase.table("detalles_materiales").insert(m).execute()
+
+def obtener_incidencias_resumen():
+    supabase = conectar()
+    res = supabase.table("incidencias").select("*, proyectos(proyecto_text), usuarios(nombre_real)").execute()
+    df = pd.DataFrame(res.data)
+    if not df.empty:
+        df['proyecto_text'] = df['proyectos'].apply(lambda x: x['proyecto_text'] if x else "")
+        df['nombre_real'] = df['usuarios'].apply(lambda x: x['nombre_real'] if x else "")
+    return df
+
+
