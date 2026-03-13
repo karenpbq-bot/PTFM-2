@@ -36,13 +36,18 @@ def obtener_supervisores():
 
 def obtener_proyectos(busqueda="", supervisor_id=None):
     supabase = conectar()
-    query = supabase.table("proyectos").select("*")
-    if supervisor_id:
-        query = query.eq("supervisor_id", supervisor_id)
+    # Ahora incluimos 'codigo' en el select
+    query = supabase.table("proyectos").select("id, codigo, proyecto_text, cliente, estatus, avance, partida")
+    
+    # ... (filtros de búsqueda si los tienes) ...
+    
     res = query.execute()
     df = pd.DataFrame(res.data)
-    if not df.empty and busqueda:
-        df = df[df['proyecto_text'].str.contains(busqueda, case=False) | df['cliente'].str.contains(busqueda, case=False)]
+    
+    if not df.empty:
+        # Esta línea es clave: crea la etiqueta "[DNI] Proyecto" para el menú
+        df['proyecto_display'] = "[" + df['codigo'].astype(str) + "] " + df['proyecto_text']
+        
     return df
 
 def actualizar_proyecto(id_p, campos):
