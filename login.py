@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
-from base_datos import validar_usuario # Importamos directamente la función ajustada
-
-# --- ELIMINAMOS LA FUNCIÓN LOCAL validar_usuario PORQUE YA ESTÁ EN base_datos.py ---
-# Al estar centralizada en base_datos.py, evitamos conflictos de conexión.
+from base_datos import validar_usuario 
 
 def login_screen():
     """Muestra la interfaz de inicio de sesión."""
@@ -12,7 +9,6 @@ def login_screen():
     
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        # Puedes cambiar este emoji por una URL de imagen de tu logo si deseas
         st.markdown("<h1 style='text-align: center;'>🪵</h1>", unsafe_allow_html=True)
         st.markdown("<h2 style='text-align: center;'>Control de Producción</h2>", unsafe_allow_html=True)
         
@@ -32,18 +28,22 @@ def login_screen():
                         
                         if user_data is not None:
                             # --- GUARDAR ESTADO DE SESIÓN ---
-                            # Nota: En Supabase, user_data ya es un diccionario, no un DataFrame.
+                            # Ajustado para coincidir con los nombres de columna de Supabase (SQL)
                             st.session_state.autenticado = True
                             st.session_state.usuario = user_data['nombre_usuario']
                             st.session_state.rol = user_data['rol']
                             st.session_state.id_usuario = user_data['id']
-                            st.session_state.nombre_real = user_data['nombre_real']
                             
-                            st.success(f"Bienvenido(a), {user_data['nombre_real']}")
-                            st.rerun() # Reinicia para mostrar el menú principal
+                            # CAMBIO CLAVE: Usamos 'nombre_completo' (como en SQL) 
+                            # pero lo guardamos en 'nombre_real' para no romper app_principal.py
+                            nombre_a_mostrar = user_data.get('nombre_completo', user_data['nombre_usuario'])
+                            st.session_state.nombre_real = nombre_a_mostrar
+                            
+                            st.success(f"Bienvenido(a), {nombre_a_mostrar}")
+                            st.rerun() 
                         else:
                             st.error("❌ Usuario o contraseña incorrectos.")
                     else:
                         st.warning("⚠️ Por favor, complete ambos campos.")
 
-        st.markdown("<p style='text-align: center; color: gray; font-size: 12px;'>Carpintería Pro V2 - © 2026</p>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: gray; font-size: 12px;'>Carpintería Pro V2 - © 2026</p>", unsafe_allow_html=True)=True)
