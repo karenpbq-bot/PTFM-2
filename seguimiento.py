@@ -65,7 +65,10 @@ def mostrar(supervisor_id=None):
     with st.expander("📁 1. SELECCIÓN DE PROYECTO", expanded=True):
         c1, c2, c3 = st.columns([2, 2, 1])
         bus_p = c1.text_input("🔍 Buscar proyecto o cliente...", key="bus_seg_proy")
-        df_p = obtener_proyectos(bus_p, supervisor_id=supervisor_id)
+        df_p = obtener_proyectos(bus_p)
+        if supervisor_id and not df_p.empty:
+            # Filtramos por supervisor manualmente ya que el buscador es universal
+            df_p = df_p[df_p['supervisor_id'] == supervisor_id]
         
         solo_activos = c3.toggle("Solo activos", value=True)
         if solo_activos and not df_p.empty:
