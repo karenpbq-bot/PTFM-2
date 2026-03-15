@@ -267,7 +267,15 @@ def mostrar(supervisor_id=None):
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-
+def obtener_productos_por_proyecto(id_proyecto):
+    """Recupera los productos asociados a un proyecto específico de la nube."""
+    try:
+        supabase = conectar()
+        res = supabase.table("productos").select("*").eq("proyecto_id", id_proyecto).execute()
+        return pd.DataFrame(res.data)
+    except Exception as e:
+        st.error(f"Error al obtener productos: {e}")
+        return pd.DataFrame()
 
 
 
