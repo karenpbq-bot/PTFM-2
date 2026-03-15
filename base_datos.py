@@ -34,18 +34,19 @@ def obtener_supervisores():
 # 3. GESTIÓN DE PROYECTOS
 # =========================================================
 
-def obtener_proyectos(busqueda="", supervisor_id=None):
+def obtener_proyectos(palabra_clave=""):
     supabase = conectar()
-    # Ahora incluimos 'codigo' en el select
     query = supabase.table("proyectos").select("id, codigo, proyecto_text, cliente, estatus, avance, partida")
     
-    # ... (filtros de búsqueda si los tienes) ...
+    # Si hay una palabra clave, buscamos en los tres campos principales
+    if palabra_clave:
+        # La lógica .or_ busca coincidencias en cualquiera de las columnas
+        query = query.or_(f"codigo.ilike.%{palabra_clave}%,proyecto_text.ilike.%{palabra_clave}%,cliente.ilike.%{palabra_clave}%")
     
     res = query.execute()
     df = pd.DataFrame(res.data)
     
     if not df.empty:
-        # Esta línea es clave: crea la etiqueta "[DNI] Proyecto" para el menú
         df['proyecto_display'] = "[" + df['codigo'].astype(str) + "] " + df['proyecto_text']
         
     return df
