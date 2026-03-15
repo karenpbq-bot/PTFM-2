@@ -28,15 +28,13 @@ def login_screen():
                         
                         if user_data is not None:
                             # --- GUARDAR ESTADO DE SESIÓN ---
-                            # Ajustado para coincidir con los nombres de columna de Supabase (SQL)
                             st.session_state.autenticado = True
-                            st.session_state.usuario = user_data['nombre_usuario']
-                            st.session_state.rol = user_data['rol']
-                            st.session_state.id_usuario = user_data['id']
+                            st.session_state.usuario = user_data.get('nombre_usuario')
+                            st.session_state.rol = user_data.get('rol')
+                            st.session_state.id_usuario = user_data.get('id')
                             
-                            # CAMBIO CLAVE: Usamos 'nombre_completo' (como en SQL) 
-                            # pero lo guardamos en 'nombre_real' para no romper app_principal.py
-                            nombre_a_mostrar = user_data.get('nombre_completo', user_data['nombre_usuario'])
+                            # Mapeo de nombre_completo a nombre_real
+                            nombre_a_mostrar = user_data.get('nombre_completo', user_data.get('nombre_usuario', 'Usuario'))
                             st.session_state.nombre_real = nombre_a_mostrar
                             
                             st.success(f"Bienvenido(a), {nombre_a_mostrar}")
@@ -46,4 +44,6 @@ def login_screen():
                     else:
                         st.warning("⚠️ Por favor, complete ambos campos.")
 
-        st.markdown("<p style='text-align: center; color: gray; font-size: 12px;'>Carpintería Pro V2 - © 2026</p>", unsafe_allow_html=True)=True)
+        st.markdown("<p style='text-align: center; color: gray; font-size: 12px;'>Carpintería Pro V2 - © 2026</p>", unsafe_allow_html=True)
+
+# Fin del archivo
