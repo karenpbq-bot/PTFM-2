@@ -24,48 +24,39 @@ def mostrar():
         if 'tmp_piezas' not in st.session_state: st.session_state.tmp_piezas = []
 
         with st.expander("➕ Agregar Pieza a la Matriz", expanded=True):
-            # Atributos técnicos solicitados
             c1, c2, c3 = st.columns([2,1,1])
             desc = c1.text_input("Descripción de la pieza")
             cant = c2.number_input("Cantidad", min_value=1, key="p_cant")
             ubi = c3.text_input("Ubicación", placeholder="Ej: B101")
             
+            # --- AJUSTE TÉCNICO: DIMENSIONES Y ROTACIÓN BINARIA ---
             c4, c5, c6, c7 = st.columns(4)
-            # 1. Veta: Ahora es un campo numérico para dimensiones
-            veta = c4.number_input("Veta (Dimensión)", min_value=0, value=0, help="Ingrese la medida en mm")
-            
-            # 2. No Veta: Ahora es un campo numérico para dimensiones
-            nveta = c5.number_input("No Veta (Dimensión)", min_value=0, value=0, help="Ingrese la medida en mm")
-            
-            # 3. Material permanece igual
+            veta = c4.number_input("Veta (mm)", min_value=0, value=0)
+            nveta = c5.number_input("No Veta (mm)", min_value=0, value=0)
             material = c6.text_input("Material / Color")
-            
-            # 4. Rotación: Ahora es elegir entre 1 y 0
-            rot = c7.selectbox("Rotación", [0, 1], help="0: Sin rotación, 1: Con rotación")
+            rot = c7.selectbox("Rotación", [0, 1], help="0: Sin rotación, 1: Rotada")
             
             st.write("**Tapacantos**")
             t1, t2, t3, t4 = st.columns(4)
-            tf = t1.text_input("Frontal (F)")
-            tp = t2.text_input("Posterior (P)")
-            td = t3.text_input("Derecho (D)")
-            ti = t4.text_input("Izquierdo (I)")
+            tf, tp, td, ti = t1.text_input("Frontal (F)"), t2.text_input("Posterior (P)"), t3.text_input("Derecho (D)"), t4.text_input("Izquierdo (I)")
             
-            obs = st.text_area("Observaciones específicas de la pieza")
+            obs = st.text_area("Observaciones específicas")
             
-            if st.button("Añadir a Matriz"):
+            if st.button("➕ Añadir a la lista temporal"):
                 st.session_state.tmp_piezas.append({
                     "descripcion": desc, "veta": veta, "no_veta": nveta, "cantidad": cant,
                     "ubicacion": ubi, "material": material, "tc_frontal": tf, "tc_posterior": tp,
                     "tc_derecho": td, "tc_izquierdo": ti, "rotacion": rot, "observaciones": obs
                 })
+                st.rerun() # Actualiza la matriz en pantalla inmediatamente
 
         if st.session_state.tmp_piezas:
-            st.write("### Matriz de Piezas Solicitadas")
+            st.write("### 📋 Matriz Consolidada de Piezas")
             st.dataframe(pd.DataFrame(st.session_state.tmp_piezas), use_container_width=True)
-            if st.button("🚀 Enviar Requerimiento de Piezas"):
+            if st.button("🚀 ENVIAR REQUERIMIENTO CONSOLIDADO (PIEZAS)", type="primary"):
                 registrar_incidencia_detallada(dict_proyectos[proy_p], "Piezas", motivo_p, st.session_state.tmp_piezas, [], st.session_state.id_usuario)
                 st.session_state.tmp_piezas = []
-                st.success("Enviado con éxito"); st.rerun()
+                st.success("Bloque de piezas enviado con éxito"); st.rerun())
 
     # --- PESTAÑA 2: MATERIALES ---
     with tab_m:
