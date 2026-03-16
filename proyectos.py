@@ -37,27 +37,27 @@ def mostrar():
 
         # 3. LÓGICA DE CÁLCULO Y PREVISUALIZACIÓN
         st.divider()
-dias_totales = (f_fin - f_ini).days
+        dias_totales = (f_fin - f_ini).days
 
-if dias_totales <= 0:
-    st.error("La fecha de término debe ser posterior a la de inicio.")
-else:
-    cronograma_data = []
-    fecha_aux = f_ini
-    for et in etapas_nombres:
-        dias_etapa = round(dias_totales * (pcts[et] / 100))
-        f_f = fecha_aux + timedelta(days=max(0, dias_etapa - 1))
-        cronograma_data.append({
-            "Etapa": et, "Inicio": fecha_aux, "Fin": f_f, "Días": dias_etapa
-        })
-        fecha_aux = f_f + timedelta(days=1)
+        if dias_totales <= 0:
+            st.error("La fecha de término debe ser posterior a la de inicio.")
+        else:
+            cronograma_data = []
+            fecha_aux = f_ini
+            for et in etapas_nombres:
+                dias_etapa = round(dias_totales * (pcts[et] / 100))
+                f_f = fecha_aux + timedelta(days=max(0, dias_etapa - 1))
+                cronograma_data.append({
+                    "Etapa": et, "Inicio": fecha_aux, "Fin": f_f, "Días": dias_etapa
+            })
+            fecha_aux = f_f + timedelta(days=1)
 
-    # RENDERIZADO DE PREVISUALIZACIÓN
-    df_previs = pd.DataFrame(cronograma_data)
-    df_previs["Inicio"] = df_previs["Inicio"].apply(lambda x: x.strftime("%d/%m/%Y"))
-    df_previs["Fin"] = df_previs["Fin"].apply(lambda x: x.strftime("%d/%m/%Y"))
-    st.write("#### 🔍 Previsualización del Cronograma Planificado")
-    st.table(df_previs[["Etapa", "Inicio", "Fin", "Días"]])
+        # RENDERIZADO DE PREVISUALIZACIÓN
+        df_previs = pd.DataFrame(cronograma_data)
+        df_previs["Inicio"] = df_previs["Inicio"].apply(lambda x: x.strftime("%d/%m/%Y"))
+        df_previs["Fin"] = df_previs["Fin"].apply(lambda x: x.strftime("%d/%m/%Y"))
+        st.write("#### 🔍 Previsualización del Cronograma Planificado")
+        st.table(df_previs[["Etapa", "Inicio", "Fin", "Días"]])
             # 4. BOTÓN DE REGISTRO
             if st.button("🚀 REGISTRAR PROYECTO NUEVO"):
                 if not codigo or not nombre:
