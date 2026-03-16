@@ -161,12 +161,13 @@ def registrar_incidencia_detallada(proyecto_id, tipo, motivo, piezas, materiales
 
 def obtener_incidencias_resumen():
     supabase = conectar()
-    res = supabase.table("incidencias").select("*, proyectos(proyecto_text), usuarios(nombre_real)").execute()
-    df = pd.DataFrame(res.data)
-    if not df.empty:
-        df['proyecto_text'] = df['proyectos'].apply(lambda x: x['proyecto_text'] if x else "")
-        df['nombre_real'] = df['usuarios'].apply(lambda x: x['nombre_real'] if x else "")
-    return df
+    try:
+        # Traemos los datos de incidencias y el nombre del proyecto relacionado
+        res = supabase.table("incidencias").select("*, proyectos(proyecto_text)").order("created_at", desc=True).execute()
+        return pd.DataFrame(res.data) if res.data else pd.DataFrame()
+    except Exception as e:
+        print(f"Error al obtener historial: {e}")
+        return pd.DataFrame()
 
 def obtener_gantt_real_data(id_p):
     """Extrae datos de hitos reales para el cronograma."""
