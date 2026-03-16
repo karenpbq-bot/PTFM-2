@@ -78,21 +78,22 @@ def mostrar():
                     else:
                         st.warning("Por favor, complete todos los campos.")
 
+        # UBICACIÓN: Dentro de 'with tab2:' en usuarios.py
         with tab2:
             st.subheader("Colaboradores con acceso")
             try:
-                # Ajuste Nube: Lectura de tabla para DataFrame
-                res_u = supabase.table("usuarios").select("nombre_real, nombre_usuario, rol").execute()
+                # AJUSTE: Seleccionar 'nombre_completo'
+                res_u = supabase.table("usuarios").select("nombre_completo, nombre_usuario, rol").execute()
                 df_u = pd.DataFrame(res_u.data)
-                
+        
                 if not df_u.empty:
-                    # Renombrar columnas para la visualización original
+                    # AJUSTE: Mapear correctamente a las columnas de visualización
                     df_u.columns = ['Nombre', 'Usuario', 'Rol']
                     st.dataframe(df_u, use_container_width=True, hide_index=True)
                 else:
                     st.info("No hay otros usuarios registrados.")
-            except Exception:
-                st.error("Error al cargar la lista de equipo desde la nube.")
+            except Exception as e:
+                st.error("Error al cargar la lista de equipo.")
 
         # =========================================================
         # SECCIÓN 3: HERRAMIENTA DE RESCATE (Reset Maestro)
