@@ -182,6 +182,7 @@ def mostrar(supervisor_id=None):
                 if lote_grupal:
                     try:
                         supabase.table("seguimiento").upsert(lote_grupal, on_conflict="producto_id, hito").execute()
+                        # ESTA LÍNEA ES VITAL PARA EL COLOR DEL GANTT
                         from base_datos import actualizar_avance_real
                         actualizar_avance_real(id_p)
                         st.success(f"✅ {h} marcado.")
