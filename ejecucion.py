@@ -49,7 +49,7 @@ def mostrar():
         
         for p_nom in proyectos_sel:
             id_p = dict_proy[p_nom]
-            # --- CONSULTA NUBE: Recuperamos todas las columnas (*) ---
+            # Traemos todos los campos de la tabla proyectos
             res_p = supabase.table("proyectos").select("*").eq("id", id_p).execute()
             if not res_p.data: continue
             p_data = res_p.data[0]
@@ -65,9 +65,9 @@ def mostrar():
                     Color="rgba(0,0,0,0)", Tipo="3_Esqueleto"
                 ))
 
-            # --- B. GANTT PLANIFICADO (CELESTE - BLOQUE SUPERIOR) ---
+            # --- B. DATA PLANIFICADA (BARRAS CELESTES - BLOQUE SUPERIOR) ---
             if not solo_real:
-                c_plan = "#87CEEB" # Celeste SkyBlue sólido
+                c_plan = "#87CEEB" # Celeste SkyBlue
                 map_cols = [
                     ("Diseño", 'p_dis_i', 'p_dis_f'),
                     ("Fabricación", 'p_fab_i', 'p_fab_f'),
@@ -82,7 +82,7 @@ def mostrar():
                             Fin=p_data[f_c], Color=c_plan, Tipo="1_Planificado"
                         ))
             
-            # --- C. GANTT REAL (COLOR - BLOQUE INFERIOR) ---
+            # --- C. DATA REAL (EJECUTADO - BLOQUE INFERIOR) ---
             df_r = obtener_gantt_real_data(id_p)
             if not df_r.empty:
                 for _, row in df_r.iterrows():
@@ -110,8 +110,7 @@ def mostrar():
 
         df_fig = pd.DataFrame(data_final)
         df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
-        
-        # El ordenamiento por Tipo (1_Planificado < 2_Real) asegura que el celeste esté arriba
+        # Ordenamos por Tipo (1_Planificado < 2_Real) asegura que el celeste esté arriba
         df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, False, True])
         
         fig = px.timeline(
@@ -138,7 +137,6 @@ def mostrar():
             showlegend=False
         )
 
-        # Resaltado estético
         fig.update_traces(marker_line_color="white", marker_line_width=1, opacity=0.9)
         fig.add_vline(x=datetime.now().timestamp() * 1000, line_width=2, line_dash="dash", line_color="red")
 
