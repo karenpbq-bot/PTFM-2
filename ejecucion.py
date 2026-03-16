@@ -193,37 +193,66 @@ def mostrar():
 
         st.plotly_chart(fig, use_container_width=True)
 
-# --- D. RENDERIZADO EN PESTAÑAS ---
+# =========================================================
+        # D. RENDERIZADO EN PESTAÑAS (UBICACIÓN FINAL)
+        # =========================================================
+        
+        # 1. Preparar el DataFrame y la Figura (Sin dibujarla aún)
+        df_fig = pd.DataFrame(data_final)
+        df_fig['Inicio'] = pd.to_datetime(df_fig['Inicio'], errors='coerce')
+        df_fig['Fin'] = pd.to_datetime(df_fig['Fin'], errors='coerce')
+        df_fig = df_fig.dropna(subset=['Inicio', 'Fin']) 
+
+        df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
+        df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, True, True])
+        
+        fig = px.timeline(
+            df_fig, x_start="Inicio", x_end="Fin", y="Etapa", color="Color",
+            facet_col="Proyecto", facet_col_wrap=1,
+            color_discrete_map="identity",
+            category_orders={"Etapa": ORDEN_ETAPAS} 
+        )
+
+        # Escala de 4 meses fija
+        f_plan = df_fig[df_fig['Tipo'] == "1_Planificado"]['Inicio']
+        f_min_x = f_plan.min() if not f_plan.empty else pd.Timestamp.now()
+        fig.update_xaxes(range=[f_min_x - timedelta(days=2), f_min_x + timedelta(days=120)], dtick="M1", tickformat="%b %Y", showgrid=True)
+        
+        # Orden Diseño Arriba
+        fig.update_yaxes(autorange="reversed", showgrid=True)
+        
+        fig.update_layout(
+            barmode='group', bargap=0.5, 
+            height=250 * len(proyectos_sel), 
+            margin=dict(l=10, r=10, t=50, b=10), showlegend=False
+        )
+        fig.update_traces(marker_line_width=0, opacity=0.9)
+        fig.add_vline(x=pd.Timestamp.now().timestamp() * 1000, line_width=1.5, line_dash="dash", line_color="red")
+
+        # 2. AHORA SÍ: Dibujar en las pestañas correspondientes
         with tab_gantt:
-            if not data_final:
-                st.warning("No hay datos para mostrar.")
-            else:
-                # Aquí va TODO el código que genera la 'fig' de Plotly que ya tenemos
-                # (df_fig, fig = px.timeline, fig.update_layout, etc.)
-                st.plotly_chart(fig, use_container_width=True)
+            st.subheader("Visualización de Cronograma")
+            # ELIMINA cualquier st.plotly_chart que esté fuera de aquí
+            st.plotly_chart(fig, use_container_width=True)
 
         with tab_metricas:
-            st.subheader("Análisis Porcentual por Hito")
-            from base_datos import obtener_avance_por_hitos, obtener_productos_por_proyecto
+            st.subheader("Análisis Porcentual Detallado")
+            from base_datos import obtener_avance_por_hitos
             
             for p_nom in proyectos_sel:
                 id_p = dict_proy[p_nom]
-                st.markdown(f"**Proyecto: {p_nom}**")
+                st.markdown(f"#### 📁 {p_nom}")
                 
-                # Calculamos avances usando la función que añadimos a base_datos
+                # Cálculo de avances por hito (esto verifica tu 63%)
                 avances = obtener_avance_por_hitos(id_p)
                 
                 if avances:
-                    m1, m2, m3, m4 = st.columns(4)
-                    hit_list = list(avances.items())
-                    # Mostramos los 8 hitos
-                    for idx, (hito, porc) in enumerate(hit_list):
-                        col_idx = idx % 4
-                        if col_idx == 0: target = m1
-                        elif col_idx == 1: target = m2
-                        elif col_idx == 2: target = m3
-                        else: target = m4
-                        
-                        target.metric(hito, f"{porc}%")
-                        target.progress(porc / 100)
+                    m = st.columns(4)
+                    hit_items = list(avances.items())
+                    for idx, (nombre_hito, valor) in enumerate(hit_items):
+                        with m[idx % 4]:
+                            st.metric(label=nombre_hito, value=f"{valor}%")
+                            st.progress(valor / 100)
+                else:
+                    st.info("No hay hitos registrados para este proyecto.")
                 st.divider()
