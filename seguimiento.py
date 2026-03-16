@@ -152,11 +152,13 @@ def mostrar(supervisor_id=None):
                             lote_save.append({"producto_id": pid, "hito": HITOS_LIST[i], "fecha": f_hoy})
             
             if lote_save:
-                supabase.table("seguimiento").upsert(pd.DataFrame(lote_save).drop_duplicates().to_dict(orient='records'), on_conflict="producto_id, hito").execute()
+                supabase.table("seguimiento").upsert(lote_save, on_conflict="producto_id, hito").execute()
             
-            # 3. Finalizar
-            st.session_state.cambios_pendientes, st.session_state.notas_pendientes = [], {}
-            st.success("✅ Datos guardados."); st.rerun()
+            # AGREGAR ESTA LÍNEA AQUÍ:
+            from base_datos import actualizar_avance_real
+            actualizar_avance_real(id_p)
+            
+            st.success("✅ Datos guardados y avance actualizado."); st.rerun()
         except Exception as e: st.error(f"Error: {e}")
 
     if act5.button("🗑️ Descartar", type="secondary", use_container_width=True, key="btn_des_final"):
