@@ -139,10 +139,13 @@ def mostrar(supervisor_id=None):
     n_p = len(st.session_state.cambios_pendientes)
     act2.metric("Pendientes", n_p)
     
-    # 3. RECUPERADO: Avance Parcial (No debe desaparecer)
-    act3.metric("Avance Parcial", f"{p_par}%")
+    # 3. Métrica de Avance Parcial (Recuperada)
+    act3.metric("Av. Parcial", f"{p_par}%")
+
+    # 4. Métrica de Avance Global (Recuperada)
+    act4.metric("Av. Global", f"{p_tot}%")
     
-    # 4. Botón Guardar (Mismo tamaño que el de descartar)
+    # 5. Botón Guardar (Mismo tamaño que el de descartar)
     if act4.button("💾 Guardar Avance", type="primary", use_container_width=True):
         ahora = datetime.now()
         f_hoy = ahora.strftime("%d/%m/%Y")
@@ -187,7 +190,7 @@ def mostrar(supervisor_id=None):
         except Exception as e:
             st.error(f"Error: {e}")
 
-    # 5. Botón Descartar (Nombre corregido y dimensiones idénticas)
+    # 6. Botón Descartar (Nombre corregido y dimensiones idénticas)
     if act5.button("🗑️ Descartar último avance", type="secondary", use_container_width=True):
         st.session_state.cambios_pendientes = []
         st.rerun()
