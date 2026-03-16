@@ -50,9 +50,10 @@ def mostrar(supervisor_id=None):
     
     supabase = conectar()
 
-    # --- TÍTULO DINÁMICO ---
+    # --- TÍTULO DINÁMICO (CORREGIDO) ---
     nombre_proy = st.session_state.get('p_nom_sel', "Ninguno")
-    st.title(f"📈 Seguimiento de Avances: {nombre_proy}")
+    st.markdown(f"### Seguimiento de Avances")
+    st.markdown(f"<p style='font-size: 16px; color: #666; margin-top: -15px;'>{nombre_proy}</p>", unsafe_allow_html=True)
 
     # --- BÚSQUEDA DE PROYECTO ---
     with st.expander("Búsqueda de Proyecto", expanded=not st.session_state.get('id_p_sel')):
@@ -133,7 +134,7 @@ def mostrar(supervisor_id=None):
     # --- ACCIONES E INDICADORES (D/M/Y) ---
     st.divider()
     act1, act2, act3, act4 = st.columns([1.5, 1.2, 1.2, 1.5])
-    f_reg = act1.date_input("Fecha Registro", datetime.now())
+    f_reg = act1.date_input("Fecha Registro", datetime.now(), format="DD/MM/YYYY"))
     act2.metric("Avance Parcial", f"{p_par}%")
     act3.metric("Avance Global", f"{p_tot}%")
     
@@ -163,7 +164,7 @@ def mostrar(supervisor_id=None):
         rol = st.session_state.get('rol', 'Supervisor')
         for _, p in df_r.iterrows():
             cols = st.columns([2.5] + [0.7]*8 + [1.5])
-            cols[0].write(f"**{p['ubicacion']}** {p['tipo']} ({p['ml']}ml)")
+            cols[0].write(f"**{p['ubicacion']}** {p['tipo']} {p['ml']}ml")
             for i, h in enumerate(HITOS_LIST):
                 m_data = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)]
                 existe = not m_data.empty
@@ -172,13 +173,16 @@ def mostrar(supervisor_id=None):
                 # DEFINICIÓN DE BLOQUEO (Para evitar NameError)
                 bloqueado = (existe and rol == "Supervisor") or tiene_post
                 
+                # --- NUEVA LÓGICA ÁGIL SIN RERUN ---
                 if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
                         registrar_hitos_cascada(p['id'], h, f_reg.strftime("%d/%m/%Y"))
-                        st.rerun()
+                        # Usamos toast en lugar de rerun para que la página no parpadee
+                        st.toast(f"✅ {h} marcado", icon="✔️")
                 elif existe and not bloqueado:
+                    # Lógica de desmarcado para Admin
                     supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
-                    st.rerun()
+                    st.toast(f"🗑️ {h} eliminado", icon="ℹ️")
             
             n_val = m_data['observaciones'].iloc[0] if existe and 'observaciones' in m_data.columns and pd.notnull(m_data['observaciones'].iloc[0]) else ""
             nueva_n = cols[-1].text_input("N", value=n_val, key=f"obs_{p['id']}", label_visibility="collapsed")
