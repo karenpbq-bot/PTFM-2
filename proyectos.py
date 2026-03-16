@@ -6,8 +6,7 @@ from base_datos import crear_proyecto, obtener_proyectos, eliminar_proyecto, obt
 def mostrar():
     st.title("📁 Gestión de Proyectos Nuevo")
     
-    # Modifica la línea de tabs:
-    tab1, tab2, tab3, tab4 = st.tabs(["🆕 Registrar", "📋 Listado", "📦 Matriz", "📈 Métricas"])
+    tab1, tab2, tab3 = st.tabs(["🆕 Registrar Proyecto Nuevo", "📋 Listado y Búsqueda", "📦 Matriz de Productos"])
 
     with tab1:
         st.subheader("Configuración y Cronograma Planificado")
@@ -220,62 +219,3 @@ def mostrar():
                 st.info("La matriz está vacía.")
         else:
             st.info("⚠️ Selecciona un proyecto en la pestaña 'Listado y Búsqueda' para gestionar su matriz.")
-
-    with tab4:
-    if st.session_state.get('id_p_sel'):
-        st.subheader("📊 Análisis de Cumplimiento por Hito")
-        from base_datos import obtener_avance_por_hitos, obtener_productos_por_proyecto
-        
-        # Filtro rápido en métricas
-        prods = obtener_productos_por_proyecto(st.session_state.id_p_sel)
-        bus_m = st.text_input("Filtrar métricas por ubicación/tipo:", key="bus_met")
-        if bus_m:
-            prods = prods[prods['ubicacion'].str.contains(bus_m, case=False) | prods['tipo'].str.contains(bus_m, case=False)]
-        
-        avances = obtener_avance_por_hitos(st.session_state.id_p_sel, prods)
-        
-        # Mostrar métricas en columnas
-        cols = st.columns(4)
-        for i, (hito, porcentaje) in enumerate(avances.items()):
-            cols[i % 4].metric(hito, f"{porcentaje}%")
-            cols[i % 4].progress(porcentaje / 100)
-    else:
-        st.info("Selecciona un proyecto en 'Listado' para ver métricas.")
-3. El ajuste Final en ejecucion.py (Para que el Gantt pinte)
-Ahora que ya tenemos los porcentajes, el Gantt debe usarlos para dibujar las barras reales solo si el avance es mayor a 0.
-
-Reemplaza la sección C de ejecucion.py por esta:
-
-Python
-            # --- C. DATA REAL (BASADA EN MÉTRICAS DE HITOS) ---
-            from base_datos import obtener_avance_por_hitos
-            # Obtenemos el avance real de cada hito
-            avances_reales = obtener_avance_por_hitos(id_p)
-            
-            # Grupos de hitos que corresponden a cada etapa del Gantt
-            GRUPOS_GANTT = {
-                "Diseño": ["Diseñado"],
-                "Fabricación": ["Fabricado"],
-                "Traslado": ["Material en Obra", "Material en Ubicación"],
-                "Instalación": ["Instalación de Estructura", "Instalación de Puertas o Frentes"],
-                "Entrega": ["Revisión y Observaciones", "Entrega"]
-            }
-
-            for etapa_gantt, hitos_hijos in GRUPOS_GANTT.items():
-                # Calculamos el promedio de avance de los hitos que componen la etapa
-                suma_av = sum([avances_reales.get(h, 0) for h in hitos_hijos])
-                promedio_etapa = suma_av / len(hitos_hijos)
-
-                if promedio_etapa > 0:
-                    # Dibujamos la barra real debajo de la planificada
-                    # Usamos las fechas planificadas como base visual
-                    data_final.append(dict(
-                        Proyecto=p_nom, 
-                        Etapa=etapa_gantt, 
-                        Inicio=p_data.get(f'p_{etapa_gantt[:3].lower()}_i'),
-                        # La longitud de la barra real depende del % de avance de esa etapa
-                        Fin=p_data.get(f'p_{etapa_gantt[:3].lower()}_f'), 
-                        Color=color_real, 
-                        Tipo="2_Real",
-                        Avance_Etapa=promedio_etapa # Para mostrar en el hover
-                    ))
