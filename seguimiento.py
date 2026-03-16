@@ -41,7 +41,11 @@ def mostrar(supervisor_id=None):
         [data-testid="stMetricValue"] { color: #FF8C00 !important; font-weight: bold !important; font-size: 24px !important; }
         </style>
     """, unsafe_allow_html=True)
-    
+
+    # Inicializamos una memoria temporal para los clics de esta sesión si no existe
+    if 'cambios_pendientes' not in st.session_state:
+        st.session_state.cambios_pendientes = []
+        
     supabase = conectar()
 
     # --- TÍTULO DINÁMICO (JERARQUÍA CORREGIDA) ---
@@ -132,50 +136,57 @@ def mostrar(supervisor_id=None):
     
     if act4.button("💾 Guardar Avance", type="primary", use_container_width=True):
         ahora = datetime.now()
-        f_cierre = ahora.strftime("%d/%m/%Y")
+        f_hoy = ahora.strftime("%d/%m/%Y")
         
         try:
-            # --- LÓGICA DE AUTOCOMPLETADO (CASCADA) POST-CIERRE ---
-            # Obtenemos todo el seguimiento actual del proyecto
-            seguimientos_actuales = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
-            df_seg_actual = pd.DataFrame(seguimientos_actuales.data)
-            
-            lote_completado = []
-            
-            for pid in prods_all['id'].tolist():
-                # Buscamos cuál es el hito más alto marcado para este producto
-                hitos_marcados = df_seg_actual[df_seg_actual['producto_id'] == pid]['hito'].tolist()
-                
-                if hitos_marcados:
-                    # Encontrar el índice más alto según nuestra HITOS_LIST
-                    indices = [HITOS_LIST.index(h) for h in hitos_marcados]
-                    max_idx = max(indices)
-                    
-                    # Generamos registros para todos los hitos anteriores que falten
-                    for i in range(max_idx):
-                        if HITOS_LIST[i] not in hitos_marcados:
-                            lote_completado.append({
-                                "producto_id": pid,
-                                "hito": HITOS_LIST[i],
-                                "fecha": f_cierre # O f_reg.strftime("%d/%m/%Y")
-                            })
+            # 1. PROCESAR CLICS PENDIENTES (Los que el usuario marcó rápido)
+            if st.session_state.get('cambios_pendientes'):
+                lote_manual = [
+                    {"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy}
+                    for c in st.session_state.cambios_pendientes
+                ]
+                supabase.table("seguimiento").upsert(lote_manual, on_conflict="producto_id, hito").execute()
 
-            # Inserción masiva de los hitos faltantes
-            if lote_completado:
-                supabase.table("seguimiento").upsert(lote_completado, on_conflict="producto_id, hito").execute()
+            # 2. LÓGICA DE AUTOCOMPLETADO (CASCADA REAL)
+            # Volvemos a consultar la base de datos para ver la foto real post-clics
+            seg_f = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
+            df_seg_f = pd.DataFrame(seg_f.data)
+            
+            lote_cascada = []
+            if not df_seg_f.empty:
+                for pid in prods_all['id'].tolist():
+                    hitos_actuales = df_seg_f[df_seg_f['producto_id'] == pid]['hito'].tolist()
+                    if hitos_actuales:
+                        # Encontramos el índice más alto alcanzado en este producto
+                        max_idx = max([HITOS_LIST.index(h) for h in hitos_actuales])
+                        # Creamos registros para todas las etapas anteriores que estén vacías
+                        for i in range(max_idx):
+                            if HITOS_LIST[i] not in hitos_actuales:
+                                lote_cascada.append({
+                                    "producto_id": pid,
+                                    "hito": HITOS_LIST[i],
+                                    "fecha": f_hoy
+                                })
 
-            # Guardar avance y cierre diario
+            # 3. INSERCIÓN MASIVA DE ETAPAS PREVIAS
+            if lote_cascada:
+                supabase.table("seguimiento").upsert(lote_cascada, on_conflict="producto_id, hito").execute()
+
+            # 4. ACTUALIZAR PROYECTO Y LIMPIAR MEMORIA
             supabase.table("proyectos").update({"avance": p_tot}).eq("id", id_p).execute()
             try:
-                supabase.table("cierres_diarios").insert({"proyecto_id": id_p, "fecha": f_cierre, "hora": ahora.strftime("%H:%M:%S")}).execute()
-            except: pass
+                supabase.table("cierres_diarios").insert({"proyecto_id": id_p, "fecha": f_hoy, "hora": ahora.strftime("%H:%M:%S")}).execute()
+            except:
+                pass
             
-            st.success(f"✅ ¡Avance procesado y autocompletado con éxito!")
+            # Vaciamos la lista de pendientes para la siguiente tanda
+            st.session_state.cambios_pendientes = []
+            
+            st.success(f"✅ Avance guardado y etapas previas autocompletadas.")
             st.rerun()
             
         except Exception as e:
-            st.error(f"Error en el guardado masivo: {e}")
-
+            st.error(f"Error al procesar el guardado: {e}")
     # --- MATRIZ CON STICKY HEADER ---
     st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
     cols_h = st.columns([2.5] + [0.7]*8 + [1.5])
@@ -207,9 +218,10 @@ def mostrar(supervisor_id=None):
                 # LÓGICA ÁGIL SIN RERUN
                 if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
-                        # Ahora solo registra este hito, la cascada vendrá al final
-                        registrar_hito_individual(p['id'], h, f_reg.strftime("%d/%m/%Y"))
-                        st.toast(f"📍 Marcado: {h}")
+                        # Solo guardamos en memoria, esto hace que el clic sea instantáneo
+                        st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
+                        st.toast(f"📍 Pendiente: {h}")
+                
                 elif existe and not bloqueado:
                     conectar().table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
                     st.toast(f"🗑️ {h} eliminado")
