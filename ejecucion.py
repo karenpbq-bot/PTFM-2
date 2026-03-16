@@ -49,7 +49,7 @@ def mostrar():
         
         for p_nom in proyectos_sel:
             id_p = dict_proy[p_nom]
-            # Traemos todos los campos de la tabla proyectos
+            # --- CONSULTA NUBE: Recuperamos todas las columnas (*) ---
             res_p = supabase.table("proyectos").select("*").eq("id", id_p).execute()
             if not res_p.data: continue
             p_data = res_p.data[0]
@@ -65,9 +65,9 @@ def mostrar():
                     Color="rgba(0,0,0,0)", Tipo="3_Esqueleto"
                 ))
 
-            # --- B. DATA PLANIFICADA (BARRAS CELESTES) ---
+            # --- B. GANTT PLANIFICADO (CELESTE - BLOQUE SUPERIOR) ---
             if not solo_real:
-                c_plan = "#87CEEB" # Celeste SkyBlue
+                c_plan = "#87CEEB" # Celeste SkyBlue sólido
                 map_cols = [
                     ("Diseño", 'p_dis_i', 'p_dis_f'),
                     ("Fabricación", 'p_fab_i', 'p_fab_f'),
@@ -82,7 +82,7 @@ def mostrar():
                             Fin=p_data[f_c], Color=c_plan, Tipo="1_Planificado"
                         ))
             
-            # --- C. DATA REAL (EJECUTADO) ---
+            # --- C. GANTT REAL (COLOR - BLOQUE INFERIOR) ---
             df_r = obtener_gantt_real_data(id_p)
             if not df_r.empty:
                 for _, row in df_r.iterrows():
@@ -104,12 +104,14 @@ def mostrar():
                         ))
                     except: continue
 
-        # --- D. GENERACIÓN DEL GRÁFICO ---
+        # --- D. GENERACIÓN DEL GRÁFICO (RESTAURACIÓN) ---
         if not data_final:
             st.warning("No hay datos para mostrar."); return
 
         df_fig = pd.DataFrame(data_final)
         df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
+        
+        # El ordenamiento por Tipo (1_Planificado < 2_Real) asegura que el celeste esté arriba
         df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, False, True])
         
         fig = px.timeline(
@@ -120,7 +122,7 @@ def mostrar():
 
         fig.update_yaxes(autorange="reversed", showgrid=True, gridcolor='rgba(128,128,128,0.2)')
 
-        # Ajuste de escala a 4 meses
+        # Ajuste de escala a 4 meses (120 días)
         f_val = pd.to_datetime(df_fig[df_fig['Tipo'] != "3_Esqueleto"]['Inicio'])
         f_min = f_val.min() if not f_val.empty else datetime.now()
         
@@ -130,12 +132,13 @@ def mostrar():
         )
 
         fig.update_layout(
-            barmode='group',
+            barmode='group', # ESTO SEPARA LAS BARRAS: Planificado arriba, Real abajo
             height=450 * len(proyectos_sel), 
             margin=dict(l=10, r=10, t=50, b=10),
             showlegend=False
         )
 
+        # Resaltado estético
         fig.update_traces(marker_line_color="white", marker_line_width=1, opacity=0.9)
         fig.add_vline(x=datetime.now().timestamp() * 1000, line_width=2, line_dash="dash", line_color="red")
 
