@@ -136,51 +136,45 @@ def mostrar(supervisor_id=None):
     
     if act4.button("💾 Guardar Avance", type="primary", use_container_width=True):
         ahora = datetime.now()
-        f_hoy = ahora.strftime("%d/%m/%Y") # Formato día/mes/año solicitado
+        f_hoy = ahora.strftime("%d/%m/%Y")
         
         try:
-            lote_final = []
-
-            # A. Recolectamos cambios manuales de la sesión
-            if st.session_state.get('cambios_pendientes'):
+            lote_total = []
+            # 1. Agregamos lo pendiente
+            if st.session_state.cambios_pendientes:
                 for c in st.session_state.cambios_pendientes:
-                    lote_final.append({"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy})
+                    lote_total.append({"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy})
 
-            # B. Consultamos BD para la cascada
-            seg_f = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
-            df_seg_f = pd.DataFrame(seg_f.data)
+            # 2. Consultar BD y unir con cambios actuales para la Cascada
+            res_s = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
+            df_actualizado = pd.concat([pd.DataFrame(res_s.data), pd.DataFrame(lote_total)[['producto_id', 'hito']]]) if lote_total else pd.DataFrame(res_s.data)
             
-            # Unimos lo de la BD con lo nuevo en pantalla para calcular la cascada completa
-            df_temp = pd.concat([df_seg_f, pd.DataFrame(lote_final)[['producto_id', 'hito']]]) if lote_final else df_seg_f
-            
-            if not df_temp.empty:
+            # 3. Lógica de cascada sobre la unión de datos
+            if not df_actualizado.empty:
                 for pid in prods_all['id'].tolist():
-                    hitos_prod = df_temp[df_temp['producto_id'] == pid]['hito'].unique().tolist()
-                    if hitos_prod:
-                        max_idx = max([HITOS_LIST.index(h) for h in hitos_prod])
+                    hitos_p = df_actualizado[df_actualizado['producto_id'] == pid]['hito'].unique().tolist()
+                    if hitos_p:
+                        max_idx = max([HITOS_LIST.index(h) for h in hitos_p])
                         for i in range(max_idx):
-                            if HITOS_LIST[i] not in hitos_prod:
-                                lote_final.append({"producto_id": pid, "hito": HITOS_LIST[i], "fecha": f_hoy})
+                            if HITOS_LIST[i] not in hitos_p:
+                                lote_total.append({"producto_id": pid, "hito": HITOS_LIST[i], "fecha": f_hoy})
 
-            # C. LIMPIEZA TOTAL DE DUPLICADOS (Evita Error 21000)
-            if lote_final:
-                df_limpio = pd.DataFrame(lote_final).drop_duplicates(subset=['producto_id', 'hito'])
-                # Convertimos a lista de diccionarios para Supabase
-                registros_upsert = df_limpio.to_dict(orient='records')
-                supabase.table("seguimiento").upsert(registros_upsert, on_conflict="producto_id, hito").execute()
+            # 4. Upsert y Recalcular Avance
+            if lote_total:
+                df_final = pd.DataFrame(lote_total).drop_duplicates(subset=['producto_id', 'hito'])
+                supabase.table("seguimiento").upsert(df_final.to_dict(orient='records'), on_conflict="producto_id, hito").execute()
 
-            # D. Actualización final y limpieza de memoria
-            supabase.table("proyectos").update({"avance": p_tot}).eq("id", id_p).execute()
-            try:
-                supabase.table("cierres_diarios").insert({"proyecto_id": id_p, "fecha": f_hoy, "hora": ahora.strftime("%H:%M:%S")}).execute()
-            except: pass
+            # RECALCULAR AVANCE CON DATOS NUEVOS
+            res_final = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
+            avance_final = calc_avance(prods_all, pd.DataFrame(res_final.data))
             
-            st.session_state.cambios_pendientes = [] # Limpiamos memoria
-            st.success(f"✅ Avance actualizado correctamente al {f_hoy}")
+            supabase.table("proyectos").update({"avance": avance_final}).eq("id", id_p).execute()
+            st.session_state.cambios_pendientes = []
+            st.success(f"✅ ¡Avance del {avance_final}% guardado exitosamente!")
             st.rerun()
-            
+
         except Exception as e:
-            st.error(f"Error crítico al guardar: {e}")
+            st.error(f"Error: {e}")
                     
     # --- MATRIZ CON STICKY HEADER ---
     st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
