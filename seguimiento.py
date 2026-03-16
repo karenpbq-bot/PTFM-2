@@ -214,29 +214,38 @@ def mostrar(supervisor_id=None):
         rol = st.session_state.get('rol', 'Supervisor')
         for _, p in df_r.iterrows():
             cols = st.columns([2.5] + [0.7]*8 + [1.5])
-            # REQUERIMIENTO: Producto y ML en la misma línea
+            # Producto y ML en la misma línea
             cols[0].write(f"**{p['ubicacion']}** {p['tipo']} {p['ml']}ml")
             
             for i, h in enumerate(HITOS_LIST):
                 m_data = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)]
                 en_db = not m_data.empty
-                # NUEVO: Verificar si está en la memoria temporal de esta sesión
-                en_memoria = any(c['pid'] == p['id'] and c['hito'] == h for c in st.session_state.cambios_pendientes)
-                existe = en_db or en_memoria
+                
+                # REVISIÓN: Buscamos si el registro está en la memoria temporal
+                # Lo guardamos en una variable para poder manipularlo si el usuario desmarca
+                pendiente = next((c for c in st.session_state.cambios_pendientes if c['pid'] == p['id'] and c['hito'] == h), None)
+                existe = en_db or (pendiente is not None)
                 
                 tiene_post = not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
                 bloqueado = (en_db and rol == "Supervisor") or tiene_post
                 
-                # Checkbox que reacciona a la memoria temporal
+                # Checkbox con lógica dual (Base de datos + Memoria)
                 if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
                         st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
-                elif existe and not bloqueado:
-                    # El desmarcado de Admin lo seguimos haciendo directo para evitar confusiones
-                    conectar().table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
-                    st.toast(f"🗑️ {h} eliminado")
+                        st.rerun() # Rerun necesario para actualizar el contador de "Pendientes" arriba
+                else:
+                    # Si el usuario desmarca algo que estaba en memoria (pero no en BD todavía)
+                    if pendiente:
+                        st.session_state.cambios_pendientes.remove(pendiente)
+                        st.rerun()
+                    # Si el usuario desmarca algo que YA estaba en BD (Solo Admin)
+                    elif en_db and not bloqueado:
+                        conectar().table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
+                        st.rerun()
             
-            n_val = m_data['observaciones'].iloc[0] if (existe and 'observaciones' in m_data.columns and pd.notnull(m_data['observaciones'].iloc[0])) else ""
+            # Notas (Mantenemos tu lógica)
+            n_val = m_data['observaciones'].iloc[0] if (en_db and 'observaciones' in m_data.columns and pd.notnull(m_data['observaciones'].iloc[0])) else ""
             nueva_n = cols[-1].text_input("N", value=n_val, key=f"obs_{p['id']}", label_visibility="collapsed")
             if nueva_n != n_val:
                 conectar().table("seguimiento").update({"observaciones": nueva_n}).eq("producto_id", p['id']).eq("hito", HITOS_LIST[0]).execute()
