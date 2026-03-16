@@ -1,88 +1,135 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime, timedelta
-from base_datos import conectar, obtener_proyectos, obtener_gantt_real_data
+from base_datos import conectar, obtener_proyectos, obtener_datos_gantt_procesados
 
-def obtener_color_gradiente(avance):
-    """Calcula el color hexadecimal entre Rojo, Amarillo y Verde según el avance."""
-    avance = max(0, min(100, avance)) # Asegura que esté entre 0 y 100
+def calcular_color_semaforo(avance):
+    """Devuelve el color matizado según el avance (Rojo-Amarillo-Verde)."""
     if avance < 50:
-        r, g, b = 255, int((avance / 50) * 255), 0
+        # Rojo: De oscuro (poco avance) a más claro
+        intensidad = int(100 + (avance * 2)) 
+        return f'rgb({intensidad}, 0, 0)'
+    elif avance <= 75:
+        # Amarillo: De ocre a brillante
+        val = int((avance - 50) * 10)
+        return f'rgb({200+val}, {200+val}, 0)'
     else:
-        r, g, b = int(255 - ((avance - 50) / 50) * 255), 255, 0
-    return f'rgb({r}, {g}, {b})'
+        # Verde: De lima a bosque (oscuro al llegar al 100)
+        intensidad = int(255 - ((avance - 75) * 4))
+        return f'rgb(0, {intensidad}, 0)'
 
 def mostrar():
-    st.header("📊 Cronograma de Ejecución V2")
-    supabase = conectar()
+    st.title("📊 Gantt Comparativo: Planificado vs. Ejecutado")
     
-    # --- 1. BUSCADOR ÚNICO Y SELECCIÓN ---
-    with st.container(border=True):
-        bus = st.text_input("🔍 Buscador Universal (Código, Nombre o Cliente)", placeholder="Ej: PTF-001 o Casa")
-        df_p = obtener_proyectos(bus)
+    # --- 1. BUSCADOR Y SELECCIÓN ---
+    with st.sidebar:
+        st.subheader("Filtros de Visualización")
+        bus_keyword = st.text_input("🔍 Buscar Proyecto (Código, Cliente, Nombre)")
+        df_p = obtener_proyectos(bus_keyword)
         
         if df_p.empty:
-            st.info("No se encontraron coincidencias."); return
-            
-        dict_proy = {r['proyecto_display']: r['id'] for _, r in df_p.iterrows()}
-        proyectos_sel = st.multiselect("Proyectos a visualizar:", options=list(dict_proy.keys()), default=list(dict_proy.keys())[:1])
+            st.warning("No hay proyectos que coincidan.")
+            return
 
-    if proyectos_sel:
-        data_final = []
-        ORDEN_ETAPAS = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
+        proyectos_nombres = df_p['proyecto_display'].tolist()
+        seleccionados = st.multiselect("Proyectos a comparar:", proyectos_nombres)
 
-        for p_nom in proyectos_sel:
-            id_p = dict_proy[p_nom]
-            res_p = supabase.table("proyectos").select("*").eq("id", id_p).execute()
-            if not res_p.data: continue
-            p_data = res_p.data[0]
-            avance_p = p_data.get('avance', 0)
+    if not seleccionados:
+        st.info("Seleccione uno o más proyectos en la barra lateral para visualizar el Gantt.")
+        return
 
-            # A. BARRAS PLANIFICADAS (GRISES)
-            map_cols = [
-                ("Diseño", 'p_dis_i', 'p_dis_f', "#D5D8DC"), # Gris Claro
-                ("Fabricación", 'p_fab_i', 'p_fab_f', "#5D6D7E"), # Gris Oscuro
-                ("Traslado", 'p_tra_i', 'p_tra_f', "#D5D8DC"),
-                ("Instalación", 'p_ins_i', 'p_ins_f', "#D5D8DC"),
-                ("Entrega", 'p_ent_i', 'p_ent_f', "#D5D8DC")
-            ]
-            for et, i_c, f_c, col in map_cols:
-                if p_data.get(i_c) and p_data.get(f_c):
-                    data_final.append(dict(Proyecto=p_nom, Etapa=et, Inicio=p_data[i_c], Fin=p_data[f_c], Color=col, Tipo="Planificado"))
+    # --- 2. PROCESAMIENTO DE DATOS PARA EL GRÁFICO ---
+    df_gantt_final = []
+    ETAPAS_ORDEN = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
+    
+    supabase = conectar()
 
-            # B. BARRAS REALES (GRADIENTE)
-            df_r = obtener_gantt_real_data(id_p)
-            color_real = obtener_color_gradiente(avance_p)
-            
-            if not df_r.empty:
-                for _, row in df_r.iterrows():
-                    try:
-                        str_f = str(row['fecha']).strip()
-                        fecha_dt = datetime.strptime(str_f, '%d/%m/%Y') if "/" in str_f else datetime.strptime(str_f, '%Y-%m-%d')
-                        # Mapeo de hitos a etapas
-                        hito_l = row['hito'].lower()
-                        et_m = "Instalación"
-                        if "disen" in hito_l: et_m = "Diseño"
-                        elif hito_l in ["corte", "canto", "perforado", "armado"]: et_m = "Fabricación"
-                        elif "tras" in hito_l: et_m = "Traslado"
-                        elif "entreg" in hito_l: et_m = "Entrega"
+    for p_display in seleccionados:
+        # Obtener ID y datos del proyecto
+        p_row = df_p[df_p['proyecto_display'] == p_display].iloc[0]
+        id_p = p_row['id']
+        res_p = supabase.table("proyectos").select("*").eq("id", id_p).execute()
+        p_data = res_p.data[0]
 
-                        data_final.append(dict(Proyecto=p_nom, Etapa=et_m, Inicio=fecha_dt.strftime('%Y-%m-%d'), 
-                                               Fin=(fecha_dt + timedelta(days=1)).strftime('%Y-%m-%d'), 
-                                               Color=color_real, Tipo="Real"))
-                    except: continue
+        # A. Datos Planificados (Gris Claro / Gris Oscuro)
+        map_plan = [
+            ("Diseño", "p_dis_i", "p_dis_f", "#D3D3D3"), # Gris Claro
+            ("Fabricación", "p_fab_i", "p_fab_f", "#4F4F4F"), # Gris Oscuro
+            ("Traslado", "p_tra_i", "p_tra_f", "#D3D3D3"),
+            ("Instalación", "p_ins_i", "p_ins_f", "#D3D3D3"),
+            ("Entrega", "p_ent_i", "p_ent_f", "#D3D3D3")
+        ]
 
-        if not data_final:
-            st.warning("Sin datos de fechas para mostrar."); return
+        for et, ini_c, fin_c, color in map_plan:
+            if p_data.get(ini_c) and p_data.get(fin_c):
+                df_gantt_final.append({
+                    "Proyecto": p_display,
+                    "Etapa": et,
+                    "Inicio": p_data[ini_c],
+                    "Fin": p_data[fin_c],
+                    "Color": color,
+                    "Tipo": "1. Planificado",
+                    "Avance": 100,
+                    "Label": f"{et} (Plan)"
+                })
 
-        # GRÁFICO
-        df_fig = pd.DataFrame(data_final)
-        df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
-        
-        fig = px.timeline(df_fig, x_start="Inicio", x_end="Fin", y="Etapa", color="Color",
-                          facet_col="Proyecto", facet_col_wrap=1, color_discrete_map="identity")
+        # B. Datos Ejecutados (Basados en Hitos Reales)
+        datos_reales = obtener_datos_gantt_procesados(id_p)
+        for dr in datos_reales:
+            color_sem = calcular_color_semaforo(dr['Avance'])
+            df_gantt_final.append({
+                "Proyecto": p_display,
+                "Etapa": dr['Etapa'],
+                "Inicio": dr['Inicio'].strftime('%Y-%m-%d'),
+                "Fin": dr['Fin'].strftime('%Y-%m-%d'),
+                "Color": color_sem,
+                "Tipo": "2. Ejecutado",
+                "Avance": round(dr['Avance'], 1),
+                "Label": f"{dr['Etapa']} (Real: {round(dr['Avance'], 1)}%)"
+            })
 
-        fig.update_yaxes(autorange="reversed")
-        fig.update_layout(barmode='overlay', height=220 * len(proyectos_sel), showlegend=False, margin=dict(l=10, r=10, t=40, b=10))
-        st.plotly_chart(fig, use_container_width=True)
+    if not df_gantt_final:
+        st.warning("No hay fechas suficientes para generar el gráfico.")
+        return
+
+    # --- 3. CONSTRUCCIÓN DEL GRÁFICO ---
+    df_plot = pd.DataFrame(df_gantt_final)
+    
+    # Forzar orden de etapas y proyectos para que no se mezclen
+    df_plot['Etapa'] = pd.Categorical(df_plot['Etapa'], categories=ETAPAS_ORDEN, ordered=True)
+    df_plot = df_plot.sort_values(by=["Proyecto", "Etapa", "Tipo"])
+
+    fig = px.timeline(
+        df_plot, 
+        x_start="Inicio", 
+        x_end="Fin", 
+        y="Etapa", 
+        color="Color",
+        facet_row="Proyecto",
+        color_discrete_map="identity",
+        hover_data={"Avance": True, "Inicio": True, "Fin": True, "Color": False, "Tipo": False},
+        category_orders={"Etapa": ETAPAS_ORDEN}
+    )
+
+    # Ajustes de diseño solicitados
+    fig.update_yaxes(autorange="reversed") 
+    fig.update_layout(
+        height=300 * len(seleccionados),
+        showlegend=False,
+        title_text="Cronograma Comparativo por Proyecto",
+        margin=dict(t=50, l=10, r=10, b=50)
+    )
+
+    # Líneas punteadas para quincenas/meses
+    fig.update_xaxes(
+        dtick="M1", # Marca principal cada mes
+        minor=dict(dtick=1000*60*60*24*14, showgrid=True, gridcolor="LightGrey", gridwidth=1, griddash="dot"), # Quincenas
+        showgrid=True, gridcolor="Silver", gridwidth=1, griddash="dash"
+    )
+
+    # Ajuste de las etiquetas de facet_row para que sean legibles
+    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+
+    st.plotly_chart(fig, use_container_width=True)
