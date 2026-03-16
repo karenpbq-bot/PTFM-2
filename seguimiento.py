@@ -189,19 +189,21 @@ def mostrar(supervisor_id=None):
     for i, h in enumerate(HITOS_LIST):
         with cols_h[i+1]:
             st.write(MAPEO_HITOS[h])
-            # CORRECCIÓN: Marcado masivo ágil usando la memoria temporal
             if st.button("✅", key=f"bk_{h}"):
                 for pid in df_f['id'].tolist():
-                    # Solo agregamos si no estaba ya marcado en la base de datos
-                    m_db = segs[(segs['producto_id'] == pid) & (segs['hito'] == h)]
-                    if m_db.empty:
+                    # Marcamos en memoria solo si no está en BD y no está ya en memoria
+                    en_db = not segs[(segs['producto_id'] == pid) & (segs['hito'] == h)].empty
+                    ya_en_memoria = any(c['pid'] == pid and c['hito'] == h for c in st.session_state.cambios_pendientes)
+                    if not en_db and not ya_en_memoria:
                         st.session_state.cambios_pendientes.append({"pid": pid, "hito": h})
-                st.rerun() # Aquí sí usamos rerun para que el usuario vea los checks marcados de inmediato
+                # Usamos st.toast para avisar en lugar de rerun, manteniendo los filtros intactos
+                st.toast(f"Columna {h} marcada para guardar.")
     cols_h[-1].write("**Notas**")
     st.markdown('</div>', unsafe_allow_html=True)
 
     # --- ÁREA DE PRODUCTOS (SCROLL) ---
     st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
+    
     def render_matriz(df_r):
         rol = st.session_state.get('rol', 'Supervisor')
         for _, p in df_r.iterrows():
@@ -211,14 +213,17 @@ def mostrar(supervisor_id=None):
             
             for i, h in enumerate(HITOS_LIST):
                 m_data = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)]
-                existe = not m_data.empty
-                tiene_post = not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
-                bloqueado = (existe and rol == "Supervisor") or tiene_post
+                en_db = not m_data.empty
+                # NUEVO: Verificar si está en la memoria temporal de esta sesión
+                en_memoria = any(c['pid'] == p['id'] and c['hito'] == h for c in st.session_state.cambios_pendientes)
+                existe = en_db or en_memoria
                 
-                # LÓGICA ULTRA-ÁGIL SIN MENSAJES
+                tiene_post = not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
+                bloqueado = (en_db and rol == "Supervisor") or tiene_post
+                
+                # Checkbox que reacciona a la memoria temporal
                 if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
-                        # Solo anotamos el cambio en memoria
                         st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
                 elif existe and not bloqueado:
                     # El desmarcado de Admin lo seguimos haciendo directo para evitar confusiones
