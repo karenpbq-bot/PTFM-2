@@ -4,14 +4,18 @@ import plotly.express as px
 from datetime import datetime, timedelta
 from base_datos import conectar, obtener_proyectos, obtener_gantt_real_data
 
+# =========================================================
+# SECCIÓN 1: CONFIGURACIÓN Y CONSTANTES
+# =========================================================
 ORDEN_ETAPAS = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
 
+# Colores Ejecutados (Vivos para resaltar sobre el gris)
 COLORES_REALES = {
-    "Diseño": "#1ABC9C",      # Turquesa
-    "Fabricación": "#F39C12", # Naranja
-    "Traslado": "#9B59B6",    # Morado
-    "Instalación": "#2E86C1", # Azul
-    "Entrega": "#27AE60"      # Verde
+    "Diseño": "#1ABC9C",      
+    "Fabricación": "#F39C12", 
+    "Traslado": "#9B59B6",    
+    "Instalación": "#2E86C1", 
+    "Entrega": "#27AE60"      
 }
 
 def mostrar():
@@ -38,7 +42,8 @@ def mostrar():
 
     if proyectos_sel:
         data_final = []
-        fecha_minima_global = datetime.now() # Para fijar el inicio del gráfico
+        # Fecha de referencia para asegurar que el gráfico cubra 4 meses
+        hoy = datetime.now()
 
         for p_nom in proyectos_sel:
             id_p = dict_proy[p_nom]
@@ -46,18 +51,14 @@ def mostrar():
             if not res_p.data: continue
             p_data = res_p.data[0]
             
-            # Guardamos la fecha de inicio del proyecto para el rango del gráfico
-            if p_data.get('p_dis_i'):
-                f_ini_p = pd.to_datetime(p_data['p_dis_i'])
-                if f_ini_p < fecha_minima_global: fecha_minima_global = f_ini_p
-
+            # A. DATA PLANIFICADA (COLORES AJUSTADOS PARA MODO OSCURO)
             if not solo_real:
                 map_cols = [
-                    ("Diseño", 'p_dis_i', 'p_dis_f', "#EBEDEF"),
-                    ("Fabricación", 'p_fab_i', 'p_fab_f', "#7F8C8D"),
-                    ("Traslado", 'p_tra_i', 'p_tra_f', "#EBEDEF"),
-                    ("Instalación", 'p_ins_i', 'p_ins_f', "#EBEDEF"),
-                    ("Entrega", 'p_ent_i', 'p_ent_f', "#EBEDEF")
+                    ("Diseño", 'p_dis_i', 'p_dis_f', "#BDC3C7"), # Gris Perla (Alto Contraste)
+                    ("Fabricación", 'p_fab_i', 'p_fab_f', "#5D6D7E"), # Gris Azulado (Oscuro)
+                    ("Traslado", 'p_tra_i', 'p_tra_f', "#BDC3C7"),
+                    ("Instalación", 'p_ins_i', 'p_ins_f', "#BDC3C7"),
+                    ("Entrega", 'p_ent_i', 'p_ent_f', "#BDC3C7")
                 ]
                 for et, i_c, f_c, col in map_cols:
                     if p_data.get(i_c) and p_data.get(f_c):
@@ -66,16 +67,18 @@ def mostrar():
                             Fin=p_data[f_c], Color=col, Tipo="Planificado"
                         ))
             
+            # B. DATA REAL
             df_r = obtener_gantt_real_data(id_p)
             if not df_r.empty:
                 for _, row in df_r.iterrows():
                     try:
                         str_f = str(row['fecha']).strip()
                         fecha_dt = datetime.strptime(str_f, '%d/%m/%Y') if "/" in str_f else datetime.strptime(str_f, '%Y-%m-%d')
-                        inicio_real = fecha_dt.strftime('%Y-%m-%d')
-                        fin_real = (fecha_dt + timedelta(days=2)).strftime('%Y-%m-%d') # Un poco más ancha para que se vea
                         
-                        # Mapeo mejorado para asegurar que caigan en las 5 etapas
+                        inicio_real = fecha_dt.strftime('%Y-%m-%d')
+                        fin_real = (fecha_dt + timedelta(days=2)).strftime('%Y-%m-%d')
+                        
+                        # Mapeo de hitos
                         hito_l = row['hito'].lower()
                         if "disen" in hito_l: et_match = "Diseño"
                         elif any(x in hito_l for x in ["fabric", "corte", "canto", "armad"]): et_match = "Fabricación"
@@ -99,34 +102,39 @@ def mostrar():
         fig = px.timeline(
             df_fig, x_start="Inicio", x_end="Fin", y="Etapa", color="Color",
             facet_col="Proyecto", facet_col_wrap=1,
-            color_discrete_map="identity", 
-            category_orders={"Etapa": ORDEN_ETAPAS},
-            hover_data=["Tipo"]
+            color_discrete_map="identity", category_orders={"Etapa": ORDEN_ETAPAS}
         )
 
-        # AJUSTES CRÍTICOS PARA VER LAS 5 ETAPAS Y 4 MESES
-        fig.update_yaxes(autorange="reversed", showgrid=True)
+        # AJUSTES DE VISIBILIDAD Y RANGO
+        fig.update_yaxes(autorange="reversed", showgrid=True, gridcolor='rgba(128,128,128,0.2)')
 
-        # 1. Fijar rango de 4 meses y marcas mensuales
-        fecha_fin_vista = fecha_minima_global + timedelta(days=120)
+        # Forzado de 4 meses (desde la fecha más antigua en el gráfico)
+        f_min = pd.to_datetime(df_fig['Inicio']).min()
+        f_max_vista = f_min + timedelta(days=120)
+
         fig.update_xaxes(
-            range=[fecha_minima_global, fecha_fin_vista], # Rango forzado de 4 meses
-            dtick="M1",            # Una marca por mes
-            tickformat="%b %Y",    # Formato: Mar 2024
+            range=[f_min, f_max_vista],
+            dtick="M1", 
+            tickformat="%b %Y", 
             showgrid=True, 
-            gridcolor='LightGray', 
+            gridcolor='rgba(128,128,128,0.3)', 
             griddash='dot'
         )
 
         fig.update_layout(
-            barmode='group',       # CAMBIO CLAVE: 'group' pone una barra junto a la otra (no encima)
-            height=400 * len(proyectos_sel), # Más alto para que quepan las barras agrupadas
+            barmode='group', # Barras paralelas para comparar
+            height=450 * len(proyectos_sel), 
             margin=dict(l=10, r=10, t=30, b=10),
             showlegend=False,
+            paper_bgcolor='rgba(0,0,0,0)', # Transparente para adaptarse al tema de la laptop
+            plot_bgcolor='rgba(0,0,0,0)',
             bargap=0.2
         )
 
+        # Mejorar el borde de las barras para que resalten en modo oscuro
+        fig.update_traces(marker_line_color="white", marker_line_width=1, opacity=0.9)
+
         # Línea de HOY
-        fig.add_vline(x=datetime.now().timestamp() * 1000, line_width=2, line_dash="dash", line_color="red")
+        fig.add_vline(x=hoy.timestamp() * 1000, line_width=2, line_dash="dash", line_color="red")
 
         st.plotly_chart(fig, use_container_width=True)
