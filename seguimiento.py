@@ -158,38 +158,46 @@ def mostrar(supervisor_id=None):
     cols_h[-1].write("**Notas**")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- ÁREA DE PRODUCTOS ---
+    # --- ÁREA DE PRODUCTOS (SCROLL) ---
     st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
+    
     def render_matriz(df_r):
         rol = st.session_state.get('rol', 'Supervisor')
         for _, p in df_r.iterrows():
             cols = st.columns([2.5] + [0.7]*8 + [1.5])
+            
+            # REQUERIMIENTO: Ubicación, Tipo y ML en la misma línea
             cols[0].write(f"**{p['ubicacion']}** {p['tipo']} {p['ml']}ml")
+            
             for i, h in enumerate(HITOS_LIST):
                 m_data = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)]
                 existe = not m_data.empty
                 tiene_post = not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
                 
-                # DEFINICIÓN DE BLOQUEO (Para evitar NameError)
+                # Definición de bloqueo
                 bloqueado = (existe and rol == "Supervisor") or tiene_post
                 
-                # --- NUEVA LÓGICA ÁGIL SIN RERUN ---
+                # LÓGICA ÁGIL SIN RERUN
                 if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
                         registrar_hitos_cascada(p['id'], h, f_reg.strftime("%d/%m/%Y"))
-                        # Usamos toast en lugar de rerun para que la página no parpadee
                         st.toast(f"✅ {h} marcado", icon="✔️")
                 elif existe and not bloqueado:
-                    # Lógica de desmarcado para Admin
-                    supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
+                    conectar().table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
                     st.toast(f"🗑️ {h} eliminado", icon="ℹ️")
             
-            n_val = m_data['observaciones'].iloc[0] if existe and 'observaciones' in m_data.columns and pd.notnull(m_data['observaciones'].iloc[0]) else ""
+            # REQUERIMIENTO: Recuperar columna de Notas
+            n_val = m_data['observaciones'].iloc[0] if (existe and 'observaciones' in m_data.columns and pd.notnull(m_data['observaciones'].iloc[0])) else ""
             nueva_n = cols[-1].text_input("N", value=n_val, key=f"obs_{p['id']}", label_visibility="collapsed")
-            if nueva_n != n_val: supabase.table("seguimiento").update({"observaciones": nueva_n}).eq("producto_id", p['id']).eq("hito", HITOS_LIST[0]).execute()
+            
+            if nueva_n != n_val:
+                conectar().table("seguimiento").update({"observaciones": nueva_n}).eq("producto_id", p['id']).eq("hito", HITOS_LIST[0]).execute()
 
     if agrupar_por != "Sin grupo":
         for n, g in df_f.groupby(agrupar_por.lower()):
-            st.markdown(f"**📂 {n}**"); render_matriz(g)
-    else: render_matriz(df_f)
+            st.markdown(f"**📂 {n}**")
+            render_matriz(g)
+    else:
+        render_matriz(df_f)
+    
     st.markdown('</div>', unsafe_allow_html=True)
