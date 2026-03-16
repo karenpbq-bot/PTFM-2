@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 from supabase import create_client
+from datetime import datetime
 
 # =========================================================
 # 1. CONEXIÓN Y CONFIGURACIÓN
@@ -131,32 +132,29 @@ def guardar_seguimiento(id_producto, hito, fecha):
 # 5. GESTIÓN DE INCIDENCIAS
 # =========================================================
 
+from datetime import datetime # Asegúrate de que esté al inicio del archivo
+
 def registrar_incidencia_detallada(proyecto_id, tipo, motivo, piezas, materiales, usuario_id):
-    """
-    Registra un bloque consolidado de requerimientos. 
-    'piezas' o 'materiales' llegarán como una lista de diccionarios.
-    """
     supabase = conectar()
     
     # Seleccionamos el set de datos que no esté vacío
-    # Esto asegura que si es de Piezas, solo guarde la matriz de piezas
     detalle_final = piezas if tipo == "Piezas" else materiales
     
     data = {
         "proyecto_id": proyecto_id,
-        "tipo_requerimiento": tipo,      # Aquí se marca el destino (Piezas o Materiales)
+        "tipo_requerimiento": tipo,
         "categoria": motivo,
-        "detalles": detalle_final,       # Se guarda el bloque JSON completo
+        "detalles": detalle_final,
         "supervisor_id": usuario_id,
         "estado": "Pendiente",
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat() # Aquí es donde fallaba
     }
     
     try:
         res = supabase.table("incidencias").insert(data).execute()
         return res
     except Exception as e:
-        st.error(f"Error crítico en base de datos: {e}")
+        print(f"Error: {e}")
         return None
 
 def obtener_incidencias_resumen():
