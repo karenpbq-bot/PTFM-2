@@ -126,7 +126,11 @@ def mostrar():
     
     with tab3:
         if st.session_state.get('id_p_sel'):
-            st.subheader("📦 Matriz de Productos")
+            # Recuperamos la info del proyecto desde el DataFrame df_p que cargaste en tab2
+            info_p = df_p[df_p['id'] == st.session_state.id_p_sel].iloc[0]
+            nombre_proyecto = info_p['proyecto_display']
+            
+            st.subheader(f"📦 Matriz de Productos: {nombre_proyecto}")
             
             # --- 1. SECCIÓN: CARGA MANUAL (PLEGABLE Y EN FILA ÚNICA) ---
             with st.expander("➕ Agregar Producto", expanded=False):
