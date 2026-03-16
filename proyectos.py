@@ -6,7 +6,7 @@ from base_datos import crear_proyecto, obtener_proyectos, eliminar_proyecto, obt
 def mostrar():
     st.title("📁 Gestión de Proyectos Nuevo")
     
-    tab1, tab2 = st.tabs(["🆕 Registrar Proyecto Nuevo", "📋 Listado y Búsqueda"])
+    tab1, tab2, tab3 = st.tabs(["🆕 Registrar Proyecto Nuevo", "📋 Listado y Búsqueda", "📦 Matriz de Productos"])
 
     with tab1:
         st.subheader("Configuración y Cronograma Planificado")
