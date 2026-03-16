@@ -104,64 +104,26 @@ def mostrar():
                         ))
                     except: continue
 
-       # --- D. GENERACIÓN DEL GRÁFICO (ORDEN Y ESCALA FIJA) ---
+       # --- D. GENERACIÓN DEL GRÁFICO (ORDEN CORREGIDO) ---
         if not data_final:
             st.warning("No hay datos para mostrar."); return
 
         df_fig = pd.DataFrame(data_final)
-        
-        # 1. ORDENAMIENTO FORZADO: 
-        # Convertimos a categoría y ordenamos el DataFrame de forma descendente
-        # para que al graficar de abajo hacia arriba, Diseño quede arriba.
         df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
-        df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, False, True])
+        
+        # Ordenamos normal para que el category_orders tome el control
+        df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, True, True])
         
         fig = px.timeline(
-            df_fig, 
-            x_start="Inicio", 
-            x_end="Fin", 
-            y="Etapa", 
-            color="Color",
-            facet_col="Proyecto", 
-            facet_col_wrap=1,
+            df_fig, x_start="Inicio", x_end="Fin", y="Etapa", color="Color",
+            facet_col="Proyecto", facet_col_wrap=1,
             color_discrete_map="identity",
-            # IMPORTANTE: No usamos category_orders aquí para evitar conflictos con el sort
+            # ESTA ES LA CLAVE: Invertimos el orden de las categorías para que la 1ra (Diseño) esté ARRIBA
+            category_orders={"Etapa": ORDEN_ETAPAS[::-1]} 
         )
 
-        # 2. CONFIGURACIÓN DE EJES X (Siempre 4 meses)
-        # Calculamos el inicio basado en el proyecto más antiguo o hoy
-        f_val = pd.to_datetime(df_fig[df_fig['Tipo'] != "3_Esqueleto"]['Inicio'])
-        f_min = f_val.min() if not f_val.empty else datetime.now()
-        
-        # Esto asegura que aunque ocultes la planificación, el eje X no se mueva
-        fig.update_xaxes(
-            range=[f_min - timedelta(days=5), f_min + timedelta(days=120)],
-            dtick="M1", 
-            tickformat="%b %Y", 
-            showgrid=True, 
-            gridcolor='rgba(128,128,128,0.2)'
-        )
-
-        # 3. CONFIGURACIÓN DE EJES Y (Orden de arriba hacia abajo)
         fig.update_yaxes(
-            autorange="reversed", # Ahora sí funcionará con el dataframe pre-ordenado
+            autorange=True, # Quitamos 'reversed' porque ya lo invertimos arriba
             showgrid=True, 
             gridcolor='rgba(128,128,128,0.1)'
         )
-
-        # 4. DISEÑO Y GROSOR
-        fig.update_layout(
-            barmode='group',
-            bargap=0.5,           # Barras delgadas
-            bargroupgap=0.0,
-            height=200 + (150 * len(proyectos_sel)), 
-            margin=dict(l=10, r=10, t=40, b=10),
-            showlegend=False
-        )
-
-        fig.update_traces(marker_line_width=0, opacity=0.9)
-
-        # Línea de "Hoy"
-        fig.add_vline(x=datetime.now().timestamp() * 1000, line_width=1.5, line_dash="dash", line_color="red")
-
-        st.plotly_chart(fig, use_container_width=True)
