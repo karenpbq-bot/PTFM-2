@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 from datetime import timedelta, datetime, date
+import plotly.express as px
 from base_datos import *
 import seguimiento, ejecucion, login, usuarios, incidencias, proyectos 
-import plotly.express as px
+
 
 # =========================================================
 # CONFIGURACIÓN INICIAL Y SESIÓN
