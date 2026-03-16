@@ -233,14 +233,23 @@ def mostrar(supervisor_id=None):
                         st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
                         st.rerun() # Rerun necesario para actualizar el contador de "Pendientes" arriba
                 else:
-                    # Si el usuario desmarca algo que estaba en memoria (pero no en BD todavía)
+                    # 1. Si desmarca algo que solo estaba en memoria (clic reciente)
                     if pendiente:
                         st.session_state.cambios_pendientes.remove(pendiente)
                         st.rerun()
-                    # Si el usuario desmarca algo que YA estaba en BD (Solo Admin)
+                    
+                    # 2. Si desmarca algo que YA estaba en la base de datos (Regla de Borrado)
                     elif en_db and not bloqueado:
-                        conectar().table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
-                        st.rerun()
+                        # REGLA ESTRICTA: Solo borra si NO hay nada marcado después (i+1 en adelante)
+                        tiene_posteriores = not segs[(segs['producto_id'] == p['id']) & 
+                                                     (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
+                        
+                        if not tiene_posteriores:
+                            conectar().table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
+                            st.rerun()
+                        else:
+                            # Mensaje de advertencia para que el usuario sepa por qué no se borra
+                            st.warning(f"No se puede borrar {h} porque existen etapas posteriores registradas.")
             
             # Notas (Mantenemos tu lógica)
             n_val = m_data['observaciones'].iloc[0] if (en_db and 'observaciones' in m_data.columns and pd.notnull(m_data['observaciones'].iloc[0])) else ""
