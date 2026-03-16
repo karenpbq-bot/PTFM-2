@@ -40,11 +40,13 @@ def registrar_hitos_cascada(p_id, hito_final, fecha_str):
 # 3. INTERFAZ PRINCIPAL
 # =========================================================
 def mostrar(supervisor_id=None):
+    # CSS para forzar visibilidad de métricas y sticky header
     st.markdown("""
         <style>
         .sticky-top { position: sticky; top: 0; background: white; z-index: 1000; padding: 10px 0; border-bottom: 3px solid #FF8C00; }
         .scroll-area { max-height: 550px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; }
-        [data-testid="stMetric"] { background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 5px; border-radius: 5px; }
+        /* Forzar visibilidad de números en métricas */
+        [data-testid="stMetricValue"] { color: #FF8C00 !important; font-weight: bold !important; }
         </style>
     """, unsafe_allow_html=True)
     
@@ -54,7 +56,7 @@ def mostrar(supervisor_id=None):
     nombre_proy_cabecera = st.session_state.get('p_nom_sel', "Ninguno")
     st.title(f"📈 Seguimiento de Avances: {nombre_proy_cabecera}")
 
-    # --- BLOQUE: BÚSQUEDA DE PROYECTO (PLEGABLE) ---
+    # --- BLOQUE: BÚSQUEDA DE PROYECTO ---
     with st.expander("Búsqueda de Proyecto", expanded=not st.session_state.get('id_p_sel')):
         c1, c2 = st.columns([2, 1])
         bus_p = c1.text_input("🔍 Escribe nombre, código o cliente...", key="bus_seg_v2")
@@ -65,11 +67,9 @@ def mostrar(supervisor_id=None):
 
         if not df_p_all.empty:
             opciones = {f"[{r['codigo']}] {r['proyecto_text']} - {r['cliente']}": r['id'] for _, r in df_p_all.iterrows()}
-            # Usamos index para que el selectbox mantenga la selección
             lista_opciones = ["-- Seleccionar --"] + list(opciones.keys())
-            idx_previo = lista_opciones.index(st.session_state.p_nom_sel) if st.session_state.get('p_nom_sel') in lista_opciones else 0
-            
-            sel_n = c2.selectbox("Seleccione Proyecto:", lista_opciones, index=idx_previo)
+            idx_p = lista_opciones.index(st.session_state.p_nom_sel) if st.session_state.get('p_nom_sel') in lista_opciones else 0
+            sel_n = c2.selectbox("Seleccione Proyecto:", lista_opciones, index=idx_p)
             
             if sel_n != "-- Seleccionar --":
                 st.session_state.id_p_sel = opciones[sel_n]
@@ -79,13 +79,12 @@ def mostrar(supervisor_id=None):
                 st.session_state.p_nom_sel = None
 
     if not st.session_state.get('id_p_sel'):
-        st.info("💡 Por favor, seleccione un proyecto para cargar la información."); return
+        st.info("💡 Por favor, seleccione un proyecto."); return
 
-    # --- CARGA INICIAL DE DATOS (FUERA DE BLOQUES PARA EVITAR KEYERROR) ---
     id_p = st.session_state.id_p_sel
     prods_all = obtener_productos_por_proyecto(id_p)
     if prods_all.empty:
-        st.warning("El proyecto no tiene productos registrados."); return
+        st.warning("El proyecto no tiene productos."); return
 
     segs_res = supabase.table("seguimiento").select("*").in_("producto_id", prods_all['id'].tolist()).execute()
     segs = pd.DataFrame(segs_res.data) if segs_res.data else pd.DataFrame(columns=['producto_id','hito','fecha','observaciones'])
@@ -102,11 +101,11 @@ def mostrar(supervisor_id=None):
         with t2:
             f1, f2, f3 = st.columns(3)
             agrupar_por = f1.selectbox("Agrupar matriz por:", ["Sin grupo", "Ubicación", "Tipo"])
-            bus_c1 = f2.text_input("🔍 Filtro Primario (Zona/Tipo):")
+            bus_c1 = f2.text_input("🔍 Filtro Primario:")
             bus_c2 = f3.text_input("🔍 Refinar Búsqueda:")
 
         with t3:
-            f_av = st.file_uploader("Cargar Excel/CSV de Seguimiento", type=["xlsx", "csv"])
+            f_av = st.file_uploader("Cargar Excel/CSV", type=["xlsx", "csv"])
             if f_av and st.button("🚀 Iniciar Importación"):
                 df_imp = pd.read_excel(f_av) if f_av.name.endswith('xlsx') else pd.read_csv(f_av)
                 for _, r_ex in df_imp.iterrows():
@@ -115,6 +114,7 @@ def mostrar(supervisor_id=None):
                     if not match.empty:
                         pid = match.iloc[0]['id']
                         for h in reversed(HITOS_LIST):
+                            # Respetar fecha del Excel si existe
                             f_ex = r_ex.get(h)
                             if pd.notnull(f_ex) and str(f_ex).strip() != "":
                                 registrar_hitos_cascada(pid, h, str(f_ex))
@@ -141,21 +141,29 @@ def mostrar(supervisor_id=None):
         puntos = sum([pesos.get(h, 0) for h in df_s[df_s['producto_id'].isin(df_m['id'].tolist())]['hito']])
         return round(puntos / len(df_m), 2)
 
-    pct_total = calc_avance(prods_all, segs)
-    pct_parcial = calc_avance(df_f, segs)
+    p_tot = calc_avance(prods_all, segs)
+    p_par = calc_avance(df_f, segs)
 
-    # --- FILA DE ACCIONES (IZQUIERDA A DERECHA) ---
+    # --- FILA DE ACCIONES (FORMATO D/M/Y REFORZADO) ---
     st.divider()
     act1, act2, act3, act4 = st.columns([1.5, 1.2, 1.2, 1.5])
     f_reg = act1.date_input("Fecha Registro", datetime.now())
-    act2.metric("Avance Parcial", f"{pct_parcial}%")
-    act3.metric("Avance Global", f"{pct_total}%")
+    act2.metric("Avance Parcial", f"{p_par}%")
+    act3.metric("Avance Global", f"{p_tot}%")
     
     if act4.button("💾 Guardar Avance", type="primary", use_container_width=True):
         ahora = datetime.now()
-        supabase.table("proyectos").update({"avance": pct_total}).eq("id", id_p).execute()
-        supabase.table("cierres_diarios").insert({"proyecto_id": id_p, "fecha": ahora.strftime("%Y-%m-%d"), "hora": ahora.strftime("%H:%M:%S")}).execute()
-        st.success("Avance guardado."); st.rerun()
+        # FORMATO DÍA/MES/AÑO
+        f_cierre = ahora.strftime("%d/%m/%Y")
+        h_cierre = ahora.strftime("%H:%M:%S")
+        try:
+            supabase.table("proyectos").update({"avance": p_tot}).eq("id", id_p).execute()
+            try:
+                supabase.table("cierres_diarios").insert({"proyecto_id": id_p, "fecha": f_cierre, "hora": h_cierre}).execute()
+            except: pass # Evita bloqueo si la tabla de cierres falla
+            st.success(f"✅ Avance guardado el {f_cierre}"); st.rerun()
+        except Exception as e:
+            st.error(f"Error: {e}")
 
     # --- MATRIZ CON STICKY HEADER ---
     st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
@@ -165,43 +173,41 @@ def mostrar(supervisor_id=None):
         with cols_h[i+1]:
             st.write(MAPEO_HITOS[hito])
             if st.button("✅", key=f"bulk_{hito}"):
+                # FORMATO DÍA/MES/AÑO PARA MARCADO MASIVO
                 for pid in df_f['id'].tolist(): registrar_hitos_cascada(pid, hito, f_reg.strftime("%d/%m/%Y"))
                 st.rerun()
     cols_h[-1].write("**Notas**")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- ÁREA DE PRODUCTOS (SCROLL) ---
+    # --- ÁREA DE PRODUCTOS ---
     st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
     def render_matriz(df_r):
         rol = st.session_state.get('rol', 'Supervisor')
         for _, p in df_r.iterrows():
             cols = st.columns([2.5] + [0.7]*8 + [1.5])
             cols[0].write(f"**{p['ubicacion']}** {p['tipo']} ({p['ml']}ml)")
-            
             for i, h in enumerate(HITOS_LIST):
                 m_data = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)]
                 existe = not m_data.empty
-                tiene_post = not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
-                bloqueo = (existe and rol == "Supervisor") or tiene_post
+                bloqueo = (existe and rol == "Supervisor") or (not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty)
                 
                 if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueo, label_visibility="collapsed"):
                     if not existe:
+                        # FORMATO DÍA/MES/AÑO PARA MARCADO INDIVIDUAL
                         registrar_hitos_cascada(p['id'], h, f_reg.strftime("%d/%m/%Y"))
                         st.rerun()
                 elif existe and not bloqueado:
                     supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
                     st.rerun()
             
-            # Notas (Guardado Atómico)
+            # Recuperar y Guardar Notas
             n_val = m_data['observaciones'].iloc[0] if existe and 'observaciones' in m_data.columns and pd.notnull(m_data['observaciones'].iloc[0]) else ""
-            nueva_n = cols[-1].text_input("Nota", value=n_val, key=f"obs_{p['id']}", label_visibility="collapsed")
+            nueva_n = cols[-1].text_input("N", value=n_val, key=f"obs_{p['id']}", label_visibility="collapsed")
             if nueva_n != n_val:
                 supabase.table("seguimiento").update({"observaciones": nueva_n}).eq("producto_id", p['id']).eq("hito", HITOS_LIST[0]).execute()
 
     if agrupar_por != "Sin grupo":
         for n, g in df_f.groupby(agrupar_por.lower()):
-            st.markdown(f"**📂 {n}**")
-            render_matriz(g)
-    else:
-        render_matriz(df_f)
+            st.markdown(f"**📂 {n}**"); render_matriz(g)
+    else: render_matriz(df_f)
     st.markdown('</div>', unsafe_allow_html=True)
