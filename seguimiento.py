@@ -136,52 +136,52 @@ def mostrar(supervisor_id=None):
     
     if act4.button("💾 Guardar Avance", type="primary", use_container_width=True):
         ahora = datetime.now()
-        f_hoy = ahora.strftime("%d/%m/%Y")
+        f_hoy = ahora.strftime("%d/%m/%Y") # Formato día/mes/año solicitado
         
         try:
-            # --- PASO 1: RECOLECTAR TODO EL BLOQUE A GUARDAR ---
             lote_final = []
 
-            # A. Agregar clics manuales de la sesión
+            # A. Recolectamos cambios manuales de la sesión
             if st.session_state.get('cambios_pendientes'):
                 for c in st.session_state.cambios_pendientes:
                     lote_final.append({"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy})
 
-            # B. Generar la cascada (etapas previas)
+            # B. Consultamos BD para la cascada
             seg_f = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
             df_seg_f = pd.DataFrame(seg_f.data)
             
-            # Sumamos a la foto real los cambios que el usuario acaba de hacer en pantalla para la cascada
-            if not df_seg_f.empty or lote_final:
-                # Unimos lo que ya hay en BD con lo que el usuario clicó en esta sesión
-                df_temp_completo = pd.concat([df_seg_f, pd.DataFrame(lote_final)[['producto_id', 'hito']]]) if lote_final else df_seg_f
-                
+            # Unimos lo de la BD con lo nuevo en pantalla para calcular la cascada completa
+            df_temp = pd.concat([df_seg_f, pd.DataFrame(lote_final)[['producto_id', 'hito']]]) if lote_final else df_seg_f
+            
+            if not df_temp.empty:
                 for pid in prods_all['id'].tolist():
-                    hitos_actuales = df_temp_completo[df_temp_completo['producto_id'] == pid]['hito'].unique().tolist()
-                    if hitos_actuales:
-                        max_idx = max([HITOS_LIST.index(h) for h in hitos_actuales])
+                    hitos_prod = df_temp[df_temp['producto_id'] == pid]['hito'].unique().tolist()
+                    if hitos_prod:
+                        max_idx = max([HITOS_LIST.index(h) for h in hitos_prod])
                         for i in range(max_idx):
-                            if HITOS_LIST[i] not in hitos_actuales:
+                            if HITOS_LIST[i] not in hitos_prod:
                                 lote_final.append({"producto_id": pid, "hito": HITOS_LIST[i], "fecha": f_hoy})
 
-            # --- PASO 2: LIMPIEZA CRÍTICA DE DUPLICADOS (Evita Error 21000) ---
+            # C. LIMPIEZA TOTAL DE DUPLICADOS (Evita Error 21000)
             if lote_final:
                 df_limpio = pd.DataFrame(lote_final).drop_duplicates(subset=['producto_id', 'hito'])
-                registros_a_subir = df_limpio.to_dict(orient='records')
+                # Convertimos a lista de diccionarios para Supabase
+                registros_upsert = df_limpio.to_dict(orient='records')
+                supabase.table("seguimiento").upsert(registros_upsert, on_conflict="producto_id, hito").execute()
 
-                # --- PASO 3: ENVÍO ÚNICO MASIVO ---
-                supabase.table("seguimiento").upsert(registros_a_subir, on_conflict="producto_id, hito").execute()
-
-            # 4. ACTUALIZAR PROYECTO Y LIMPIAR
+            # D. Actualización final y limpieza de memoria
             supabase.table("proyectos").update({"avance": p_tot}).eq("id", id_p).execute()
-            st.session_state.cambios_pendientes = [] # Limpiar memoria temporal
+            try:
+                supabase.table("cierres_diarios").insert({"proyecto_id": id_p, "fecha": f_hoy, "hora": ahora.strftime("%H:%M:%S")}).execute()
+            except: pass
             
-            st.success(f"✅ Avance y etapas previas guardadas correctamente.")
+            st.session_state.cambios_pendientes = [] # Limpiamos memoria
+            st.success(f"✅ Avance actualizado correctamente al {f_hoy}")
             st.rerun()
             
         except Exception as e:
-            st.error(f"Error al procesar el guardado: {e}")
-            
+            st.error(f"Error crítico al guardar: {e}")
+                    
     # --- MATRIZ CON STICKY HEADER ---
     st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
     cols_h = st.columns([2.5] + [0.7]*8 + [1.5])
@@ -210,14 +210,13 @@ def mostrar(supervisor_id=None):
                 tiene_post = not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
                 bloqueado = (existe and rol == "Supervisor") or tiene_post
                 
-                # LÓGICA ÁGIL SIN RERUN
+                # LÓGICA ULTRA-ÁGIL SIN MENSAJES
                 if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
-                        # Solo guardamos en memoria, esto hace que el clic sea instantáneo
+                        # Solo anotamos el cambio en memoria
                         st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
-                        st.toast(f"📍 Pendiente: {h}")
-                
                 elif existe and not bloqueado:
+                    # El desmarcado de Admin lo seguimos haciendo directo para evitar confusiones
                     conectar().table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
                     st.toast(f"🗑️ {h} eliminado")
             
