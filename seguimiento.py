@@ -33,7 +33,12 @@ def registrar_hito_individual(p_id, hito, fecha_str):
 # 3. INTERFAZ PRINCIPAL
 # =========================================================
 def mostrar(supervisor_id=None):
-    # CSS para jerarquía visual, métricas y sticky header
+    # --- 1. MEMORIA TEMPORAL ---
+    if 'cambios_pendientes' not in st.session_state:
+        st.session_state.cambios_pendientes = []
+
+    # --- 2. TÍTULOS Y ESTILOS ---
+    # Mantenemos el CSS para que los porcentajes se vean naranja y el encabezado sea fijo
     st.markdown("""
         <style>
         .sticky-top { position: sticky; top: 0; background: white; z-index: 1000; padding: 10px 0; border-bottom: 3px solid #FF8C00; }
@@ -42,16 +47,11 @@ def mostrar(supervisor_id=None):
         </style>
     """, unsafe_allow_html=True)
 
-    # Inicializamos una memoria temporal para los clics de esta sesión si no existe
-    if 'cambios_pendientes' not in st.session_state:
-        st.session_state.cambios_pendientes = []
-        
-    supabase = conectar()
-
-    # --- TÍTULO DINÁMICO (JERARQUÍA CORREGIDA) ---
     nombre_proy = st.session_state.get('p_nom_sel', "Ninguno")
     st.markdown("### Seguimiento de Avances")
     st.markdown(f"<p style='font-size: 16px; color: #666; margin-top: -15px;'>{nombre_proy}</p>", unsafe_allow_html=True)
+
+    supabase = conectar()
 
     # --- BÚSQUEDA DE PROYECTO ---
     with st.expander("Búsqueda de Proyecto", expanded=not st.session_state.get('id_p_sel')):
@@ -129,9 +129,16 @@ def mostrar(supervisor_id=None):
 
     # --- ACCIONES E INDICADORES (FECHA CORREGIDA) ---
     st.divider()
-    act1, act2, act3, act4 = st.columns([1.5, 1.2, 1.2, 1.5])
+    act1, act2, act3, act4, act5 = st.columns([1.5, 1, 1, 1.2, 1.2])
+    
+    # 1. Calendario con formato corregido
     f_reg = act1.date_input("Fecha Registro", datetime.now(), format="DD/MM/YYYY")
-    act2.metric("Avance Parcial", f"{p_par}%")
+    
+    # 2. Métrica de cambios en espera (Pendientes)
+    n_pendientes = len(st.session_state.cambios_pendientes)
+    act2.metric("Pendientes", n_pendientes)
+    
+    # 3. Avance Global
     act3.metric("Avance Global", f"{p_tot}%")
     
     if act4.button("💾 Guardar Avance", type="primary", use_container_width=True):
@@ -175,7 +182,12 @@ def mostrar(supervisor_id=None):
 
         except Exception as e:
             st.error(f"Error: {e}")
-                    
+
+    # 5. Botón Descartar (Limpia la memoria temporal)
+    if act5.button("🗑️ Descartar", type="secondary", use_container_width=True):
+        st.session_state.cambios_pendientes = []
+        st.rerun()
+        
     # --- MATRIZ CON STICKY HEADER ---
     st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
     cols_h = st.columns([2.5] + [0.7]*8 + [1.5])
