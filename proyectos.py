@@ -68,44 +68,44 @@ def mostrar():
 
             # Seccion 4 - UBICACIÓN: proyectos.py (Sección del botón de registro)
 
+            # 4. BOTÓN DE REGISTRO
             if st.button("🚀 REGISTRAR PROYECTO NUEVO"):
                 if not codigo or not nombre:
                     st.warning("El Código y Nombre son obligatorios.")
                 elif sum(pcts.values()) != 100:
                     st.error(f"La suma de porcentajes debe ser 100% (Actual: {sum(pcts.values())}%)")
                 else:
-                    # CONVERSIÓN TOTAL A ISOFORMAT (TEXTO)
-                    datos_nube = {
-                        "codigo": codigo,
-                        "proyecto_text": nombre,
-                        "cliente": cliente,
-                        "partida": par,
-                        "f_ini": f_ini.isoformat(),  # Fecha Global Inicio
-                        "f_fin": f_fin.isoformat(),  # Fecha Global Fin
-                        "supervisor_id": dict_sups[sup_nom],
-                        "estatus": "Activo",
-                        "avance": 0,
-                        # Fechas de las 5 etapas individuales
-                        "p_dis_i": cronograma_data[0]["Inicio"].isoformat(), 
-                        "p_dis_f": cronograma_data[0]["Fin"].isoformat(),
-                        "p_fab_i": cronograma_data[1]["Inicio"].isoformat(), 
-                        "p_fab_f": cronograma_data[1]["Fin"].isoformat(),
-                        "p_tra_i": cronograma_data[2]["Inicio"].isoformat(), 
-                        "p_tra_f": cronograma_data[2]["Fin"].isoformat(),
-                        "p_ins_i": cronograma_data[3]["Inicio"].isoformat(), 
-                        "p_ins_f": cronograma_data[3]["Fin"].isoformat(),
-                        "p_ent_i": cronograma_data[4]["Inicio"].isoformat(), 
-                        "p_ent_f": cronograma_data[4]["Fin"].isoformat()
-                    }
-        
                     try:
-                        # Al ser todo texto, el .execute() ya no fallará
+                        # Preparamos el diccionario con todas las fechas como TEXTO ISO
+                        datos_nube = {
+                            "codigo": codigo,
+                            "proyecto_text": nombre,
+                            "cliente": cliente,
+                            "partida": par,
+                            "f_ini": f_ini.isoformat(),
+                            "f_fin": f_fin.isoformat(),
+                            "supervisor_id": dict_sups[sup_nom],
+                            "estatus": "Activo",
+                            "avance": 0,
+                            "p_dis_i": cronograma_data[0]["Inicio"].isoformat(), 
+                            "p_dis_f": cronograma_data[0]["Fin"].isoformat(),
+                            "p_fab_i": cronograma_data[1]["Inicio"].isoformat(), 
+                            "p_fab_f": cronograma_data[1]["Fin"].isoformat(),
+                            "p_tra_i": cronograma_data[2]["Inicio"].isoformat(), 
+                            "p_tra_f": cronograma_data[2]["Fin"].isoformat(),
+                            "p_ins_i": cronograma_data[3]["Inicio"].isoformat(), 
+                            "p_ins_f": cronograma_data[3]["Fin"].isoformat(),
+                            "p_ent_i": cronograma_data[4]["Inicio"].isoformat(), 
+                            "p_ent_f": cronograma_data[4]["Fin"].isoformat()
+                        }
+                        
+                        # Ejecución del insert
                         conectar().table("proyectos").insert(datos_nube).execute()
-                        st.success(f"✅ Proyecto {codigo} registrado con éxito.")
+                        st.success(f"✅ Proyecto {codigo} registrado.")
                         st.balloons()
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Error al guardar en nube: {e}")}")
+                        st.error(f"Error al guardar en nube: {e}")
                         
     with tab2:
         st.subheader("Listado Maestro")
