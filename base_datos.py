@@ -182,10 +182,12 @@ def obtener_incidencias_resumen():
 def obtener_gantt_real_data(id_p):
     """Extrae datos de hitos reales para el cronograma."""
     supabase = conectar()
-    # Obtenemos IDs de productos del proyecto
+    # 1. Obtiene los productos del proyecto
     prods = supabase.table("productos").select("id").eq("proyecto_id", id_p).execute()
     ids = [p['id'] for p in prods.data]
     if not ids: return pd.DataFrame()
+    
+    # 2. Obtiene los hitos registrados en seguimiento
     res = supabase.table("seguimiento").select("hito, fecha").in_("producto_id", ids).execute()
     return pd.DataFrame(res.data)
 
