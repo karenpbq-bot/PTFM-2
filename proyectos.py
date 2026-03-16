@@ -157,19 +157,29 @@ def mostrar():
                             }).execute()
                         st.success("¡Matriz cargada!"); st.rerun()
 
-            # VISUALIZACIÓN DE LA MATRIZ CARGADA
+            # --- SECCIÓN DE VISUALIZACIÓN PROTEGIDA ---
             st.divider()
             res_matriz = conectar().table("productos").select("*").eq("proyecto_id", st.session_state.id_p_sel).execute()
+            
             if res_matriz.data:
                 df_matriz = pd.DataFrame(res_matriz.data)
-                st.dataframe(df_matriz[['ubicacion', 'tipo', 'ctd', 'ml']], hide_index=True)
-                if st.button("🗑️ Vaciar Matriz", type="primary"):
+                
+                # Definimos las columnas que QUEREMOS mostrar
+                columnas_deseadas = ['ubicacion', 'tipo', 'ctd', 'ml']
+                
+                # Verificamos cuáles de esas columnas REALMENTE existen en el DataFrame
+                columnas_existentes = [col for col in columnas_deseadas if col in df_matriz.columns]
+                
+                if columnas_existentes:
+                    st.dataframe(df_matriz[columnas_existentes], hide_index=True, use_container_width=True)
+                else:
+                    # Si no encuentra ninguna, muestra todo para que veas qué nombres tienen
+                    st.write("Contenido de la matriz:")
+                    st.dataframe(df_matriz, hide_index=True)
+                
+                if st.button("🗑️ Vaciar Matriz Actual", type="primary"):
                     conectar().table("productos").delete().eq("proyecto_id", st.session_state.id_p_sel).execute()
                     st.rerun()
-
-        else:
-            st.info("⚠️ Selecciona un proyecto en la pestaña anterior para gestionar sus productos.")
-
-
-
+            else:
+                st.info("La matriz está vacía. Carga la lista de prodtcos en Excel o agrega ítems manualmente.")
 
