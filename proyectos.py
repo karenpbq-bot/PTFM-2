@@ -60,33 +60,32 @@ def mostrar():
             df_previs = pd.DataFrame(cronograma_data)
             # Formateamos solo para la tabla visual
             df_visual = df_previs.copy()
-            # Añadimos .astype(str) al final para "congelar" el formato
-            df_visual["Inicio"] = df_visual["Inicio"].apply(lambda x: x.strftime("%d/%m/%Y")).astype(str)
-            df_visual["Fin"] = df_visual["Fin"].apply(lambda x: x.strftime("%d/%m/%Y")).astype(str)
+            df_visual["Inicio"] = df_visual["Inicio"].apply(lambda x: x.strftime("%d/%m/%Y"))
+            df_visual["Fin"] = df_visual["Fin"].apply(lambda x: x.strftime("%d/%m/%Y"))
 
             st.write("#### 🔍 Previsualización del Cronograma Planificado")
             st.table(df_visual[["Etapa", "Inicio", "Fin", "Días"]])
 
-            # 4. BOTÓN DE REGISTRO (Dentro del else para asegurar que existan las fechas)
-            # --- SECCIÓN DE GUARDADO CORREGIDA ---
+            # Seccion 4 - UBICACIÓN: proyectos.py (Sección del botón de registro)
+
             if st.button("🚀 REGISTRAR PROYECTO NUEVO"):
                 if not codigo or not nombre:
                     st.warning("El Código y Nombre son obligatorios.")
                 elif sum(pcts.values()) != 100:
                     st.error(f"La suma de porcentajes debe ser 100% (Actual: {sum(pcts.values())}%)")
                 else:
-                    # Preparamos el diccionario convirtiendo cada fecha a TEXTO ISO
+                    # CONVERSIÓN TOTAL A ISOFORMAT (TEXTO)
                     datos_nube = {
                         "codigo": codigo,
                         "proyecto_text": nombre,
                         "cliente": cliente,
                         "partida": par,
-                        "f_ini": f_ini.isoformat(), # <--- Crucial: .isoformat()
-                        "f_fin": f_fin.isoformat(), # <--- Crucial: .isoformat()
+                        "f_ini": f_ini.isoformat(),  # Fecha Global Inicio
+                        "f_fin": f_fin.isoformat(),  # Fecha Global Fin
                         "supervisor_id": dict_sups[sup_nom],
                         "estatus": "Activo",
                         "avance": 0,
-                        # Fechas de las 5 etapas
+                        # Fechas de las 5 etapas individuales
                         "p_dis_i": cronograma_data[0]["Inicio"].isoformat(), 
                         "p_dis_f": cronograma_data[0]["Fin"].isoformat(),
                         "p_fab_i": cronograma_data[1]["Inicio"].isoformat(), 
@@ -100,13 +99,13 @@ def mostrar():
                     }
         
                     try:
-                        # Ahora el .execute() no fallará porque enviamos texto, no objetos date
+                        # Al ser todo texto, el .execute() ya no fallará
                         conectar().table("proyectos").insert(datos_nube).execute()
                         st.success(f"✅ Proyecto {codigo} registrado con éxito.")
                         st.balloons()
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Error al guardar en nube: {e}")
+                        st.error(f"Error al guardar en nube: {e}")}")
                         
     with tab2:
         st.subheader("Listado Maestro")
