@@ -335,3 +335,32 @@ def crear_usuario(nombre_usuario, clave, nombre_completo, rol):
         st.error(f"Error en base de datos: {e}")
         return None
 
+def obtener_avance_por_hitos(id_proyecto, df_productos_filtrados=None):
+    """Calcula el % de cumplimiento de cada hito para los productos seleccionados."""
+    supabase = conectar()
+    # Si no hay filtro, usamos todos los productos del proyecto
+    if df_productos_filtrados is None:
+        res = supabase.table("productos").select("id").eq("proyecto_id", id_proyecto).execute()
+        df_prods = pd.DataFrame(res.data)
+    else:
+        df_prods = df_productos_filtrados
+
+    if df_prods.empty: return {}
+
+    total_prods = len(df_prods)
+    ids = df_prods['id'].tolist()
+    
+    # Traemos todos los hitos registrados para estos productos
+    res_seg = supabase.table("seguimiento").select("hito").in_("producto_id", ids).execute()
+    df_seg = pd.DataFrame(res_seg.data)
+    
+    avances = {}
+    from seguimiento import HITOS_LIST
+    for hito in HITOS_LIST:
+        if df_seg.empty:
+            avances[hito] = 0.0
+        else:
+            conteo = len(df_seg[df_seg['hito'] == hito])
+            avances[hito] = round((conteo / total_prods) * 100, 1)
+    
+    return avances
