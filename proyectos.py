@@ -194,40 +194,41 @@ def mostrar():
                     except Exception as e:
                         st.error(f"Error en la importación: {e}")
 
-            # --- 3. VISUALIZACIÓN DE LA MATRIZ ACTUAL ---
+            # --- 3. VISUALIZACIÓN DE LA MATRIZ UNIFICADA ---
             st.divider()
-            res_p = conectar().table("productos").select("*").eq("proyecto_id", st.session_state.id_p_sel).execute()
+            # Consultamos todos los campos de la tabla productos
+            res_p = conectar().table("productos").select("ubicacion, tipo, ctd, ml").eq("proyecto_id", st.session_state.id_p_sel).execute()
             
             if res_p.data:
+                # 1. Creamos el DataFrame con la data cruda
                 df_matriz = pd.DataFrame(res_p.data)
                 
-                # Definimos el mapeo exacto que necesitas para las cabeceras
-                # Asegúrate de que 'ctd' es el nombre en tu base de datos
-                mapeo_nombres = {
+                # 2. Definimos el orden y los nombres exactos de las 4 columnas
+                # Asegúrate de que los nombres de la izquierda coincidan con tu base de datos
+                mapeo_final = {
                     'ubicacion': 'Ubicación',
                     'tipo': 'Tipo',
-                    'ml': 'Metros Lineales (ml)',
-                    'ctd': 'Cantidad'
+                    'ctd': 'Cantidad',
+                    'ml': 'Metros Lineales (ml)'
                 }
                 
-                # Comprobamos qué columnas de las requeridas están presentes
-                columnas_finales = [c for c in mapeo_nombres.keys() if c in df_matriz.columns]
+                # 3. Filtramos y Reordenamos para asegurar que las 4 estén juntas
+                columnas_disponibles = [c for c in mapeo_final.keys() if c in df_matriz.columns]
+                df_unificado = df_matriz[columnas_disponibles].rename(columns=mapeo_final)
                 
-                # Reordenamos y renombramos
-                df_mostrar = df_matriz[columnas_finales].rename(columns=mapeo_nombres)
+                # 4. MOSTRAMOS LA MATRIZ ÚNICA (Aquí verás las 4 columnas alineadas)
+                st.dataframe(df_unificado, hide_index=True, use_container_width=True)
                 
-                # Mostramos la tabla con las 4 columnas solicitadas
-                st.dataframe(df_mostrar, hide_index=True, use_container_width=True)
-                
-                # Resumen rápido debajo de la tabla
-                c1, c2 = st.columns(2)
-                if 'Cantidad' in df_mostrar.columns:
-                    c1.metric("Total Cantidad", f"{int(df_mostrar['Cantidad'].sum())} und")
-                if 'Metros Lineales (ml)' in df_mostrar.columns:
-                    c2.metric("Total Metros Lineales", f"{df_mostrar['Metros Lineales (ml)'].sum():.2f} ml")
+                # --- Resumen informativo al pie de la matriz ---
+                c1, c2, c3 = st.columns(3)
+                c1.write(f"**Total Ítems:** {len(df_unificado)}")
+                if 'Cantidad' in df_unificado.columns:
+                    c2.write(f"**Total Piezas:** {int(df_unificado['Cantidad'].sum())}")
+                if 'Metros Lineales (ml)' in df_unificado.columns:
+                    c3.write(f"**Total Metraje:** {df_unificado['Metros Lineales (ml)'].sum():.2f} ml")
 
                 if st.button("🗑️ Vaciar Matriz del Proyecto", type="primary"):
                     conectar().table("productos").delete().eq("proyecto_id", st.session_state.id_p_sel).execute()
                     st.rerun()
             else:
-                st.info("La matriz está vacía para este proyecto.")
+                st.info("La matriz está vacía. Usa las opciones de arriba para cargar productos.")
