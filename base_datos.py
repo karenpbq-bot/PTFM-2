@@ -131,21 +131,33 @@ def guardar_seguimiento(id_producto, hito, fecha):
 # 5. GESTIÓN DE INCIDENCIAS
 # =========================================================
 
-def registrar_incidencia_detallada(proy_id, tipo_inc, motivo, piezas, materiales, user_id):
+def registrar_incidencia_detallada(proyecto_id, tipo, motivo, piezas, materiales, usuario_id):
+    """
+    Registra un bloque consolidado de requerimientos. 
+    'piezas' o 'materiales' llegarán como una lista de diccionarios.
+    """
     supabase = conectar()
-    inc = supabase.table("incidencias").insert({
-        "proyecto_id": proy_id, "tipo_requerimiento": tipo_inc, 
-        "categoria": motivo, "fecha_reporte": date.today().isoformat(), "usuario_id": user_id
-    }).execute()
-    inc_id = inc.data[0]['id']
-    if piezas:
-        for p in piezas:
-            p['incidencia_id'] = inc_id
-            supabase.table("detalles_piezas").insert(p).execute()
-    if materiales:
-        for m in materiales:
-            m['incidencia_id'] = inc_id
-            supabase.table("detalles_materiales").insert(m).execute()
+    
+    # Seleccionamos el set de datos que no esté vacío
+    # Esto asegura que si es de Piezas, solo guarde la matriz de piezas
+    detalle_final = piezas if tipo == "Piezas" else materiales
+    
+    data = {
+        "proyecto_id": proyecto_id,
+        "tipo_requerimiento": tipo,      # Aquí se marca el destino (Piezas o Materiales)
+        "categoria": motivo,
+        "detalles": detalle_final,       # Se guarda el bloque JSON completo
+        "supervisor_id": usuario_id,
+        "estado": "Pendiente",
+        "created_at": datetime.now().isoformat()
+    }
+    
+    try:
+        res = supabase.table("incidencias").insert(data).execute()
+        return res
+    except Exception as e:
+        st.error(f"Error crítico en base de datos: {e}")
+        return None
 
 def obtener_incidencias_resumen():
     supabase = conectar()
