@@ -201,31 +201,46 @@ def obtener_gantt_real_data(id_p):
     res = supabase.table("seguimiento").select("hito, fecha").in_("producto_id", ids).execute()
     return pd.DataFrame(res.data)
 
-def actualizar_avance_real(id_p):
-    """Calcula el avance basado en hitos y lo guarda físicamente en la DB."""
-    try:
-        supabase = conectar()
-        pesos = obtener_pesos_seguimiento()
-        # 1. Obtener productos
-        res_prods = supabase.table("productos").select("id").eq("proyecto_id", id_p).execute()
-        num_productos = len(res_prods.data)
-        if num_productos == 0: return
-
-        # 2. Obtener hitos marcados
-        ids = [p['id'] for p in res_prods.data]
-        res_seg = supabase.table("seguimiento").select("hito").in_("producto_id", ids).execute()
+def obtener_resumen_avances_proyecto(id_p):
+    """
+    Calcula el avance real de las 5 etapas del Gantt basándose en los hitos.
+    Retorna un diccionario con los porcentajes de cada etapa.
+    """
+    supabase = conectar()
+    pesos = obtener_pesos_seguimiento()
+    
+    # 1. Obtener productos y sus hitos
+    prods = supabase.table("productos").select("id").eq("proyecto_id", id_p).execute()
+    if not prods.data: return {etapa: 0.0 for etapa in ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]}
+    
+    ids = [p['id'] for p in prods.data]
+    res_seg = supabase.table("seguimiento").select("hito").in_("producto_id", ids).execute()
+    df_seg = pd.DataFrame(res_seg.data)
+    
+    # 2. Definir grupos de hitos por etapa
+    GRUPOS = {
+        "Diseño": ["Diseñado"],
+        "Fabricación": ["Fabricado"],
+        "Traslado": ["Material en Obra", "Material en Ubicación"],
+        "Instalación": ["Instalación de Estructura", "Instalación de Puertas o Frentes"],
+        "Entrega": ["Revisión y Observaciones", "Entrega"]
+    }
+    
+    resumen = {}
+    total_muebles = len(ids)
+    
+    for etapa, hitos_incluidos in GRUPOS.items():
+        if df_seg.empty:
+            resumen[etapa] = 0.0
+            continue
+            
+        # Contamos cuántos hitos de este grupo se han completado en total
+        conteo_hitos = len(df_seg[df_seg['hito'].isin(hitos_incluidos)])
+        # El máximo posible para esta etapa es (número de hitos en el grupo * total de muebles)
+        max_posible = len(hitos_incluidos) * total_muebles
+        resumen[etapa] = round((conteo_hitos / max_posible) * 100, 1)
         
-        # 3. Sumar puntos según el diccionario de pesos
-        puntos_totales = sum([pesos.get(s['hito'], 0) for s in res_seg.data])
-        
-        # 4. Calcular avance global (máximo 100)
-        # Cada producto puede aportar 100 puntos. El total es puntos / num_muebles
-        nuevo_avance = round(puntos_totales / num_productos, 2)
-        
-        # 5. GUARDAR EN LA NUBE (Esto es lo que lee el Gantt)
-        supabase.table("proyectos").update({"avance": nuevo_avance}).eq("id", id_p).execute()
-    except Exception as e:
-        print(f"Error en actualización de avance: {e}")
+    return resumen
 
 # =========================================================
 # 6. MOTOR DE CÁLCULO PARA GANTT PONDERADO
