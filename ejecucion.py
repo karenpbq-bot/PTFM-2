@@ -45,6 +45,9 @@ def mostrar():
                                     default=list(dict_proy.keys())[:1])
 
     if proyectos_sel:
+        # Creamos las sub-pestañas dentro de Ejecución
+        tab_gantt, tab_metricas = st.tabs(["📊 Cronograma Gantt", "📈 Métricas de Avance"])
+        
         data_final = []
         
         for p_nom in proyectos_sel:
@@ -189,3 +192,38 @@ def mostrar():
         fig.add_vline(x=hoy_ts, line_width=1.5, line_dash="dash", line_color="red")
 
         st.plotly_chart(fig, use_container_width=True)
+
+# --- D. RENDERIZADO EN PESTAÑAS ---
+        with tab_gantt:
+            if not data_final:
+                st.warning("No hay datos para mostrar.")
+            else:
+                # Aquí va TODO el código que genera la 'fig' de Plotly que ya tenemos
+                # (df_fig, fig = px.timeline, fig.update_layout, etc.)
+                st.plotly_chart(fig, use_container_width=True)
+
+        with tab_metricas:
+            st.subheader("Análisis Porcentual por Hito")
+            from base_datos import obtener_avance_por_hitos, obtener_productos_por_proyecto
+            
+            for p_nom in proyectos_sel:
+                id_p = dict_proy[p_nom]
+                st.markdown(f"**Proyecto: {p_nom}**")
+                
+                # Calculamos avances usando la función que añadimos a base_datos
+                avances = obtener_avance_por_hitos(id_p)
+                
+                if avances:
+                    m1, m2, m3, m4 = st.columns(4)
+                    hit_list = list(avances.items())
+                    # Mostramos los 8 hitos
+                    for idx, (hito, porc) in enumerate(hit_list):
+                        col_idx = idx % 4
+                        if col_idx == 0: target = m1
+                        elif col_idx == 1: target = m2
+                        elif col_idx == 2: target = m3
+                        else: target = m4
+                        
+                        target.metric(hito, f"{porc}%")
+                        target.progress(porc / 100)
+                st.divider()
