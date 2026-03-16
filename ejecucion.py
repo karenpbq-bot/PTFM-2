@@ -1,36 +1,34 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime, timedelta
-from base_datos import conectar, obtener_proyectos, obtener_gantt_real_data
+from base_datos import conectar, obtener_proyectos, obtener_datos_gantt_procesados
 
 # =========================================================
-# 1. CONFIGURACIÓN Y CONSTANTES (ESQUELETO INAMOVIBLE)
+# 1. CONFIGURACIÓN Y LÓGICA DE COLOR MATIZADO
 # =========================================================
 ORDEN_ETAPAS = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
 
-def obtener_color_semaforo(avance):
-    """Calcula el color con matices según el % de avance del proyecto."""
-    avance = max(0, min(100, avance))
+def obtener_color_estricto(avance):
+    """Calcula el color matizado según el avance ponderado real."""
     if avance < 50:
-        val = int(100 + (avance * 2.5))
-        return f'rgb({val}, 40, 40)' # Rojo matizado
+        return f'rgb({int(160 + avance)}, 60, 60)' # Rojo matizado
     elif avance <= 75:
-        val = int(160 + (avance - 50) * 3)
-        return f'rgb({val}, {val}, 0)' # Amarillo/Ocre
+        return f'rgb({int(200 + (avance-50)*2)}, {int(180 + (avance-50)*2)}, 0)' # Amarillo
     else:
-        val = int(120 + (avance - 75) * 5)
-        return f'rgb(30, {val}, 30)' # Verde matizado
+        return f'rgb(34, {int(100 + (avance-75)*4)}, 34)' # Verde matizado
 
 def mostrar():
-    st.header("📊 Tablero de Control: Planificado vs. Real")
+    st.header("📊 Tablero de Control: Planificado vs. Ejecutado")
     supabase = conectar()
     
+    # --- A. FILTROS EN SIDEBAR ---
     with st.sidebar:
         st.divider()
         st.subheader("Opciones de Vista")
-        solo_real = st.toggle("Ocultar Planificación", value=False)
+        ver_solo_real = st.toggle("Ocultar Planificación (Gris)", value=False)
     
+    # --- B. BUSCADOR Y SELECCIÓN ---
     with st.container(border=True):
         bus = st.text_input("🔍 Localizador de Proyectos", placeholder="Código, Cliente o Nombre...")
         df_p = obtener_proyectos(bus)
@@ -38,111 +36,101 @@ def mostrar():
         if df_p.empty:
             st.info("No se encontraron coincidencias."); return
             
-        dict_proy = {f"{r['proyecto_text']} — {r['cliente']}": r['id'] for _, r in df_p.iterrows()}
+        dict_proy = {r['proyecto_display']: r['id'] for _, r in df_p.iterrows()}
         
     proyectos_sel = st.multiselect("Proyectos a Auditar:", 
                                     options=list(dict_proy.keys()), 
                                     default=list(dict_proy.keys())[:1])
 
-    if proyectos_sel:
-        data_final = []
-        
-        for p_nom in proyectos_sel:
-            id_p = dict_proy[p_nom]
-            res_p = supabase.table("proyectos").select("*").eq("id", id_p).execute()
-            if not res_p.data: continue
-            p_data = res_p.data[0]
-            
-            avance_p = p_data.get('avance', 0)
-            color_dinamico = obtener_color_semaforo(avance_p)
+    if not proyectos_sel:
+        st.info("💡 Seleccione proyectos para visualizar el cronograma comparativo."); return
 
-            # --- A. ASEGURAR ESQUELETO DE 5 ETAPAS (FORZADO) ---
-            # Insertamos barras invisibles para que el eje Y siempre tenga las 5 filas
-            for etapa_fija in ORDEN_ETAPAS:
-                data_final.append(dict(
-                    Proyecto=p_nom, Etapa=etapa_fija, 
-                    Inicio=datetime.now().strftime('%Y-%m-%d'), 
-                    Fin=datetime.now().strftime('%Y-%m-%d'), 
-                    Color="rgba(0,0,0,0)", Tipo="Esqueleto"
+    # --- C. CONSTRUCCIÓN DEL GRÁFICO (BLOQUES SEPARADOS) ---
+    fig = go.Figure()
+    ETAPAS_INV = ORDEN_ETAPAS[::-1] # Invertimos para que Diseño quede arriba
+
+    for i, p_display in enumerate(proyectos_sel):
+        id_p = dict_proy[p_display]
+        
+        # 1. Recuperar fechas del contrato (Planificado)
+        res_p = supabase.table("proyectos").select("*").eq("id", id_p).execute()
+        if not res_p.data: continue
+        p_data = res_p.data[0]
+
+        # 2. Recuperar avance real (Ejecutado)
+        datos_reales = obtener_datos_gantt_procesados(id_p)
+        dict_reales = {d['Etapa']: d for d in datos_reales}
+
+        for y_idx, etapa in enumerate(ETAPAS_INV):
+            # Posicionamiento absoluto: cada proyecto ocupa un bloque de 20 unidades en Y
+            # Bloque Planificado: posiciones 11 a 15 | Bloque Ejecutado: posiciones 0 a 4
+            base_y = i * 20
+
+            # --- BARRA PLANIFICADA (ARRIBA - GRIS) ---
+            if not ver_solo_real:
+                f_map = {
+                    "Diseño": ("p_dis_i", "p_dis_f"), "Fabricación": ("p_fab_i", "p_fab_f"),
+                    "Traslado": ("p_tra_i", "p_tra_f"), "Instalación": ("p_ins_i", "p_ins_f"),
+                    "Entrega": ("p_ent_i", "p_ent_f")
+                }
+                fi, ff = f_map[etapa]
+                if p_data.get(fi) and p_data.get(ff):
+                    c_plan = "#4F4F4F" if etapa == "Fabricación" else "#D3D3D3"
+                    fig.add_trace(go.Bar(
+                        base=[p_data[fi]],
+                        x=[(pd.to_datetime(p_data[ff]) - pd.to_datetime(p_data[fi])).days],
+                        y=[base_y + y_idx + 10], # Posición en el bloque superior
+                        orientation='h',
+                        marker_color=c_plan,
+                        name="Planificado",
+                        hoverinfo="text",
+                        text=f"PLAN: {etapa}",
+                        width=0.7
+                    ))
+
+            # --- BARRA EJECUTADA (ABAJO - COLOR) ---
+            if etapa in dict_reales:
+                dr = dict_reales[etapa]
+                av = round(dr['Avance'], 1)
+                fig.add_trace(go.Bar(
+                    base=[dr['Inicio'].strftime('%Y-%m-%d')],
+                    x=[(dr['Fin'] - dr['Inicio']).days + 1],
+                    y=[base_y + y_idx], # Posición en el bloque inferior
+                    orientation='h',
+                    marker_color=obtener_color_estricto(av),
+                    text=f"<b>{av}%</b>", # Solo el porcentaje
+                    textposition="inside",
+                    textfont=dict(color="white", size=10),
+                    name="Real",
+                    hoverinfo="text",
+                    hovertext=f"REAL: {etapa}<br>Avance: {av}%",
+                    width=0.7
                 ))
 
-            # --- B. DATA PLANIFICADA (BARRAS GRISES) ---
-            if not solo_real:
-                map_cols = [
-                    ("Diseño", 'p_dis_i', 'p_dis_f', "#BDC3C7"),
-                    ("Fabricación", 'p_fab_i', 'p_fab_f', "#5D6D7E"),
-                    ("Traslado", 'p_tra_i', 'p_tra_f', "#BDC3C7"),
-                    ("Instalación", 'p_ins_i', 'p_ins_f', "#BDC3C7"),
-                    ("Entrega", 'p_ent_i', 'p_ent_f', "#BDC3C7")
-                ]
-                for et, i_c, f_c, col in map_cols:
-                    if p_data.get(i_c) and p_data.get(f_c):
-                        data_final.append(dict(
-                            Proyecto=p_nom, Etapa=et, Inicio=p_data[i_c], 
-                            Fin=p_data[f_c], Color=col, Tipo="Planificado"
-                        ))
-            
-            # --- C. DATA REAL (MAPEO DE HITOS) ---
-            df_r = obtener_gantt_real_data(id_p)
-            if not df_r.empty:
-                for _, row in df_r.iterrows():
-                    try:
-                        str_f = str(row['fecha']).strip()
-                        fecha_dt = datetime.strptime(str_f, '%d/%m/%Y') if "/" in str_f else datetime.strptime(str_f, '%Y-%m-%d')
-                        
-                        hito_l = row['hito'].lower()
-                        if "disen" in hito_l: et_m = "Diseño"
-                        elif any(x in hito_l for x in ["fabric", "corte", "armad"]): et_m = "Fabricación"
-                        elif "tras" in hito_l or "obra" in hito_l: et_m = "Traslado"
-                        elif "entreg" in hito_l: et_m = "Entrega"
-                        else: et_m = "Instalación"
-                        
-                        data_final.append(dict(
-                            Proyecto=p_nom, Etapa=et_m, Inicio=fecha_dt.strftime('%Y-%m-%d'), 
-                            Fin=(fecha_dt + timedelta(days=2)).strftime('%Y-%m-%d'), 
-                            Color=color_dinamico, Tipo="Real"
-                        ))
-                    except: continue
+    # --- D. AJUSTES DE DISEÑO Y ESCALA TEMPORAL ---
+    fig.update_layout(
+        barmode='overlay', showlegend=False, plot_bgcolor="white",
+        height=500 * len(proyectos_sel),
+        xaxis=dict(
+            type='date', tickformat='%b %Y', dtick="M1", # Escala Mensual
+            gridcolor="#F0F0F0",
+            minor=dict(dtick=1000*60*60*24*14, showgrid=True, gridcolor="#F8F8F8", griddash="dot") # Quincenas
+        ),
+        yaxis=dict(
+            tickmode='array',
+            tickvals=[(i * 20) + y for i in range(len(proyectos_sel)) for y in range(len(ETAPAS_INV))],
+            ticktext=ETAPAS_INV * len(proyectos_sel),
+            fixedrange=True
+        ),
+        margin=dict(l=220, r=50, t=50, b=50)
+    )
 
-        # --- D. CONSTRUCCIÓN DEL GRÁFICO ---
-        df_fig = pd.DataFrame(data_final)
-        
-        # Forzamos las categorías para que no desaparezcan
-        df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
-        df_fig = df_fig.sort_values(['Proyecto', 'Etapa'], ascending=[True, False])
-        
-        fig = px.timeline(
-            df_fig, x_start="Inicio", x_end="Fin", y="Etapa", color="Color",
-            facet_col="Proyecto", facet_col_wrap=1,
-            color_discrete_map="identity", 
-            category_orders={"Etapa": ORDEN_ETAPAS}
+    # Identificadores de Proyecto
+    for i, p_display in enumerate(proyectos_sel):
+        fig.add_annotation(
+            x=-0.02, y=(i * 20) + 7, xref="paper", yref="y",
+            text=f"<b>PROYECTO: {p_display.upper()}</b>",
+            showarrow=False, xanchor="right", font=dict(size=14, color="#002147")
         )
 
-        # autorange="reversed" + Categorical asegura Diseño arriba
-        fig.update_yaxes(autorange="reversed", showgrid=True, gridcolor='rgba(128,128,128,0.2)')
-
-        # Rango de 4 meses para perspectiva gerencial
-        f_min_df = pd.to_datetime(df_fig[df_fig['Tipo'] != "Esqueleto"]['Inicio']).min()
-        if pd.isna(f_min_df): f_min_base = datetime.now()
-        else: f_min_base = f_min_df
-        
-        fig.update_xaxes(
-            range=[f_min_base - timedelta(days=7), f_min_base + timedelta(days=120)],
-            dtick="M1", 
-            tickformat="%b %Y", 
-            showgrid=True, gridcolor='rgba(128,128,128,0.3)', griddash='dot'
-        )
-
-        fig.update_layout(
-            barmode='group',
-            height=450 * len(proyectos_sel), 
-            margin=dict(l=10, r=10, t=50, b=10),
-            showlegend=False,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)'
-        )
-
-        fig.update_traces(marker_line_color="white", marker_line_width=1)
-        fig.add_vline(x=datetime.now().timestamp() * 1000, line_width=2, line_dash="dash", line_color="red")
-
-        st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
