@@ -213,48 +213,50 @@ def mostrar(supervisor_id=None):
     # --- ÁREA DE PRODUCTOS (SCROLL) ---
     st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
     
-    def render_matriz(df_r):
-        rol = st.session_state.get('rol', 'Supervisor')
-        for _, p in df_r.iterrows():
-            cols = st.columns([2.5] + [0.7]*8 + [1.5])
-            # Producto y ML en la misma línea
-            cols[0].write(f"**{p['ubicacion']}** {p['tipo']} {p['ml']}ml")
+    # 4. Botón Guardar Avance
+    if act4.button("💾 Guardar Avance", type="primary", use_container_width=True):
+        ahora = datetime.now()
+        f_hoy = ahora.strftime("%d/%m/%Y")
+        try:
+            # A. Unificar cambios pendientes con lo que ya hay en BD
+            cambios_pendientes_df = pd.DataFrame(st.session_state.cambios_pendientes)
+            if not cambios_pendientes_df.empty:
+                cambios_pendientes_df = cambios_pendientes_df.rename(columns={'pid': 'producto_id'})
             
-            for i, h in enumerate(HITOS_LIST):
-                m_data = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)]
-                en_db = not m_data.empty
-                
-                # REVISIÓN: Buscamos si el registro está en la memoria temporal
-                # Lo guardamos en una variable para poder manipularlo si el usuario desmarca
-                pendiente = next((c for c in st.session_state.cambios_pendientes if c['pid'] == p['id'] and c['hito'] == h), None)
-                existe = en_db or (pendiente is not None)
-                
-                tiene_post = not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
-                bloqueado = (en_db and rol == "Supervisor") or tiene_post
-                
-                # Checkbox con lógica dual (Base de datos + Memoria)
-                if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed"):
-                    if not existe:
-                        st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
-                        st.rerun() # Rerun necesario para actualizar el contador de "Pendientes" arriba
-                else:
-                    # 1. Si desmarca algo que solo estaba en memoria (clic reciente)
-                    if pendiente:
-                        st.session_state.cambios_pendientes.remove(pendiente)
-                        st.rerun()
+            # Combinamos para saber cuál es el hito máximo REAL de cada producto
+            df_total = pd.concat([segs[['producto_id', 'hito']], cambios_pendientes_df[['producto_id', 'hito']]]).drop_duplicates()
+            
+            lote_final = []
+            for pid in prods_all['id'].tolist():
+                hitos_p = df_total[df_total['producto_id'] == pid]['hito'].tolist()
+                if hitos_p:
+                    # Encontrar el índice más alto alcanzado
+                    idxs = [HITOS_LIST.index(h) for h in hitos_p if h in HITOS_LIST]
+                    max_idx = max(idxs)
                     
-                    # 2. Si desmarca algo que YA estaba en la base de datos (Regla de Borrado)
-                    elif en_db and not bloqueado:
-                        # REGLA ESTRICTA: Solo borra si NO hay nada marcado después (i+1 en adelante)
-                        tiene_posteriores = not segs[(segs['producto_id'] == p['id']) & 
-                                                     (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
-                        
-                        if not tiene_posteriores:
-                            conectar().table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
-                            st.rerun()
-                        else:
-                            # Mensaje de advertencia para que el usuario sepa por qué no se borra
-                            st.warning(f"No se puede borrar {h} porque existen etapas posteriores registradas.")
+                    # REGLA DE CASCADA: Rellenar todo desde 0 hasta el máximo hito
+                    for i in range(max_idx + 1):
+                        hito_nombre = HITOS_LIST[i]
+                        # Solo agregamos si no existe en la base de datos original
+                        en_db = not segs[(segs['producto_id'] == pid) & (segs['hito'] == hito_nombre)].empty
+                        if not en_db:
+                            lote_final.append({"producto_id": pid, "hito": hito_nombre, "fecha": f_hoy})
+
+            # B. Upsert masivo
+            if lote_final:
+                df_to_save = pd.DataFrame(lote_final).drop_duplicates()
+                supabase.table("seguimiento").upsert(df_to_save.to_dict(orient='records'), on_conflict="producto_id, hito").execute()
+
+            # C. Recalcular Avance Global y Limpiar
+            res_f = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
+            nuevo_av = calc_avance(prods_all, pd.DataFrame(res_f.data))
+            supabase.table("proyectos").update({"avance": nuevo_av}).eq("id", id_p).execute()
+            
+            st.session_state.cambios_pendientes = [] 
+            st.success(f"✅ ¡Proyecto actualizado al {nuevo_av}%!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error en Guardado/Cascada: {e}")
             
             # Notas (Mantenemos tu lógica)
             n_val = m_data['observaciones'].iloc[0] if (en_db and 'observaciones' in m_data.columns and pd.notnull(m_data['observaciones'].iloc[0])) else ""
