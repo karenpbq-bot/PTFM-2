@@ -102,5 +102,49 @@ def mostrar():
         st.subheader("Listado Maestro")
         bus = st.text_input("🔍 Buscar...", placeholder="Escribe código, nombre o cliente")
         df_p = obtener_proyectos(bus)
+        
         if not df_p.empty:
+            # 1. Se muestra la tabla de proyectos encontrados
             st.dataframe(df_p[['codigo', 'proyecto_text', 'cliente', 'partida', 'avance']], hide_index=True)
+
+            # === INSERCIÓN AQUÍ: SELECCIÓN PARA MATRIZ ===
+            st.divider()
+            st.markdown("### 🎯 Gestión de Matriz por Selección")
+            
+            # Creamos una lista para que elijas el proyecto que acabas de buscar
+            opciones_proy = df_p['proyecto_display'].tolist()
+            seleccionado = st.selectbox("Selecciona un proyecto para gestionar sus productos:", ["-- Seleccionar --"] + opciones_proy)
+
+            if seleccionado != "-- Seleccionar --":
+                # Extraemos el ID del proyecto seleccionado
+                id_sel = df_p[df_p['proyecto_display'] == seleccionado]['id'].values[0]
+                st.session_state.id_p_sel = id_sel
+                
+                st.success(f"✅ Proyecto '{seleccionado}' seleccionado.")
+                st.info("Ahora puedes ir a la pestaña **'📦 Matriz de Productos'** para cargar el Excel o agregar ítems manualmente.")
+    
+    with tab3: # Nueva pestaña
+    if st.session_state.id_p_sel:
+        st.subheader("📥 Carga y Gestión de Matriz")
+        
+        col_manual, col_import = st.columns(2)
+        
+        with col_import:
+            with st.expander("Subir archivo Excel (Metrados)"):
+                f_up = st.file_uploader("Seleccione el archivo .xlsx", type=["xlsx", "csv"])
+                if f_up and st.button("Procesar Matriz"):
+                    # Lógica para leer el archivo de Eliza
+                    df_ex = pd.read_csv(f_up) if f_up.name.endswith('csv') else pd.read_excel(f_up)
+                    # Limpieza: Si la primera fila es nula, saltar (skiprows)
+                    for _, r in df_ex.iterrows():
+                        # Función que debemos asegurar en base_datos.py
+                        agregar_producto_manual(st.session_state.id_p_sel, r['UBICACION'], r['TIPO'], r['CTD'], r['Medidas (ml)'])
+                    st.success("Matriz cargada correctamente.")
+                    st.rerun()
+        
+        # Aquí iría la visualización de la tabla con botones 💾 y 🗑️
+    else:
+        st.info("Por favor, selecciona un proyecto en la pestaña 'Listado' para ver su matriz.")
+
+    
+                st.info("Ahora puedes ir a la pestaña **'📦 Matriz de Productos'** para cargar el Excel o agregar ítems manualmente.")go', 'proyecto_text', 'cliente', 'partida', 'avance']], hide_index=True)
