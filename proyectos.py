@@ -194,30 +194,31 @@ def mostrar():
                     except Exception as e:
                         st.error(f"Error en la importación: {e}")
 
-            # --- 3. VISUALIZACIÓN DE LA MATRIZ UNIFICADA ---
+            # --- 3. VISUALIZACIÓN DE DIAGNÓSTICO ---
             st.divider()
-            # Consultamos todos los campos de la tabla productos
-            res_p = conectar().table("productos").select("ubicacion, tipo, ctd, ml").eq("proyecto_id", st.session_state.id_p_sel).execute()
+            # Seleccionamos todo (*) para ver qué columnas trae realmente la tabla
+            res_p = conectar().table("productos").select("*").eq("proyecto_id", st.session_state.id_p_sel).execute()
             
             if res_p.data:
-                # 1. Creamos el DataFrame con la data cruda
-                df_matriz = pd.DataFrame(res_p.data)
+                df_diagnostico = pd.DataFrame(res_p.data)
                 
-                # 2. Definimos el orden y los nombres exactos de las 4 columnas
-                # Asegúrate de que los nombres de la izquierda coincidan con tu base de datos
-                mapeo_final = {
+                # Esto te mostrará en la App los nombres reales de tus columnas
+                st.write("Columnas detectadas en la base de datos:", list(df_diagnostico.columns))
+                
+                # Intentamos unificar basándonos en lo que encontremos
+                mapeo_flexible = {
                     'ubicacion': 'Ubicación',
                     'tipo': 'Tipo',
+                    'ml': 'Metros Lineales (ml)',
                     'ctd': 'Cantidad',
-                    'ml': 'Metros Lineales (ml)'
+                    'cantidad': 'Cantidad', # Probamos con nombre largo
+                    'cant': 'Cantidad'      # Probamos con abreviatura
                 }
                 
-                # 3. Filtramos y Reordenamos para asegurar que las 4 estén juntas
-                columnas_disponibles = [c for c in mapeo_final.keys() if c in df_matriz.columns]
-                df_unificado = df_matriz[columnas_disponibles].rename(columns=mapeo_final)
+                cols_reales = [c for c in mapeo_flexible.keys() if c in df_diagnostico.columns]
+                df_final = df_diagnostico[cols_reales].rename(columns=mapeo_flexible)
                 
-                # 4. MOSTRAMOS LA MATRIZ ÚNICA (Aquí verás las 4 columnas alineadas)
-                st.dataframe(df_unificado, hide_index=True, use_container_width=True)
+                st.dataframe(df_final, hide_index=True, use_container_width=True)
                 
                 # --- Resumen informativo al pie de la matriz ---
                 c1, c2, c3 = st.columns(3)
