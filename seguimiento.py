@@ -167,15 +167,38 @@ def mostrar(supervisor_id=None):
     st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
     cols_h = st.columns([2.5] + [0.7]*8 + [1.5])
     cols_h[0].write("**Producto**")
-    for i, h in enumerate(HITOS_LIST):
+   for i, h in enumerate(HITOS_LIST):
         with cols_h[i+1]:
             st.write(MAPEO_HITOS[h])
+            # Botón de marcado grupal mejorado
             if st.button("✅", key=f"bk_{h}"):
+                # Usamos f_reg que definiste en la Fila de Acciones (línea 118 aprox)
+                f_hoy = f_reg.strftime("%d/%m/%Y")
+                lote_grupal = []
+                
+                # Recorremos los productos que están actualmente en el filtro (df_f)
                 for pid in df_f['id'].tolist():
+                    # Solo agregamos si no existe ya en la base de datos (segs)
                     if segs[(segs['producto_id'] == pid) & (segs['hito'] == h)].empty:
-                        if not any(c['pid'] == pid and c['hito'] == h for c in st.session_state.cambios_pendientes):
-                            st.session_state.cambios_pendientes.append({"pid": pid, "hito": h})
-                st.rerun()
+                        lote_grupal.append({
+                            "producto_id": int(pid), 
+                            "hito": h, 
+                            "fecha": f_hoy
+                        })
+                
+                if lote_grupal:
+                    try:
+                        # Guardado masivo inmediato
+                        supabase.table("seguimiento").upsert(lote_grupal, on_conflict="producto_id, hito").execute()
+                        
+                        # Actualización del porcentaje de avance en la tabla proyectos
+                        from base_datos import actualizar_avance_real
+                        actualizar_avance_real(id_p)
+                        
+                        st.success(f"✅ {h} marcado para el grupo.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al marcar grupo: {e}")
     cols_h[-1].write("**Notas**")
     st.markdown('</div>', unsafe_allow_html=True)
 
