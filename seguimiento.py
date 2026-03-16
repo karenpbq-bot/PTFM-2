@@ -146,63 +146,61 @@ def mostrar(supervisor_id=None):
         f_hoy = ahora.strftime("%d/%m/%Y")
         
         try:
-            # 1. Recolectamos los clics manuales de la memoria temporal
+            # 1. Recolectamos los clics manuales
             lote_para_guardar = []
             if st.session_state.cambios_pendientes:
                 for c in st.session_state.cambios_pendientes:
-                    lote_para_guardar.append({"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy})
+                    lote_total_item = {"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy}
+                    lote_para_guardar.append(lote_total_item)
 
-            # 2. Consultamos qué hay actualmente en la base de datos para este proyecto
+            # 2. CONSULTA CORREGIDA (Aquí estaba el error de nombre)
             res_db = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
-            df_db = pd.DataFrame(res_s.data) if res_db.data else pd.DataFrame(columns=['producto_id', 'hito'])
+            # Usamos res_db.data correctamente
+            df_db = pd.DataFrame(res_db.data) if res_db.data else pd.DataFrame(columns=['producto_id', 'hito'])
 
-            # 3. Unimos la BD con los nuevos clics para calcular la cascada completa
-            # Esto es vital para que el sistema "sepa" cuál es el hito más alto actual
-            df_unificado = pd.concat([df_db, pd.DataFrame(lote_para_guardar)[['producto_id', 'hito']]]) if lote_para_guardar else df_db
+            # 3. UNIFICACIÓN PARA CASCADA
+            if lote_para_guardar:
+                df_manual = pd.DataFrame(lote_para_guardar)[['producto_id', 'hito']]
+                df_unificado = pd.concat([df_db, df_manual]).drop_duplicates()
+            else:
+                df_unificado = df_db
             
             if not df_unificado.empty:
                 for pid in prods_all['id'].tolist():
-                    # Hitos que ya tiene este producto (en BD + lo que acaba de cliquear el usuario)
                     hitos_del_producto = df_unificado[df_unificado['producto_id'] == pid]['hito'].unique().tolist()
                     
                     if hitos_del_producto:
-                        # Buscamos el índice del hito más avanzado según HITOS_LIST
-                        indices = [HITOS_LIST.index(h) for h in hitos_del_producto]
-                        max_idx = max(indices)
-                        
-                        # Agregamos al lote todos los hitos anteriores que falten
-                        for i in range(max_idx):
-                            hito_anterior = HITOS_LIST[i]
-                            if hito_anterior not in hitos_del_producto:
-                                lote_para_guardar.append({
-                                    "producto_id": pid,
-                                    "hito": hito_anterior,
-                                    "fecha": f_hoy
-                                })
+                        # Encontrar el hito más avanzado
+                        indices = [HITOS_LIST.index(h) for h in hitos_del_producto if h in HITOS_LIST]
+                        if indices:
+                            max_idx = max(indices)
+                            # Rellenar los que falten hacia atrás
+                            for i in range(max_idx):
+                                hito_previo = HITOS_LIST[i]
+                                if hito_previo not in hitos_del_producto:
+                                    lote_para_guardar.append({
+                                        "producto_id": pid,
+                                        "hito": hito_previo,
+                                        "fecha": f_hoy
+                                    })
 
-            # 4. Envío masivo a Supabase con limpieza de duplicados interna
+            # 4. ENVÍO MASIVO Y LIMPIEZA
             if lote_para_guardar:
                 df_final = pd.DataFrame(lote_para_guardar).drop_duplicates(subset=['producto_id', 'hito'])
                 supabase.table("seguimiento").upsert(df_final.to_dict(orient='records'), on_conflict="producto_id, hito").execute()
 
-            # 5. Recalcular el avance real y actualizar el proyecto
-            # Consultamos una última vez para que el % de avance sea 100% real
-            res_final = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
-            nuevo_avance = calc_avance(prods_all, pd.DataFrame(res_final.data))
+            # Recalcular avance y cerrar
+            res_f = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
+            nuevo_avance = calc_avance(prods_all, pd.DataFrame(res_f.data))
             
             supabase.table("proyectos").update({"avance": nuevo_avance}).eq("id", id_p).execute()
+            st.session_state.cambios_pendientes = [] 
             
-            # 6. Registro de cierre diario y limpieza de memoria
-            try:
-                supabase.table("cierres_diarios").insert({"proyecto_id": id_p, "fecha": f_hoy, "hora": ahora.strftime("%H:%M:%S")}).execute()
-            except: pass
-
-            st.session_state.cambios_pendientes = [] # Vaciamos la memoria temporal
-            st.success(f"✅ ¡Todo guardado! Nuevo avance: {nuevo_avance}%")
+            st.success(f"✅ Avance guardado: {nuevo_avance}%")
             st.rerun()
 
         except Exception as e:
-            st.error(f"Error al procesar cascada y guardado: {e}")
+            st.error(f"Error al procesar: {e}")
 
     # 5. Botón Descartar (Limpia la memoria temporal)
     if act5.button("🗑️ Descartar", type="secondary", use_container_width=True):
