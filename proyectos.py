@@ -201,34 +201,33 @@ def mostrar():
             if res_p.data:
                 df_matriz = pd.DataFrame(res_p.data)
                 
-                # REGLA DE ORO: Mapeamos los nombres de la base de datos a nombres amigables
-                # Si en tu base de datos la columna se llama 'ctd', aquí la forzamos a ser 'Cantidad'
-                mapeo_columnas = {
+                # Definimos el mapeo exacto que necesitas para las cabeceras
+                # Asegúrate de que 'ctd' es el nombre en tu base de datos
+                mapeo_nombres = {
                     'ubicacion': 'Ubicación',
-                    'tipo': 'Tipo de Mueble',
-                    'ctd': 'Cantidad',
-                    'ml': 'Metros Lineales (ml)'
+                    'tipo': 'Tipo',
+                    'ml': 'Metros Lineales (ml)',
+                    'ctd': 'Cantidad'
                 }
                 
-                # Filtramos solo las columnas que existen para no romper el código
-                cols_a_mostrar = [c for c in mapeo_columnas.keys() if c in df_matriz.columns]
+                # Comprobamos qué columnas de las requeridas están presentes
+                columnas_finales = [c for c in mapeo_nombres.keys() if c in df_matriz.columns]
                 
-                # Mostramos la tabla con los nombres corregidos
-                st.dataframe(
-                    df_matriz[cols_a_mostrar].rename(columns=mapeo_columnas), 
-                    hide_index=True, 
-                    use_container_width=True
-                )
+                # Reordenamos y renombramos
+                df_mostrar = df_matriz[columnas_finales].rename(columns=mapeo_nombres)
                 
-                # --- OPCIONAL: RESUMEN DE METRADOS ---
+                # Mostramos la tabla con las 4 columnas solicitadas
+                st.dataframe(df_mostrar, hide_index=True, use_container_width=True)
+                
+                # Resumen rápido debajo de la tabla
                 c1, c2 = st.columns(2)
-                total_piezas = df_matriz['ctd'].sum() if 'ctd' in df_matriz.columns else 0
-                total_ml = df_matriz['ml'].sum() if 'ml' in df_matriz.columns else 0
-                c1.metric("Total de Productos", f"{int(total_piezas)} und")
-                c2.metric("Total Metros Lineales", f"{total_ml:.2f} ml")
-                
+                if 'Cantidad' in df_mostrar.columns:
+                    c1.metric("Total Cantidad", f"{int(df_mostrar['Cantidad'].sum())} und")
+                if 'Metros Lineales (ml)' in df_mostrar.columns:
+                    c2.metric("Total Metros Lineales", f"{df_mostrar['Metros Lineales (ml)'].sum():.2f} ml")
+
                 if st.button("🗑️ Vaciar Matriz del Proyecto", type="primary"):
                     conectar().table("productos").delete().eq("proyecto_id", st.session_state.id_p_sel).execute()
                     st.rerun()
-        else:
-            st.info("⚠️ Selecciona un proyecto en la pestaña 'Listado y Búsqueda' para gestionar su matriz.")
+            else:
+                st.info("La matriz está vacía para este proyecto.")
