@@ -200,4 +200,89 @@ def actualizar_avance_real(id_p):
     nuevo_avance = (len(segs.data) / total_esperado) * 100
     supabase.table("proyectos").update({"avance": nuevo_avance}).eq("id", id_p).execute()
 
+# =========================================================
+# 6. MOTOR DE CÁLCULO PARA GANTT PONDERADO
+# =========================================================
+
+def obtener_pesos_seguimiento():
+    """Retorna la ponderación porcentual de cada hito."""
+    return {
+        "Diseñado": 15, 
+        "Fabricado": 40, 
+        "Material en Obra": 5,
+        "Material en Ubicación": 5, 
+        "Instalación de Estructura": 15, 
+        "Instalación de Puertas o Frentes": 10, 
+        "Revisión y Observaciones": 5, 
+        "Entrega": 5
+    }
+
+def obtener_datos_gantt_procesados(id_proyecto):
+    """Procesa hitos de la DB y los agrupa en las 5 etapas del Gantt."""
+    supabase = conectar()
+    pesos = obtener_pesos_seguimiento()
+    
+    # 1. Obtener todos los productos del proyecto
+    res_prods = supabase.table("productos").select("id").eq("proyecto_id", id_proyecto).execute()
+    ids_prods = [p['id'] for p in res_prods.data]
+    
+    if not ids_prods:
+        return []
+
+    # 2. Obtener todo el historial de seguimiento de esos productos
+    res_segs = supabase.table("seguimiento").select("*").in_("producto_id", ids_prods).execute()
+    df_segs = pd.DataFrame(res_segs.data)
+    
+    if df_segs.empty:
+        return []
+
+    # 3. Definición de Grupos de Etapas (Tu reconfiguración final)
+    GRUPOS = {
+        "Diseño": ["Diseñado"],
+        "Fabricación": ["Fabricado"],
+        "Traslado": ["Material en Obra", "Material en Ubicación"],
+        "Instalación": ["Instalación de Estructura", "Instalación de Puertas o Frentes"],
+        "Entrega": ["Revisión y Observaciones", "Entrega"]
+    }
+
+    procesado = []
+    
+    for etapa, hitos in GRUPOS.items():
+        # Filtramos los datos que pertenecen a los hitos de esta etapa
+        df_etapa = df_segs[df_segs['hito'].isin(hitos)]
+        
+        if not df_etapa.empty:
+            # Determinamos fechas reales (Inicio: primer check / Fin: último check)
+            df_etapa['fecha_dt'] = pd.to_datetime(df_etapa['fecha'])
+            inicio_real = df_etapa['fecha_dt'].min()
+            fin_real = df_etapa['fecha_dt'].max()
+            
+            # Si el inicio y fin son iguales, extendemos 1 día para que sea visible en el Gantt
+            if inicio_real == fin_real:
+                fin_real += pd.Timedelta(days=1)
+
+            # --- CÁLCULO PONDERADO ---
+            # Suma de pesos teóricos de los hitos que conforman esta etapa
+            peso_max_etapa = sum([pesos.get(h, 0) for h in hitos])
+            puntos_obtenidos = 0
+            
+            # Calculamos cuánto aporta cada hito completado al total de la etapa
+            for h in hitos:
+                cant_completados = len(df_etapa[df_etapa['hito'] == h])
+                # El avance es: (Peso del hito * cantidad de productos que lo tienen) / total productos
+                puntos_obtenidos += (pesos.get(h, 0) * (cant_completados / len(ids_prods)))
+            
+            # Porcentaje final de la etapa (0 a 100)
+            avance_etapa = (puntos_obtenidos / peso_max_etapa) * 100 if peso_max_etapa > 0 else 0
+            
+            procesado.append({
+                "Etapa": etapa,
+                "Inicio": inicio_real,
+                "Fin": fin_real,
+                "Avance": avance_etapa,
+                "Tipo": "Ejecutado"
+            })
+            
+    return procesado
+
 
