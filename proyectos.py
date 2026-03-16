@@ -60,9 +60,10 @@ def mostrar():
             df_previs = pd.DataFrame(cronograma_data)
             # Formateamos solo para la tabla visual
             df_visual = df_previs.copy()
-            df_visual["Inicio"] = df_visual["Inicio"].apply(lambda x: x.strftime("%d/%m/%Y"))
-            df_visual["Fin"] = df_visual["Fin"].apply(lambda x: x.strftime("%d/%m/%Y"))
-            
+            # Añadimos .astype(str) al final para "congelar" el formato
+            df_visual["Inicio"] = df_visual["Inicio"].apply(lambda x: x.strftime("%d/%m/%Y")).astype(str)
+            df_visual["Fin"] = df_visual["Fin"].apply(lambda x: x.strftime("%d/%m/%Y")).astype(str)
+
             st.write("#### 🔍 Previsualización del Cronograma Planificado")
             st.table(df_visual[["Etapa", "Inicio", "Fin", "Días"]])
 
@@ -78,8 +79,10 @@ def mostrar():
                         "proyecto_text": nombre,
                         "cliente": cliente,
                         "partida": par,
-                        "f_ini": str(f_ini),
-                        "f_fin": str(f_fin),
+                        "f_ini": f_ini.isoformat(), # Envía 2024-03-25 a la DB
+                        "f_fin": f_fin.isoformat(),
+                        "p_dis_i": cronograma_data[0]["Inicio"].isoformat(),
+                        "p_dis_f": cronograma_data[0]["Fin"].isoformat(),
                         "supervisor_id": dict_sups[sup_nom],
                         "estatus": "Activo",
                         "avance": 0,
