@@ -202,30 +202,30 @@ def obtener_gantt_real_data(id_p):
     return pd.DataFrame(res.data)
 
 def actualizar_avance_real(id_p):
-    """Calcula el avance basado en la ponderación oficial y actualiza la tabla proyectos."""
+    """Calcula el avance basado en hitos y lo guarda físicamente en la DB."""
     try:
         supabase = conectar()
-        pesos = obtener_pesos_seguimiento() # Usa el diccionario de 8 hitos
-        prods = supabase.table("productos").select("id").eq("proyecto_id", id_p).execute()
-        
-        if not prods.data: return
-        
-        num_productos = len(prods.data)
-        ids = [p['id'] for p in prods.data]
-        
-        # Obtenemos todos los hitos marcados
+        pesos = obtener_pesos_seguimiento()
+        # 1. Obtener productos
+        res_prods = supabase.table("productos").select("id").eq("proyecto_id", id_p).execute()
+        num_productos = len(res_prods.data)
+        if num_productos == 0: return
+
+        # 2. Obtener hitos marcados
+        ids = [p['id'] for p in res_prods.data]
         res_seg = supabase.table("seguimiento").select("hito").in_("producto_id", ids).execute()
         
-        # Calculamos puntos totales
+        # 3. Sumar puntos según el diccionario de pesos
         puntos_totales = sum([pesos.get(s['hito'], 0) for s in res_seg.data])
         
-        # El avance es la suma de puntos dividida entre el número de productos
-        # (Porque cada producto puede sumar máximo 100 puntos)
+        # 4. Calcular avance global (máximo 100)
+        # Cada producto puede aportar 100 puntos. El total es puntos / num_muebles
         nuevo_avance = round(puntos_totales / num_productos, 2)
         
+        # 5. GUARDAR EN LA NUBE (Esto es lo que lee el Gantt)
         supabase.table("proyectos").update({"avance": nuevo_avance}).eq("id", id_p).execute()
     except Exception as e:
-        print(f"Error actualizando avance: {e}")
+        print(f"Error en actualización de avance: {e}")
 
 # =========================================================
 # 6. MOTOR DE CÁLCULO PARA GANTT PONDERADO
