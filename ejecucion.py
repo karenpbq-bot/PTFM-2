@@ -104,19 +104,18 @@ def mostrar():
                         ))
                     except: continue
 
-       # --- D. GENERACIÓN DEL GRÁFICO (ORDEN CORREGIDO) ---
+       # --- D. GENERACIÓN DEL GRÁFICO (ORDEN Y ESCALA DEFINITIVA) ---
         if not data_final:
             st.warning("No hay datos para mostrar."); return
 
         df_fig = pd.DataFrame(data_final)
         
-        # 1. Definimos el orden lógico
+        # 1. ORDENAMIENTO DE DATOS: 
+        # Para que Diseño esté ARRIBA, en un eje normal (no reversed)
+        # debe ser la categoría con mayor índice o el DataFrame debe estar invertido.
         df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
-        
-        # 2. ORDENAMIENTO PARA PLOTLY:
-        # Ordenamos de forma ASCENDENTE. Plotly dibuja de abajo hacia arriba, 
-        # así que el primero de la lista (Diseño) terminará arriba.
-        df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, True, True])
+        # Ordenamos de forma descendente [False] para la Etapa
+        df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, False, True])
         
         fig = px.timeline(
             df_fig, 
@@ -127,13 +126,39 @@ def mostrar():
             facet_col="Proyecto", 
             facet_col_wrap=1,
             color_discrete_map="identity",
-            # Forzamos a Plotly a NO invertir el orden que ya le dimos
+            # Aquí le damos el orden exacto de aparición visual de arriba hacia abajo
             category_orders={"Etapa": ORDEN_ETAPAS} 
         )
 
-        # 3. CONFIGURACIÓN EJES (IMPORTANTE: autorange="reversed")
+        # 2. CONFIGURACIÓN EJES X (FIJAR 4 MESES)
+        f_val = pd.to_datetime(df_fig[df_fig['Tipo'] == "1_Planificado"]['Inicio'])
+        f_min_x = f_val.min() if not f_val.empty else datetime.now()
+        
+        fig.update_xaxes(
+            range=[f_min_x - timedelta(days=5), f_min_x + timedelta(days=120)],
+            dtick="M1", 
+            tickformat="%b %Y", 
+            showgrid=True, 
+            gridcolor='rgba(128,128,128,0.2)'
+        )
+
+        # 3. CONFIGURACIÓN EJE Y (QUITAMOS REVERSED)
         fig.update_yaxes(
-            autorange="reversed", # <--- Esto fuerza que el primero (Diseño) sea el de arriba
+            autorange=True, # <--- Cambiado a True para que respete category_orders
             showgrid=True, 
             gridcolor='rgba(128,128,128,0.1)'
         )
+
+        # 4. DISEÑO FINAL
+        fig.update_layout(
+            barmode='group',
+            bargap=0.5,
+            height=200 + (150 * len(proyectos_sel)), 
+            margin=dict(l=10, r=10, t=40, b=10),
+            showlegend=False
+        )
+
+        fig.update_traces(marker_line_width=0, opacity=0.9)
+        fig.add_vline(x=datetime.now().timestamp() * 1000, line_width=1.5, line_dash="dash", line_color="red")
+
+        st.plotly_chart(fig, use_container_width=True)
