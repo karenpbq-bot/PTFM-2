@@ -38,11 +38,26 @@ def mostrar():
             mat = col_f.text_input("Material / Color", key="in_p_mat")
             rot = col_g.selectbox("Rotación", [0, 1], help="0: No / 1: Si", key="in_p_rot")
             
-            # Tapacantos y botón Añadir (igual que antes)
+            # ... (código previo de tapacantos)
+            tf, tp, td, ti = t1.text_input("Frontal (F)"), t2.text_input("Posterior (P)"), t3.text_input("Derecho (D)"), t4.text_input("Izquierdo (I)")
+            
+            # BLOQUE A RECUPERAR:
+            obs = st.text_area("Observaciones específicas de la pieza", key="p_obs_in")
+            
             if st.button("➕ Añadir a Matriz", key="btn_add_p"):
                 st.session_state.tmp_piezas.append({
-                    "descripcion": desc, "veta": veta, "no_veta": nveta, "cantidad": cant,
-                    "ubicacion": ubi, "material": mat, "rotacion": rot
+                    "descripcion": desc, 
+                    "veta": veta, 
+                    "no_veta": nveta, 
+                    "cantidad": cant,
+                    "ubicacion": ubi, 
+                    "material": mat, 
+                    "tc_frontal": tf, 
+                    "tc_posterior": tp,
+                    "tc_derecho": td, 
+                    "tc_izquierdo": ti, 
+                    "rotacion": rot, 
+                    "observaciones": obs  # <--- Asegúrate de que esta línea esté presente
                 })
                 st.rerun()
 
