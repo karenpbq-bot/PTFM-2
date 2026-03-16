@@ -109,12 +109,13 @@ def mostrar():
 
             # === INSERCIÓN AQUÍ: SELECCIÓN PARA MATRIZ ===
             st.divider()
-            st.markdown("### 🎯 Gestión de Matriz por Selección")
-            
-            # Creamos una lista para que elijas el proyecto que acabas de buscar
             opciones_proy = df_p['proyecto_display'].tolist()
-            seleccionado = st.selectbox("Selecciona un proyecto para gestionar sus productos:", ["-- Seleccionar --"] + opciones_proy)
+            seleccionado = st.selectbox("🎯 Selecciona para gestionar Matriz de Productos:", ["-- Seleccionar --"] + opciones_proy)
 
+            if seleccionado != "-- Seleccionar --":
+                id_sel = df_p[df_p['proyecto_display'] == seleccionado]['id'].values[0]
+                st.session_state.id_p_sel = id_sel
+                st.success(f"Proyecto '{seleccionado}' seleccionado para Matriz.")
             if seleccionado != "-- Seleccionar --":
                 # Extraemos el ID del proyecto seleccionado
                 id_sel = df_p[df_p['proyecto_display'] == seleccionado]['id'].values[0]
@@ -123,28 +124,50 @@ def mostrar():
                 st.success(f"✅ Proyecto '{seleccionado}' seleccionado.")
                 st.info("Ahora puedes ir a la pestaña **'📦 Matriz de Productos'** para cargar el Excel o agregar ítems manualmente.")
     
-    with tab3: # Nueva pestaña
-    if st.session_state.id_p_sel:
-        st.subheader("📥 Carga y Gestión de Matriz")
-        
-        col_manual, col_import = st.columns(2)
-        
-        with col_import:
-            with st.expander("Subir archivo Excel (Metrados)"):
-                f_up = st.file_uploader("Seleccione el archivo .xlsx", type=["xlsx", "csv"])
-                if f_up and st.button("Procesar Matriz"):
-                    # Lógica para leer el archivo de Eliza
-                    df_ex = pd.read_csv(f_up) if f_up.name.endswith('csv') else pd.read_excel(f_up)
-                    # Limpieza: Si la primera fila es nula, saltar (skiprows)
-                    for _, r in df_ex.iterrows():
-                        # Función que debemos asegurar en base_datos.py
-                        agregar_producto_manual(st.session_state.id_p_sel, r['UBICACION'], r['TIPO'], r['CTD'], r['Medidas (ml)'])
-                    st.success("Matriz cargada correctamente.")
-                    st.rerun()
-        
-        # Aquí iría la visualización de la tabla con botones 💾 y 🗑️
-    else:
-        st.info("Por favor, selecciona un proyecto en la pestaña 'Listado' para ver su matriz.")
+    with tab3:
+        if st.session_state.id_p_sel:
+            st.subheader("📦 Gestión de Matriz y Metrados")
+            
+            col_m, col_i = st.columns(2)
+            
+            with col_m:
+                with st.expander("➕ Carga Manual"):
+                    with st.form("fm_manual", clear_on_submit=True):
+                        u = st.text_input("Ubicación")
+                        t = st.text_input("Tipo")
+                        c = st.number_input("Cantidad", min_value=1, step=1)
+                        m = st.number_input("ML", min_value=0.0)
+                        if st.form_submit_button("Añadir Item"):
+                            conectar().table("productos").insert({"proyecto_id": st.session_state.id_p_sel, "ubicacion": u, "tipo": t, "ctd": c, "ml": m}).execute()
+                            st.rerun()
 
-    
-                st.info("Ahora puedes ir a la pestaña **'📦 Matriz de Productos'** para cargar el Excel o agregar ítems manualmente.")go', 'proyecto_text', 'cliente', 'partida', 'avance']], hide_index=True)
+            with col_i:
+                with st.expander("📥 Importar Excel (Eliza)"):
+                    f_up = st.file_uploader("Subir archivo .xlsx", type=["xlsx"])
+                    if f_up and st.button("🚀 Procesar Metrado"):
+                        df_ex = pd.read_excel(f_up)
+                        # Mapeo exacto a las columnas del archivo de Eliza
+                        for _, r in df_ex.iterrows():
+                            conectar().table("productos").insert({
+                                "proyecto_id": st.session_state.id_p_sel,
+                                "ubicacion": str(r['UBICACION']),
+                                "tipo": str(r['TIPO']),
+                                "ctd": int(r['CTD']),
+                                "ml": float(r['Medidas (ml)'])
+                            }).execute()
+                        st.success("¡Matriz cargada!"); st.rerun()
+
+            # VISUALIZACIÓN DE LA MATRIZ CARGADA
+            st.divider()
+            res_matriz = conectar().table("productos").select("*").eq("proyecto_id", st.session_state.id_p_sel).execute()
+            if res_matriz.data:
+                df_matriz = pd.DataFrame(res_matriz.data)
+                st.dataframe(df_matriz[['ubicacion', 'tipo', 'ctd', 'ml']], hide_index=True)
+                if st.button("🗑️ Vaciar Matriz", type="primary"):
+                    conectar().table("productos").delete().eq("proyecto_id", st.session_state.id_p_sel).execute()
+                    st.rerun()
+
+        else:
+            st.info("⚠️ Selecciona un proyecto en la pestaña anterior para gestionar sus productos.")
+        else:
+            st.info("⚠️ Selecciona un proyecto en la pestaña anterior para gestionar sus productos.")
