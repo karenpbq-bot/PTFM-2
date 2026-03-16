@@ -54,7 +54,7 @@ def mostrar():
             if not res_p.data: continue
             p_data = res_p.data[0]
             
-            avance_p = p_data.get('avance', 0)
+            avance_p = float(p_data.get('avance', 0))
             color_real = obtener_color_semaforo(avance_p)
 
             # --- A. FORZAR ESQUELETO DE 5 ETAPAS ---
