@@ -104,40 +104,49 @@ def mostrar():
                         ))
                     except: continue
 
-        # --- D. GENERACIÓN DEL GRÁFICO (RESTAURACIÓN) ---
+        # --- D. GENERACIÓN DEL GRÁFICO (OPTIMIZADO) ---
         if not data_final:
             st.warning("No hay datos para mostrar."); return
 
         df_fig = pd.DataFrame(data_final)
+        
+        # 1. ORDEN CRÍTICO: Asegura que Diseño sea el primero (arriba)
         df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
-        # Ordenamos por Tipo (1_Planificado < 2_Real) asegura que el celeste esté arriba
-        df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, False, True])
+        # Ordenamos para que Plotly respete la jerarquía
+        df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, True, True])
         
         fig = px.timeline(
             df_fig, x_start="Inicio", x_end="Fin", y="Etapa", color="Color",
             facet_col="Proyecto", facet_col_wrap=1,
-            color_discrete_map="identity", category_orders={"Etapa": ORDEN_ETAPAS}
+            color_discrete_map="identity",
+            category_orders={"Etapa": ORDEN_ETAPAS} # <--- Forzar orden visual
         )
 
-        fig.update_yaxes(autorange="reversed", showgrid=True, gridcolor='rgba(128,128,128,0.2)')
-
-        # Ajuste de escala a 4 meses (120 días)
-        f_val = pd.to_datetime(df_fig[df_fig['Tipo'] != "3_Esqueleto"]['Inicio'])
-        f_min = f_val.min() if not f_val.empty else datetime.now()
-        
-        fig.update_xaxes(
-            range=[f_min - timedelta(days=5), f_min + timedelta(days=120)],
-            dtick="M1", tickformat="%b %Y", showgrid=True, gridcolor='rgba(128,128,128,0.3)', griddash='dot'
+        # 2. AJUSTE DE EJES (Orden correcto y grilla)
+        fig.update_yaxes(
+            autorange="reversed", # <--- Pone Diseño arriba
+            showgrid=True, 
+            gridcolor='rgba(128,128,128,0.1)',
+            fixedrange=True # Evita zoom accidental en Y
         )
 
+        # 3. COMPACTACIÓN DE BARRAS (Gantt más delgado)
         fig.update_layout(
-            barmode='group', # ESTO SEPARA LAS BARRAS: Planificado arriba, Real abajo
-            height=450 * len(proyectos_sel), 
-            margin=dict(l=10, r=10, t=50, b=10),
+            barmode='group',
+            bargap=0.4,           # <--- Espacio entre bloques de etapas (hace las barras delgadas)
+            bargroupgap=0.1,      # <--- Espacio entre la barra celeste y la de color
+            height=250 * len(proyectos_sel), # <--- Altura reducida (antes era 450)
+            margin=dict(l=10, r=10, t=40, b=10),
             showlegend=False
         )
 
-        fig.update_traces(marker_line_color="white", marker_line_width=1, opacity=0.9)
-        fig.add_vline(x=datetime.now().timestamp() * 1000, line_width=2, line_dash="dash", line_color="red")
+        # 4. REFINAMIENTO VISUAL
+        fig.update_traces(
+            marker_line_width=0, # Quitar bordes para que se vea más limpio
+            opacity=0.85
+        )
+
+        # Línea de tiempo "Hoy"
+        fig.add_vline(x=datetime.now().timestamp() * 1000, line_width=1.5, line_dash="solid", line_color="red")
 
         st.plotly_chart(fig, use_container_width=True)
