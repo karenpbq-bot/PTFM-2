@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from base_datos import conectar, obtener_proyectos, obtener_gantt_real_data
 
 # =========================================================
-# 1. CONFIGURACIÓN Y CONSTANTES (ESQUELETO)
+# 1. ESQUELETO MAESTRO (INAMOVIBLE)
 # =========================================================
 ORDEN_ETAPAS = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
 
@@ -49,7 +49,7 @@ def mostrar():
         
         for p_nom in proyectos_sel:
             id_p = dict_proy[p_nom]
-            # Traemos todos los campos incluyendo las fechas p_...
+            # Traemos todos los campos de la tabla proyectos para el planificado
             res_p = supabase.table("proyectos").select("*").eq("id", id_p).execute()
             if not res_p.data: continue
             p_data = res_p.data[0]
@@ -57,11 +57,20 @@ def mostrar():
             avance_p = p_data.get('avance', 0)
             color_real = obtener_color_semaforo(avance_p)
 
-            # --- A. DATA PLANIFICADA (BARRAS GRISES) ---
+            # --- A. FORZAR ESQUELETO (Garantiza que aparezcan las 5 etapas) ---
+            # Creamos registros invisibles para que el eje Y siempre tenga las 5 filas
+            for etapa_fija in ORDEN_ETAPAS:
+                data_final.append(dict(
+                    Proyecto=p_nom, Etapa=etapa_fija, 
+                    Inicio=datetime.now(), Fin=datetime.now(), 
+                    Color="rgba(0,0,0,0)", Tipo="Z_Esqueleto" 
+                ))
+
+            # --- B. DATA PLANIFICADA (BARRAS GRISES) ---
             if not solo_real:
                 map_cols = [
-                    ("Diseño", 'p_dis_i', 'p_dis_f', "#BDC3C7"), # Gris Perla para modo oscuro
-                    ("Fabricación", 'p_fab_i', 'p_fab_f', "#5D6D7E"), # Gris Industrial
+                    ("Diseño", 'p_dis_i', 'p_dis_f', "#BDC3C7"), 
+                    ("Fabricación", 'p_fab_i', 'p_fab_f', "#5D6D7E"), 
                     ("Traslado", 'p_tra_i', 'p_tra_f', "#BDC3C7"),
                     ("Instalación", 'p_ins_i', 'p_ins_f', "#BDC3C7"),
                     ("Entrega", 'p_ent_i', 'p_ent_f', "#BDC3C7")
@@ -70,10 +79,10 @@ def mostrar():
                     if p_data.get(i_c) and p_data.get(f_c):
                         data_final.append(dict(
                             Proyecto=p_nom, Etapa=et, Inicio=p_data[i_c], 
-                            Fin=p_data[f_c], Color=col, Tipo="1. Planificado"
+                            Fin=p_data[f_c], Color=col, Tipo="1_Planificado"
                         ))
             
-            # --- B. DATA REAL (MAPEO DE HITOS) ---
+            # --- C. DATA REAL (EJECUTADO) ---
             df_r = obtener_gantt_real_data(id_p)
             if not df_r.empty:
                 for _, row in df_r.iterrows():
@@ -81,6 +90,7 @@ def mostrar():
                         str_f = str(row['fecha']).strip()
                         fecha_dt = datetime.strptime(str_f, '%d/%m/%Y') if "/" in str_f else datetime.strptime(str_f, '%Y-%m-%d')
                         
+                        # Mapeo lógico de hitos a etapas
                         hito_l = row['hito'].lower()
                         if "disen" in hito_l: et_m = "Diseño"
                         elif any(x in hito_l for x in ["fabric", "corte", "armad"]): et_m = "Fabricación"
@@ -91,16 +101,15 @@ def mostrar():
                         data_final.append(dict(
                             Proyecto=p_nom, Etapa=et_m, Inicio=fecha_dt.strftime('%Y-%m-%d'), 
                             Fin=(fecha_dt + timedelta(days=2)).strftime('%Y-%m-%d'), 
-                            Color=color_real, Tipo="2. Real"
+                            Color=color_real, Tipo="2_Real"
                         ))
                     except: continue
 
-        if not data_final:
-            st.warning("No hay datos para mostrar."); return
-
+        # --- D. CONSTRUCCIÓN DEL GRÁFICO ---
         df_fig = pd.DataFrame(data_final)
+        # Forzar orden de etapas
         df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
-        # Ordenamos por Tipo para que el Planificado (1) esté arriba del Real (2)
+        # Ordenar para que Planificado quede sobre Real
         df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, False, True])
         
         fig = px.timeline(
@@ -111,21 +120,23 @@ def mostrar():
 
         fig.update_yaxes(autorange="reversed", showgrid=True, gridcolor='rgba(128,128,128,0.2)')
 
-        # RANGO DE 4 MESES PARA VISIBILIDAD TOTAL
-        f_min = pd.to_datetime(df_fig['Inicio']).min()
+        # RANGO DE 4 MESES
+        f_min = pd.to_datetime(df_fig[df_fig['Tipo'] != "Z_Esqueleto"]['Inicio']).min()
+        if pd.isna(f_min): f_min = datetime.now()
+        
         fig.update_xaxes(
             range=[f_min - timedelta(days=5), f_min + timedelta(days=120)],
             dtick="M1", tickformat="%b %Y", showgrid=True, gridcolor='rgba(128,128,128,0.3)', griddash='dot'
         )
 
         fig.update_layout(
-            barmode='group', # Pone las barras una al lado de la otra (no encima)
+            barmode='group', # Muestra barras paralelas (Plan vs Real)
             height=450 * len(proyectos_sel), 
             margin=dict(l=10, r=10, t=50, b=10),
             showlegend=False
         )
 
-        # Resaltado para Modo Oscuro
+        # Visibilidad en modo oscuro
         fig.update_traces(marker_line_color="white", marker_line_width=1, opacity=0.9)
         fig.add_vline(x=datetime.now().timestamp() * 1000, line_width=2, line_dash="dash", line_color="red")
 
