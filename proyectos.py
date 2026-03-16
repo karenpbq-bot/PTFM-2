@@ -196,9 +196,20 @@ def mostrar():
             res_p = conectar().table("productos").select("*").eq("proyecto_id", st.session_state.id_p_sel).execute()
             if res_p.data:
                 df_matriz = pd.DataFrame(res_p.data)
-                cols_vis = [c for c in ['ubicacion', 'tipo', 'ctd', 'ml'] if c in df_matriz.columns]
-                st.dataframe(df_matriz[cols_vis], hide_index=True, use_container_width=True)
-                
+                columnas_map = {
+                    'ubicacion': 'Ubicación',
+                    'tipo': 'Tipo de Mueble',
+                    'ctd': 'Cantidad', # <--- Ahora se mostrará como "Cantidad"
+                    'ml': 'Metros Lineales (ml)'
+                }
+                # Filtramos solo las que existen para evitar errores
+                cols_existentes = [c for c in columnas_map.keys() if c in df_matriz.columns]
+                # Mostramos la tabla renombrada para que sea más profesional
+                st.dataframe(
+                    df_matriz[cols_existentes].rename(columns=columnas_map), 
+                    hide_index=True, 
+                    use_container_width=True
+                )
                 if st.button("🗑️ Vaciar Matriz del Proyecto", type="primary"):
                     conectar().table("productos").delete().eq("proyecto_id", st.session_state.id_p_sel).execute()
                     st.rerun()
