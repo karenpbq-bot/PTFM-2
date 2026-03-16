@@ -186,9 +186,18 @@ def mostrar(supervisor_id=None):
             if nueva_n != n_val:
                 conectar().table("seguimiento").update({"observaciones": nueva_n}).eq("producto_id", p['id']).eq("hito", HITOS_LIST[0]).execute()
 
+    # --- 3. RENDERIZADO DE MATRIZ CON LÓGICA DE AGRUPACIÓN ---
     if agrupar_por != "Sin grupo":
-        for n, g in df_f.groupby(agrupar_por.lower()):
-            st.markdown(f"**📂 {n}**"); render_matriz(g)
+        # Mapeamos el nombre visible al nombre real de la columna en la BD
+        campo_real = "ubicacion" if agrupar_por == "Ubicación" else "tipo"
+        
+        # Verificamos que la columna existe en el dataframe antes de agrupar
+        if campo_real in df_f.columns:
+            for n, g in df_f.groupby(campo_real):
+                st.markdown(f"**📂 {agrupar_por}: {n}**")
+                render_matriz(g)
+        else:
+            render_matriz(df_f)
     else:
         render_matriz(df_f)
     st.markdown('</div>', unsafe_allow_html=True)
