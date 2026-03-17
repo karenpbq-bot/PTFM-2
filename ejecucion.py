@@ -178,7 +178,6 @@ def mostrar():
             
             # 2. DETALLE INDIVIDUAL (Bucle para ver el detalle de los proyectos seleccionados)
             st.write("#### 🔍 Detalle por Hito Realizado")
-            from base_datos import obtener_avance_por_hitos
             for p_nom in proyectos_sel:
                 id_p_int = dict_proy[p_nom]
                 st.markdown(f"**Proyecto: {p_nom}**")
