@@ -27,8 +27,29 @@ def mostrar(supervisor_id=None):
     # --- B. ESTILOS ---
     st.markdown("""
         <style>
-        .sticky-top { position: sticky; top: 0; background: white; z-index: 1000; padding: 10px 0; border-bottom: 3px solid #FF8C00; }
-        .scroll-area { max-height: 550px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; }
+        /* Contenedor principal con scroll horizontal */
+        .matriz-container {
+            min-width: 1000px; 
+            overflow-x: auto;
+            padding-bottom: 20px;
+        }
+        /* Cabecera fija que respeta el ancho mínimo */
+        .sticky-top { 
+            position: sticky; 
+            top: 0; 
+            background: white; 
+            z-index: 1000; 
+            padding: 10px 0; 
+            border-bottom: 3px solid #FF8C00; 
+            min-width: 1000px;
+        }
+        .scroll-area { 
+            max-height: 550px; 
+            overflow-y: auto; 
+            border: 1px solid #eee; 
+            padding: 10px; 
+            border-radius: 5px; 
+        }
         [data-testid="stMetricValue"] { color: #FF8C00 !important; font-weight: bold !important; font-size: 24px !important; }
         </style>
     """, unsafe_allow_html=True)
