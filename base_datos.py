@@ -232,3 +232,12 @@ def actualizar_avance_real(id_p):
 def sincronizar_avances_etapas(id_p):
     """Alias para compatibilidad con módulos antiguos."""
     actualizar_avance_real(id_p)
+
+def obtener_gantt_real_data(id_p):
+    """Función de compatibilidad para evitar errores de importación."""
+    supabase = conectar()
+    prods = supabase.table("productos").select("id").eq("proyecto_id", id_p).execute()
+    ids = [p['id'] for p in prods.data]
+    if not ids: return pd.DataFrame()
+    res = supabase.table("seguimiento").select("hito, fecha").in_("producto_id", ids).execute()
+    return pd.DataFrame(res.data)
