@@ -116,96 +116,60 @@ def mostrar():
        # --- RENDERIZADO PESTAÑA GANTT ---
         with tab_gantt:
             if data_final:
-                # 1. Crear DataFrame y asegurar tipos de tiempo
                 df_fig = pd.DataFrame(data_final)
                 df_fig['Inicio'] = pd.to_datetime(df_fig['Inicio'], errors='coerce')
                 df_fig['Fin'] = pd.to_datetime(df_fig['Fin'], errors='coerce')
-                
-                # Limpiar filas con fechas inválidas
                 df_fig = df_fig.dropna(subset=['Inicio', 'Fin'])
 
-                # 2. VISIBILIDAD CRÍTICA < 24H: 
-                # Si el hito se marcó el mismo día, Plotly no dibuja nada (ancho 0). 
-                # Forzamos un ancho mínimo de 23 horas para que la barra de color sea visible.
                 mask_mismo_dia = (df_fig['Inicio'] == df_fig['Fin'])
                 df_fig.loc[mask_mismo_dia, 'Fin'] = df_fig.loc[mask_mismo_dia, 'Fin'] + pd.Timedelta(hours=23)
 
-                # 3. FILTRADO DE SEGURIDAD: 
-                # Solo mostramos barras que tengan color (Planificado y Real). 
-                # El esqueleto solo sirve para reservar espacio si no hubiera nada.
                 df_visible = df_fig[df_fig['Color'] != "rgba(0,0,0,0)"].copy()
 
                 if not df_visible.empty:
-                    # 4. ORDEN FORZADO: Aplicar categorías para que el eje Y respete el ORDEN_ETAPAS
-                    df_visible['Etapa'] = pd.Categorical(
-                        df_visible['Etapa'], 
-                        categories=ORDEN_ETAPAS, 
-                        ordered=True
-                    )
-                    
-                    # Ordenar físicamente el dataframe
+                    df_visible['Etapa'] = pd.Categorical(df_visible['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
                     df_visible = df_visible.sort_values(['Proyecto', 'Etapa'], ascending=[True, True])
 
-                    # 5. CREACIÓN DEL GRÁFICO
                     fig = px.timeline(
-                        df_visible, 
-                        x_start="Inicio", 
-                        x_end="Fin", 
-                        y="Etapa", 
-                        color="Color", 
-                        facet_col="Proyecto", 
-                        facet_col_wrap=1, 
-                        color_discrete_map="identity",
-                        category_orders={"Etapa": ORDEN_ETAPAS} # Refuerzo de orden Diseño -> Entrega
+                        df_visible, x_start="Inicio", x_end="Fin", y="Etapa", 
+                        color="Color", facet_col="Proyecto", facet_col_wrap=1, 
+                        color_discrete_map="identity", category_orders={"Etapa": ORDEN_ETAPAS}
                     )
 
-                    # 6. CONFIGURACIÓN VISUAL Y DE EJES
-                    # Invertimos el eje Y para que el orden sea de ARRIBA hacia ABAJO
                     fig.update_yaxes(autorange="reversed", showgrid=True)
                     
-                    # Ajuste del rango del eje X (Línea de tiempo)
                     f_plan_ref = df_visible[df_visible['Tipo'] == "1_Planificado"]['Inicio']
                     f_min_x = f_plan_ref.min() if not f_plan_ref.empty else pd.Timestamp.now()
+                    
                     fig.update_xaxes(
-                        range=[f_min_x - timedelta(days=2), f_min_x + timedelta(days=90)], 
-                        showgrid=True,
-                        dtick="M1", 
-                        tickformat="%b %Y"
+                        range=[f_min_x - timedelta(days=2), f_min_x + timedelta(days=45)], 
+                        showgrid=True, dtick="M1", tickformat="%b %Y",
+                        rangeslider=dict(visible=True, thickness=0.05)
                     )
 
-                    # Estilos de barra y Layout
+                    altura_por_proyecto = 300  
                     fig.update_layout(
-                        barmode='group', 
-                        bargap=0.4, 
-                        height=350 * len(proyectos_sel), # Altura dinámica según cantidad de proyectos
+                        barmode='group', bargap=0.2, 
+                        height=altura_por_proyecto * len(proyectos_sel), 
                         margin=dict(l=10, r=10, t=50, b=10), 
-                        showlegend=False
+                        showlegend=False, hovermode="y unified"
                     )
 
-                    # Quitar bordes de las barras y aplicar opacidad
                     fig.update_traces(marker_line_width=0, opacity=0.9)
+                    fig.add_vline(x=pd.Timestamp.now().timestamp() * 1000, line_width=2, line_color="red")
 
-                    # Línea de "HOY" (Indicador de tiempo actual)
-                    fig.add_vline(
-                        x=pd.Timestamp.now().timestamp() * 1000, 
-                        line_width=1.5, 
-                        line_dash="dash", 
-                        line_color="red"
-                    )
-
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': False})
                 else:
-                    st.info("No hay avances registrados para mostrar en el cronograma real.")
+                    st.info("No hay avances registrados para mostrar.")
             else:
-                st.warning("Seleccione al menos un proyecto para visualizar el Gantt.")
+                st.warning("Seleccione al menos un proyecto.")
 
-        # --- RENDERIZADO PESTAÑA MÉTRICAS ---
+        # --- RENDERIZADO PESTAÑA MÉTRICAS (Alineado con el 'with tab_gantt') ---
         with tab_metricas:
             st.subheader("📊 Centro de Métricas y Reportes")
             
             with st.expander("🔍 Filtros de Auditoría Detallada", expanded=False):
                 c1, c2 = st.columns(2)
-                # Obtenemos productos para inicializar filtros
                 id_p_ini = dict_proy[proyectos_sel[0]]
                 df_prods_ini = obtener_productos_por_proyecto(id_p_ini)
                 
@@ -219,13 +183,11 @@ def mostrar():
             for p_nom in proyectos_sel:
                 id_p_loop = dict_proy[p_nom]
                 df_prods_loop = obtener_productos_por_proyecto(id_p_loop)
-                
                 if f_ub: df_prods_loop = df_prods_loop[df_prods_loop['ubicacion'].isin(f_ub)]
                 if f_ti: df_prods_loop = df_prods_loop[df_prods_loop['tipo'].isin(f_ti)]
                 
                 if df_prods_loop.empty: continue
                 
-                # Nombre de variable distinto a la función para evitar UnboundLocalError
                 stats_hitos = obtener_avance_por_hitos(id_p_loop, df_productos_filtrados=df_prods_loop)
                 
                 GRUPOS_GANTT = {
@@ -237,21 +199,17 @@ def mostrar():
                 
                 fila = {"Proyecto": p_nom, "Muebles": len(df_prods_loop)}
                 for etapa, lista_h in GRUPOS_GANTT.items():
-                    val_etapa = sum([stats_hitos.get(h, 0) for h in lista_h]) / len(lista_h)
+                    # Evitar división por cero si la lista de hitos está mal configurada
+                    val_etapa = sum([stats_hitos.get(h, 0) for h in lista_h]) / len(lista_h) if lista_h else 0
                     fila[f"{etapa} %"] = round(val_etapa, 1)
                 reporte_final.append(fila)
 
             if reporte_final:
-                # CREAMOS EL DATAFRAME AQUÍ PARA QUE EXISTA EN TODA LA SECCIÓN
                 df_matriz_final = pd.DataFrame(reporte_final)
-                
                 st.dataframe(df_matriz_final, use_container_width=True, hide_index=True)
                 
-                # --- SECCIÓN C: BOTONES DE EXPORTACIÓN ---
                 st.divider()
                 col1, col2 = st.columns(2)
-                
-                # Reporte en CSV (Corregido el nombre de la variable)
                 csv_pct = df_matriz_final.to_csv(index=False).encode('utf-8')
                 col1.download_button("📥 Exportar Resumen (%)", csv_pct, "avance_proyectos.csv", "text/csv")
                 
@@ -260,21 +218,19 @@ def mostrar():
                     res_aud = supabase.table("productos_avance_valor").select("*").in_("codigo_proyecto", codigos_sel).execute()
                     if res_aud.data:
                         df_aud = pd.DataFrame(res_aud.data)
-                        st.download_button("📥 Descargar Excel de Auditoría", df_aud.to_csv(index=False).encode('utf-8'), "auditoria_piezas.csv", "text/csv")
-            else:
-                st.info("No hay datos para mostrar con los filtros seleccionados.")
-            st.divider()
+                        st.download_button("📥 Descargar Excel", df_aud.to_csv(index=False).encode('utf-8'), "auditoria.csv", "text/csv")
             
-            # 2. DETALLE INDIVIDUAL (Bucle para ver el detalle de los proyectos seleccionados)
+            st.divider()
             st.write("#### 🔍 Detalle por Hito Realizado")
             for p_nom in proyectos_sel:
                 id_p_int = dict_proy[p_nom]
                 st.markdown(f"**Proyecto: {p_nom}**")
                 avances = obtener_avance_por_hitos(id_p_int)
                 if avances:
-                    m = st.columns(4)
+                    # OPTIMIZACIÓN MÓVIL: Cambiado de 4 a 2 columnas para que quepan en el celular
+                    m = st.columns(2) 
                     for idx, (h, v) in enumerate(avances.items()):
-                        with m[idx % 4]:
+                        with m[idx % 2]:
                             st.metric(h, f"{v}%")
                             st.progress(v / 100)
                 st.divider()
