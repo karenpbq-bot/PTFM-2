@@ -106,33 +106,71 @@ def mostrar():
 
         # --- RENDERIZADO PESTAÑA MÉTRICAS ---
         with tab_metricas:
-            st.subheader("📋 Reporte Consolidado de Avances")
+            st.subheader("📊 Centro de Métricas y Reportes")
             
-            # 1. BOTÓN DE EXPORTACIÓN Y TABLA GENERAL (Se muestra una sola vez)
-            res_rep = supabase.table("avances_etapas").select("*").order("codigo").execute()
-            
-            if res_rep.data:
-                df_rep = pd.DataFrame(res_rep.data)
-                df_rep_visual = df_rep.rename(columns={
-                    "codigo": "Código", "proyecto_nombre": "Proyecto", "cliente": "Cliente",
-                    "av_diseno": "Diseño (%)", "av_fabricacion": "Fabricación (%)",
-                    "av_traslado": "Traslado (%)", "av_instalacion": "Instalación (%)",
-                    "av_entrega": "Entrega (%)"
-                })
+            # --- SECCIÓN A: FILTRO DINÁMICO ---
+            with st.expander("🔍 Filtros de Auditoría Detallada", expanded=False):
+                c1, c2 = st.columns(2)
+                # Buscamos productos del primer proyecto seleccionado para obtener ubicaciones/tipos
+                id_p_ref = dict_proy[proyectos_sel[0]]
+                df_prods_ref = obtener_productos_por_proyecto(id_p_ref)
                 
-                cols_ver = ["Código", "Proyecto", "Cliente", "Diseño (%)", "Fabricación (%)", "Traslado (%)", "Instalación (%)", "Entrega (%)"]
-                st.dataframe(df_rep_visual[cols_ver], use_container_width=True, hide_index=True)
+                filtro_ub = c1.multiselect("Filtrar por Ubicación:", options=df_prods_ref['ubicacion'].unique())
+                filtro_ti = c2.multiselect("Filtrar por Tipo:", options=df_prods_ref['tipo'].unique())
+
+            # --- SECCIÓN B: REPORTE MATRICIAL DINÁMICO ---
+            reporte_data = []
+            for p_nom in proyectos_sel:
+                id_p = dict_proy[p_nom]
+                df_prods = obtener_productos_por_proyecto(id_p)
                 
-                csv = df_rep_visual[cols_ver].to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Exportar Avances Globales (CSV)",
-                    data=csv,
-                    file_name=f"Reporte_Avances_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv",
-                    key="btn_export_hitos"
-                )
+                # Aplicar filtros si existen
+                if filtro_ub: df_prods = df_prods[df_prods['ubicacion'].isin(filtro_ub)]
+                if filtro_ti: df_prods = df_prods[df_prods['tipo'].isin(filtro_ti)]
+                
+                if df_prods.empty: continue
+                
+                # Calculamos avance filtrado al vuelo
+                # Importamos la función que calcula % por hitos (ya la tienes en base_datos)
+                avances_hitos = obtener_avance_por_hitos(id_p, df_productos_filtrados=df_prods)
+                
+                # Agrupamos hitos en las 5 etapas para el reporte matricial
+                GRUPOS = {
+                    "Diseño": ["Diseñado"],
+                    "Fabricación": ["Fabricado"],
+                    "Traslado": ["Material en Obra", "Material en Ubicación"],
+                    "Instalación": ["Instalación de Estructura", "Instalación de Puertas o Frentes"],
+                    "Entrega": ["Revisión y Observaciones", "Entrega"]
+                }
+                
+                fila = {"Proyecto": p_nom, "Productos": len(df_prods)}
+                for etapa, hitos in GRUPOS.items():
+                    # Promedio de los hitos que componen la etapa
+                    porc_etapa = sum([avances_hitos.get(h, 0) for h in hitos]) / len(hitos)
+                    fila[f"{etapa} %"] = round(porc_etapa, 1)
+                
+                reporte_data.append(fila)
+
+            if reporte_data:
+                df_matriz = pd.DataFrame(reporte_data)
+                st.dataframe(df_matriz, use_container_width=True, hide_index=True)
+                
+                # --- SECCIÓN C: BOTONES DE EXPORTACIÓN ---
+                st.write("---")
+                col1, col2 = st.columns(2)
+                
+                # Reporte 1: Porcentajes
+                csv_pct = df_matriz.to_csv(index=False).encode('utf-8')
+                col1.download_button("📥 Exportar Reporte de Avances (%)", csv_pct, "reporte_avances_pct.csv", "text/csv")
+                
+                # Reporte 2: Detalle por Producto y Hito (Auditoría total)
+                if st.button("📊 Generar Reporte Detallado por Producto"):
+                    res_auditoria = supabase.table("productos_avance_valor").select("*").in_("codigo_proyecto", [p.split(" — ")[0] for p in proyectos_sel]).execute()
+                    if res_auditoria.data:
+                        df_aud = pd.DataFrame(res_auditoria.data)
+                        st.download_button("📥 Descargar Auditoría (Logrados 0/1)", df_aud.to_csv(index=False).encode('utf-8'), "auditoria_muebles.csv", "text/csv")
             else:
-                st.info("No hay datos consolidados aún.")
+                st.info("Ajuste los filtros para ver datos.")
 
             st.divider()
             
