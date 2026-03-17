@@ -41,10 +41,12 @@ def mostrar():
                                     default=list(dict_proy.keys())[:1])
 
     if proyectos_sel:
+        # 1. DEFINICIÓN DE PESTAÑAS
         tab_gantt, tab_metricas = st.tabs(["📊 Cronograma Gantt", "📈 Métricas"])
         
         data_final = []
         
+        # --- PROCESAMIENTO DE DATOS PARA GANTT ---
         for p_nom in proyectos_sel:
             id_p = dict_proy[p_nom]
             res_p = supabase.table("proyectos").select("*").eq("id", id_p).execute()
@@ -62,17 +64,24 @@ def mostrar():
                     if p_data.get(i_c) and p_data.get(f_c):
                         data_final.append(dict(Proyecto=p_nom, Etapa=et, Inicio=p_data[i_c], Fin=p_data[f_c], Color="#87CEEB", Tipo="1_Planificado"))
             
-            # C. Data Real (DESDE TABLA CONSOLIDADA)
-            res_av = supabase.table("avances_etapas").select("*").eq("proyecto_id", id_p).execute()
-            for row in res_av.data:
-                if row['porcentaje'] > 0:
-                    color_etapa = obtener_color_semaforo(row['porcentaje'])
-                    data_final.append(dict(
-                        Proyecto=p_nom, Etapa=row['etapa'], 
-                        Inicio=row['fecha_inicio_real'], Fin=row['fecha_fin_real'], 
-                        Color=color_etapa, Tipo="2_Real"
-                    ))
+            # C. Data Real (Lectura Horizontal)
+            p_codigo_act = p_data.get('codigo')
+            res_av = supabase.table("avances_etapas").select("*").eq("codigo", p_codigo_act).execute()
+            
+            if res_av.data:
+                row_av = res_av.data[0]
+                mapeo_cols = {"Diseño": "av_diseno", "Fabricación": "av_fabricacion", "Traslado": "av_traslado", "Instalación": "av_instalacion", "Entrega": "av_entrega"}
+                
+                for etapa_nom, col_bd in mapeo_cols.items():
+                    porcentaje_etapa = row_av.get(col_bd, 0)
+                    if porcentaje_etapa > 0:
+                        color_etapa = obtener_color_semaforo(porcentaje_etapa)
+                        f_ini_r = row_av.get('fecha_inicio_real') or p_data.get(f'p_{etapa_nom[:3].lower()}_i')
+                        f_fin_r = row_av.get('fecha_fin_real') or p_data.get(f'p_{etapa_nom[:3].lower()}_f')
 
+                        data_final.append(dict(Proyecto=p_nom, Etapa=etapa_nom, Inicio=f_ini_r, Fin=f_fin_r, Color=color_etapa, Tipo="2_Real"))
+
+        # --- RENDERIZADO PESTAÑA GANTT ---
         with tab_gantt:
             if data_final:
                 df_fig = pd.DataFrame(data_final)
@@ -93,14 +102,47 @@ def mostrar():
                 fig.add_vline(x=pd.Timestamp.now().timestamp() * 1000, line_width=1.5, line_dash="dash", line_color="red")
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.warning("No hay datos para el Gantt.")
+                st.warning("No hay datos suficientes para generar el Gantt.")
 
+        # --- RENDERIZADO PESTAÑA MÉTRICAS ---
         with tab_metricas:
+            st.subheader("📋 Reporte Consolidado de Avances")
+            
+            # 1. BOTÓN DE EXPORTACIÓN Y TABLA GENERAL (Se muestra una sola vez)
+            res_rep = supabase.table("avances_etapas").select("*").order("codigo").execute()
+            
+            if res_rep.data:
+                df_rep = pd.DataFrame(res_rep.data)
+                df_rep_visual = df_rep.rename(columns={
+                    "codigo": "Código", "proyecto_nombre": "Proyecto", "cliente": "Cliente",
+                    "av_diseno": "Diseño (%)", "av_fabricacion": "Fabricación (%)",
+                    "av_traslado": "Traslado (%)", "av_instalacion": "Instalación (%)",
+                    "av_entrega": "Entrega (%)"
+                })
+                
+                cols_ver = ["Código", "Proyecto", "Cliente", "Diseño (%)", "Fabricación (%)", "Traslado (%)", "Instalación (%)", "Entrega (%)"]
+                st.dataframe(df_rep_visual[cols_ver], use_container_width=True, hide_index=True)
+                
+                csv = df_rep_visual[cols_ver].to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Exportar Avances Globales (CSV)",
+                    data=csv,
+                    file_name=f"Reporte_Avances_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    key="btn_export_hitos"
+                )
+            else:
+                st.info("No hay datos consolidados aún.")
+
+            st.divider()
+            
+            # 2. DETALLE INDIVIDUAL (Bucle para ver el detalle de los proyectos seleccionados)
+            st.write("#### 🔍 Detalle por Hito Realizado")
             from base_datos import obtener_avance_por_hitos
             for p_nom in proyectos_sel:
-                id_p = dict_proy[p_nom]
-                st.subheader(f"📈 Desglose: {p_nom}")
-                avances = obtener_avance_por_hitos(id_p)
+                id_p_int = dict_proy[p_nom]
+                st.markdown(f"**Proyecto: {p_nom}**")
+                avances = obtener_avance_por_hitos(id_p_int)
                 if avances:
                     m = st.columns(4)
                     for idx, (h, v) in enumerate(avances.items()):
