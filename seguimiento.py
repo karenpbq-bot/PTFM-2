@@ -27,29 +27,8 @@ def mostrar(supervisor_id=None):
     # --- B. ESTILOS ---
     st.markdown("""
         <style>
-        /* Contenedor principal con scroll horizontal */
-        .matriz-container {
-            min-width: 1000px; 
-            overflow-x: auto;
-            padding-bottom: 20px;
-        }
-        /* Cabecera fija que respeta el ancho mínimo */
-        .sticky-top { 
-            position: sticky; 
-            top: 0; 
-            background: white; 
-            z-index: 1000; 
-            padding: 10px 0; 
-            border-bottom: 3px solid #FF8C00; 
-            min-width: 1000px;
-        }
-        .scroll-area { 
-            max-height: 550px; 
-            overflow-y: auto; 
-            border: 1px solid #eee; 
-            padding: 10px; 
-            border-radius: 5px; 
-        }
+        .sticky-top { position: sticky; top: 0; background: white; z-index: 1000; padding: 10px 0; border-bottom: 3px solid #FF8C00; }
+        .scroll-area { max-height: 550px; overflow-y: auto; border: 1px solid #eee; padding: 10px; border-radius: 5px; }
         [data-testid="stMetricValue"] { color: #FF8C00 !important; font-weight: bold !important; font-size: 24px !important; }
         </style>
     """, unsafe_allow_html=True)
@@ -194,21 +173,13 @@ def mostrar(supervisor_id=None):
         st.rerun()
 
     # --- G. MATRIZ ---
-    st.markdown('<div class="matriz-container">', unsafe_allow_html=True)
     st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
-    # IMPORTANTE: Usamos la nueva proporción de columnas aquí
-    cols_h = st.columns([3] + [1]*8 + [2])
+    cols_h = st.columns([2.5] + [0.7]*8 + [1.5])
     cols_h[0].write("**Producto**")
     for i, h in enumerate(HITOS_LIST):
         with cols_h[i+1]:
             st.write(MAPEO_HITOS[h])
             if st.button("✅", key=f"bk_{h}"):
-                pass
-    cols_h[-1].write("**Notas**")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
-    
                 f_hoy = f_reg.strftime("%d/%m/%Y")
                 lote_grupal = []
                 for pid in df_f['id'].tolist():
@@ -238,7 +209,7 @@ def mostrar(supervisor_id=None):
     def render_matriz(df_r):
         rol = st.session_state.get('rol', 'Supervisor')
         for _, p in df_r.iterrows():
-            cols = st.columns([3] + [1]*8 + [2])
+            cols = st.columns([2.5] + [0.7]*8 + [1.5])
             # Mostramos el Código de Etiqueta primero para identificación rápida
             id_etiqueta = p.get('codigo_etiqueta', 'S/N')
             cols[0].write(f"**{id_etiqueta}** - {p['ubicacion']} ({p['tipo']})")
@@ -276,5 +247,4 @@ def mostrar(supervisor_id=None):
             st.markdown(f"**📂 {agrupar_por}: {n}**")
             render_matriz(g)
     else: render_matriz(df_f)
-    st.markdown('</div>', unsafe_allow_html=True) # Cierre de scroll-area
-    st.markdown('</div>', unsafe_allow_html=True) # Cierre de matriz-container
+    st.markdown('</div>', unsafe_allow_html=True)
