@@ -121,25 +121,32 @@ def mostrar():
                 id_p_ref = dict_proy[proyectos_sel[0]]
                 df_prods_ref = obtener_productos_por_proyecto(id_p_ref)
                 
-                filtro_ub = c1.multiselect("Filtrar por Ubicación:", options=df_prods_ref['ubicacion'].unique() if not df_prods_ref.empty else [])
-                filtro_ti = c2.multiselect("Filtrar por Tipo:", options=df_prods_ref['tipo'].unique() if not df_prods_ref.empty else [])
+                opciones_ub = df_prods_ref['ubicacion'].unique().tolist() if not df_prods_ref.empty else []
+                opciones_ti = df_prods_ref['tipo'].unique().tolist() if not df_prods_ref.empty else []
+                
+                filtro_ub = c1.multiselect("Filtrar por Ubicación:", options=opciones_ub)
+                filtro_ti = c2.multiselect("Filtrar por Tipo:", options=opciones_ti)
 
             # --- SECCIÓN B: REPORTE MATRICIAL DINÁMICO ---
             reporte_data = []
+            
             for p_nom in proyectos_sel:
                 id_p = dict_proy[p_nom]
+                # Usamos la función importada globalmente
                 df_prods = obtener_productos_por_proyecto(id_p)
                 
-                # Aplicar filtros si existen
-                if filtro_ub: df_prods = df_prods[df_prods['ubicacion'].isin(filtro_ub)]
-                if filtro_ti: df_prods = df_prods[df_prods['tipo'].isin(filtro_ti)]
+                # Aplicar filtros dinámicos
+                if filtro_ub:
+                    df_prods = df_prods[df_prods['ubicacion'].isin(filtro_ub)]
+                if filtro_ti:
+                    df_prods = df_prods[df_prods['tipo'].isin(filtro_ti)]
                 
-                if df_prods.empty: continue
+                if df_prods.empty:
+                    continue
                 
-                # Calculamos avance filtrado usando la función de base_datos
+                # Calculamos porcentajes basados en los productos filtrados
                 avances_hitos = obtener_avance_por_hitos(id_p, df_productos_filtrados=df_prods)
                 
-                # Mapeo a las 5 etapas
                 GRUPOS = {
                     "Diseño": ["Diseñado"],
                     "Fabricación": ["Fabricado"],
@@ -148,8 +155,9 @@ def mostrar():
                     "Entrega": ["Revisión y Observaciones", "Entrega"]
                 }
                 
-                fila = {"Proyecto": p_nom, "Productos": len(df_prods)}
+                fila = {"Proyecto": p_nom, "Cant. Muebles": len(df_prods)}
                 for etapa, hitos in GRUPOS.items():
+                    # Calculamos el promedio de los hitos que pertenecen a la etapa
                     porc_etapa = sum([avances_hitos.get(h, 0) for h in hitos]) / len(hitos)
                     fila[f"{etapa} %"] = round(porc_etapa, 1)
                 
@@ -159,24 +167,23 @@ def mostrar():
                 df_matriz = pd.DataFrame(reporte_data)
                 st.dataframe(df_matriz, use_container_width=True, hide_index=True)
                 
-                # Botones de exportación... (tu código anterior)
-                
                 # --- SECCIÓN C: BOTONES DE EXPORTACIÓN ---
-                st.write("---")
+                st.divider()
                 col1, col2 = st.columns(2)
                 
-                # Reporte 1: Porcentajes
+                # Reporte en CSV
                 csv_pct = df_matriz.to_csv(index=False).encode('utf-8')
-                col1.download_button("📥 Exportar Reporte de Avances (%)", csv_pct, "reporte_avances_pct.csv", "text/csv")
+                col1.download_button("📥 Exportar Resumen (%)", csv_pct, "avance_proyectos.csv", "text/csv")
                 
-                # Reporte 2: Detalle por Producto y Hito (Auditoría total)
-                if st.button("📊 Generar Reporte Detallado por Producto"):
-                    res_auditoria = supabase.table("productos_avance_valor").select("*").in_("codigo_proyecto", [p.split(" — ")[0] for p in proyectos_sel]).execute()
-                    if res_auditoria.data:
-                        df_aud = pd.DataFrame(res_auditoria.data)
-                        st.download_button("📥 Descargar Auditoría (Logrados 0/1)", df_aud.to_csv(index=False).encode('utf-8'), "auditoria_muebles.csv", "text/csv")
+                if col2.button("📊 Generar Auditoría 0/1 (Detallada)"):
+                    # Extraemos códigos de proyecto para filtrar la tabla de auditoría
+                    codigos_sel = [p.split(" — ")[0].replace("[", "").replace("]", "") for p in proyectos_sel]
+                    res_aud = supabase.table("productos_avance_valor").select("*").in_("codigo_proyecto", codigos_sel).execute()
+                    if res_aud.data:
+                        df_aud = pd.DataFrame(res_aud.data)
+                        st.download_button("📥 Descargar Excel de Auditoría", df_aud.to_csv(index=False).encode('utf-8'), "auditoria_piezas.csv", "text/csv")
             else:
-                st.info("Ajuste los filtros para ver datos.")
+                st.info("No hay datos para mostrar con los filtros seleccionados.")
 
             st.divider()
             
