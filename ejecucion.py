@@ -176,7 +176,7 @@ def mostrar():
                     # --- CONTROL DE ALTURA DINÁMICA CON TOPE ---
                     # Mantenemos tus 350px por proyecto, pero limitamos el máximo a 800px (ajustable)
                     # para que no se extienda demasiado en pantalla.
-                    altura_final = min(max(400, 350 * len(proyectos_sel)), 800)
+                    altura_plana = min(max(300, 280 * len(proyectos_sel)), 650)
 
                     # Estilos de barra y Layout
                     fig.update_layout(
