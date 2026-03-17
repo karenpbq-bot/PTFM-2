@@ -208,78 +208,143 @@ def mostrar():
         with tab_metricas:
             st.subheader("📊 Centro de Métricas y Reportes")
             
-            with st.expander("🔍 Filtros de Auditoría Detallada", expanded=False):
+            # 1. FILTROS DE AUDITORÍA (Estilo Seguimiento)
+            with st.expander("🔍 Filtros por Producto", expanded=True):
                 c1, c2 = st.columns(2)
-                # Obtenemos productos para inicializar filtros
-                id_p_ini = dict_proy[proyectos_sel[0]]
-                df_prods_ini = obtener_productos_por_proyecto(id_p_ini)
+                # Obtenemos todos los productos de los proyectos seleccionados para llenar los filtros
+                ids_proy_busqueda = [dict_proy[p] for p in proyectos_sel]
                 
-                opciones_u = sorted(df_prods_ini['ubicacion'].unique().tolist()) if not df_prods_ini.empty else []
-                opciones_t = sorted(df_prods_ini['tipo'].unique().tolist()) if not df_prods_ini.empty else []
+                # Consolidamos opciones de filtros de todos los proyectos seleccionados
+                lista_ubicaciones = []
+                lista_tipos = []
+                for id_p_bus in ids_proy_busqueda:
+                    df_temp = obtener_productos_por_proyecto(id_p_bus)
+                    if not df_temp.empty:
+                        lista_ubicaciones.extend(df_temp['ubicacion'].unique().tolist())
+                        lista_tipos.extend(df_temp['tipo'].unique().tolist())
                 
-                f_ub = c1.multiselect("Filtrar por Ubicación:", options=opciones_u)
-                f_ti = c2.multiselect("Filtrar por Tipo:", options=opciones_t)
+                opciones_u = sorted(list(set(lista_ubicaciones)))
+                opciones_t = sorted(list(set(lista_tipos)))
+                
+                f_ub = c1.multiselect("Filtrar por Ubicación:", options=opciones_u, key="f_ub_metricas")
+                f_ti = c2.multiselect("Filtrar por Tipo:", options=opciones_t, key="f_ti_metricas")
 
-            reporte_final = []
+            # Estructura de almacenamiento para exportación
+            reporte_etapas = []
+            reporte_hitos = []
+
+            # =========================================================
+            # SECCIÓN A: RESUMEN POR ETAPAS (ESTANDARIZADO)
+            # =========================================================
+            st.markdown("#### 🏗️ Avances por Etapa")
+            
+            # Encabezados de la "Tabla"
+            h_cols = st.columns([2, 0.8, 1, 1, 1, 1, 1])
+            titulos = ["Proyecto", "Cant.", "Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
+            for i, t in enumerate(titulos): h_cols[i].markdown(f"**{t}**")
+            st.divider()
+
             for p_nom in proyectos_sel:
                 id_p_loop = dict_proy[p_nom]
                 df_prods_loop = obtener_productos_por_proyecto(id_p_loop)
                 
+                # Aplicar filtros
                 if f_ub: df_prods_loop = df_prods_loop[df_prods_loop['ubicacion'].isin(f_ub)]
                 if f_ti: df_prods_loop = df_prods_loop[df_prods_loop['tipo'].isin(f_ti)]
                 
                 if df_prods_loop.empty: continue
                 
-                # Nombre de variable distinto a la función para evitar UnboundLocalError
                 stats_hitos = obtener_avance_por_hitos(id_p_loop, df_productos_filtrados=df_prods_loop)
                 
-                GRUPOS_GANTT = {
-                    "Diseño": ["Diseñado"], "Fabricación": ["Fabricado"],
-                    "Traslado": ["Material en Obra", "Material en Ubicación"],
-                    "Instalación": ["Instalación de Estructura", "Instalación de Puertas o Frentes"],
-                    "Entrega": ["Revisión y Observaciones", "Entrega"]
+                # Cálculo de Etapas
+                GRUPOS_AVANCE = {
+                    "Diseño": stats_hitos.get("Diseñado", 0),
+                    "Fabricación": stats_hitos.get("Fabricado", 0),
+                    "Traslado": round((stats_hitos.get("Material en Obra", 0) + stats_hitos.get("Material en Ubicación", 0)) / 2, 1),
+                    "Instalación": round((stats_hitos.get("Instalación de Estructura", 0) + stats_hitos.get("Instalación de Puertas o Frentes", 0)) / 2, 1),
+                    "Entrega": round((stats_hitos.get("Revisión y Observaciones", 0) + stats_hitos.get("Entrega", 0)) / 2, 1)
                 }
-                
-                fila = {"Proyecto": p_nom, "Muebles": len(df_prods_loop)}
-                for etapa, lista_h in GRUPOS_GANTT.items():
-                    val_etapa = sum([stats_hitos.get(h, 0) for h in lista_h]) / len(lista_h)
-                    fila[f"{etapa} %"] = round(val_etapa, 1)
-                reporte_final.append(fila)
 
-            if reporte_final:
-                # CREAMOS EL DATAFRAME AQUÍ PARA QUE EXISTA EN TODA LA SECCIÓN
-                df_matriz_final = pd.DataFrame(reporte_final)
+                # Fila visual
+                r = st.columns([2, 0.8, 1, 1, 1, 1, 1])
+                r[0].write(f"**{p_nom}**")
+                r[1].write(f"{len(df_prods_loop)}")
                 
-                st.dataframe(df_matriz_final, use_container_width=True, hide_index=True)
+                for i, (etapa, valor) in enumerate(GRUPOS_AVANCE.items()):
+                    with r[i+2]:
+                        color_s = obtener_color_semaforo(valor)
+                        st.markdown(f"<p style='margin:0; font-size:13px; font-weight:bold; color:{color_s};'>{valor}%</p>", unsafe_allow_html=True)
+                        st.progress(valor / 100)
                 
-                # --- SECCIÓN C: BOTONES DE EXPORTACIÓN ---
-                st.divider()
-                col1, col2 = st.columns(2)
+                # Guardar para reporte CSV Etapas
+                fila_etapa = {"Proyecto": p_nom, "Muebles": len(df_prods_loop)}
+                fila_etapa.update({f"{k} %": v for k, v in GRUPOS_AVANCE.items()})
+                reporte_etapas.append(fila_etapa)
                 
-                # Reporte en CSV (Corregido el nombre de la variable)
-                csv_pct = df_matriz_final.to_csv(index=False).encode('utf-8')
-                col1.download_button("📥 Exportar Resumen (%)", csv_pct, "avance_proyectos.csv", "text/csv")
+                # Guardar para reporte CSV Hitos
+                fila_hitos = {"Proyecto": p_nom, "Muebles": len(df_prods_loop)}
+                fila_hitos.update({f"{k} %": v for k, v in stats_hitos.items()})
+                reporte_hitos.append(fila_hitos)
+
+            # =========================================================
+            # SECCIÓN B: DETALLE POR HITO (MISMA ESTÉTICA)
+            # =========================================================
+            st.divider()
+            st.markdown("#### 🔍 Detalle por Hito Individual")
+            
+            # Encabezados para Hitos (8 hitos)
+            # Usamos columnas más pequeñas para que quepan
+            h_cols_h = st.columns([1.5] + [0.8]*8)
+            h_cols_h[0].markdown("**Proyecto**")
+            for i, h in enumerate(stats_hitos.keys()):
+                # Usamos iniciales o nombres cortos para el encabezado
+                h_cols_h[i+1].markdown(f"<p style='font-size:10px;'><b>{h}</b></p>", unsafe_allow_html=True)
+
+            for p_nom in proyectos_sel:
+                # Buscamos en el reporte ya calculado para no repetir procesos
+                data_p = next((item for item in reporte_hitos if item["Proyecto"] == p_nom), None)
+                if not data_p: continue
                 
-                if col2.button("📊 Generar Auditoría 0/1 (Detallada)"):
+                rh = st.columns([1.5] + [0.8]*8)
+                rh[0].write(f"<p style='font-size:12px;'>{p_nom}</p>", unsafe_allow_html=True)
+                
+                for i, hito_nom in enumerate(stats_hitos.keys()):
+                    val_h = data_p.get(f"{hito_nom} %", 0)
+                    with rh[i+1]:
+                        c_h = obtener_color_semaforo(val_h)
+                        st.markdown(f"<p style='margin:0; font-size:11px; color:{c_h};'>{val_h}%</p>", unsafe_allow_html=True)
+                        st.progress(val_h / 100)
+
+            # =========================================================
+            # SECCIÓN C: EXPORTACIÓN
+            # =========================================================
+            st.divider()
+            st.write("#### 📤 Exportar Resultados Filtrados")
+            if reporte_etapas:
+                c_exp1, c_exp2, c_exp3 = st.columns(3)
+                
+                # 1. Exportar Etapas
+                df_exp_etapas = pd.DataFrame(reporte_etapas)
+                c_exp1.download_button(
+                    "📥 Resumen Etapas (CSV)", 
+                    df_exp_etapas.to_csv(index=False).encode('utf-8'), 
+                    "avance_etapas_filtrado.csv", "text/csv", use_container_width=True
+                )
+                
+                # 2. Exportar Hitos
+                df_exp_hitos = pd.DataFrame(reporte_hitos)
+                c_exp2.download_button(
+                    "📥 Detalle Hitos (CSV)", 
+                    df_exp_hitos.to_csv(index=False).encode('utf-8'), 
+                    "avance_hitos_filtrado.csv", "text/csv", use_container_width=True
+                )
+                
+                # 3. Auditoría 0/1 (Mantiene funcionalidad original)
+                if c_exp3.button("📊 Auditoría Piezas (0/1)", use_container_width=True):
                     codigos_sel = [p.split(" — ")[0].replace("[", "").replace("]", "") for p in proyectos_sel]
                     res_aud = supabase.table("productos_avance_valor").select("*").in_("codigo_proyecto", codigos_sel).execute()
                     if res_aud.data:
                         df_aud = pd.DataFrame(res_aud.data)
-                        st.download_button("📥 Descargar Excel de Auditoría", df_aud.to_csv(index=False).encode('utf-8'), "auditoria_piezas.csv", "text/csv")
+                        st.download_button("📥 Descargar Excel Auditoría", df_aud.to_csv(index=False).encode('utf-8'), "auditoria_detallada.csv", "text/csv")
             else:
-                st.info("No hay datos para mostrar con los filtros seleccionados.")
-            st.divider()
-            
-            # 2. DETALLE INDIVIDUAL (Bucle para ver el detalle de los proyectos seleccionados)
-            st.write("#### 🔍 Detalle por Hito Realizado")
-            for p_nom in proyectos_sel:
-                id_p_int = dict_proy[p_nom]
-                st.markdown(f"**Proyecto: {p_nom}**")
-                avances = obtener_avance_por_hitos(id_p_int)
-                if avances:
-                    m = st.columns(4)
-                    for idx, (h, v) in enumerate(avances.items()):
-                        with m[idx % 4]:
-                            st.metric(h, f"{v}%")
-                            st.progress(v / 100)
-                st.divider()
+                st.info("No hay datos para exportar con los filtros actuales.")
