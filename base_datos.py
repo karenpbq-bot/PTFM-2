@@ -68,8 +68,37 @@ def crear_proyecto(codigo, nombre, cliente, partida):
         st.error(f"Error al crear proyecto: {e}")
         return None
 
-def eliminar_proyecto(id_p):
-    return conectar().table("proyectos").delete().eq("id", id_p).execute()
+# Agrega esta función al final de base_datos.py o busca la existente para mejorarla
+
+def eliminar_proyecto_completo(id_proyecto):
+    """Borra toda la información vinculada a un proyecto en orden jerárquico."""
+    try:
+        supabase = conectar()
+        
+        # 1. Obtener IDs de los productos vinculados al proyecto
+        res_prods = supabase.table("productos").select("id").eq("proyecto_id", id_proyecto).execute()
+        ids_productos = [p['id'] for p in res_prods.data]
+        
+        if ids_productos:
+            # 2. Borrar seguimientos de esos productos (Usando una subconsulta o filtro por proyecto si fuera posible)
+            # Como los seguimientos no tienen 'proyecto_id' directo, lo ideal es borrarlos por lotes o así:
+            supabase.table("seguimiento").delete().in_("producto_id", ids_productos).execute()
+        
+        # 3. Borrar incidencias/requerimientos del proyecto
+        supabase.table("incidencias").delete().eq("proyecto_id", id_proyecto).execute()
+
+        # NUEVO: Borrar registros de auditoría (IMPORTANTE)
+        # Tienes una tabla llamada 'productos_avance_valor' que también guarda datos por producto
+        if ids_productos:
+            supabase.table("productos_avance_valor").delete().in_("producto_id", ids_productos).execute()
+        
+        # 5. Finalmente, borrar el proyecto
+        res = supabase.table("proyectos").delete().eq("id", id_proyecto).execute()
+        
+        return True
+    except Exception as e:
+        st.error(f"Error técnico al eliminar: {e}")
+        return False
 
 # =========================================================
 # 4. GESTIÓN DE PRODUCTOS Y SEGUIMIENTO
