@@ -113,59 +113,91 @@ def mostrar():
                                 Tipo="2_Real"
                             ))
 
-        # --- RENDERIZADO PESTAÑA GANTT ---
+       # --- RENDERIZADO PESTAÑA GANTT ---
         with tab_gantt:
             if data_final:
+                # 1. Crear DataFrame y asegurar tipos de tiempo
                 df_fig = pd.DataFrame(data_final)
                 df_fig['Inicio'] = pd.to_datetime(df_fig['Inicio'], errors='coerce')
                 df_fig['Fin'] = pd.to_datetime(df_fig['Fin'], errors='coerce')
+                
+                # Limpiar filas con fechas inválidas
                 df_fig = df_fig.dropna(subset=['Inicio', 'Fin'])
 
-                # 1. ORDEN FORZADO: Definimos el orden de arriba hacia abajo
-                df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
-                
-                # 2. VISIBILIDAD < 24H: Si Inicio y Fin son iguales, sumamos un margen visual para que la barra exista
-                mask_mismo_dia = df_fig['Inicio'] == df_fig['Fin']
+                # 2. VISIBILIDAD CRÍTICA < 24H: 
+                # Si el hito se marcó el mismo día, Plotly no dibuja nada (ancho 0). 
+                # Forzamos un ancho mínimo de 23 horas para que la barra de color sea visible.
+                mask_mismo_dia = (df_fig['Inicio'] == df_fig['Fin'])
                 df_fig.loc[mask_mismo_dia, 'Fin'] = df_fig.loc[mask_mismo_dia, 'Fin'] + pd.Timedelta(hours=23)
 
-                # Ordenamos el dataframe para que Plotly respete las categorías
-                df_fig = df_fig.sort_values(['Proyecto', 'Etapa'], ascending=[True, True])
-                
-                fig = px.timeline(
-                    df_fig, 
-                    x_start="Inicio", 
-                    x_end="Fin", 
-                    y="Etapa", 
-                    color="Color", 
-                    facet_col="Proyecto", 
-                    facet_col_wrap=1, 
-                    color_discrete_map="identity",
-                    category_orders={"Etapa": ORDEN_ETAPAS} # Refuerza el orden visual
-                )
-                
-                # Configuración de ejes
-                f_plan_ref = df_fig[df_fig['Tipo'] == "1_Planificado"]['Inicio']
-                f_min_x = f_plan_ref.min() if not f_plan_ref.empty else pd.Timestamp.now()
-                
-                fig.update_xaxes(range=[f_min_x - timedelta(days=2), f_min_x + timedelta(days=90)], showgrid=True)
-                
-                # 3. REVERSA EL EJE Y: Para que el orden sea Diseño (arriba) -> Entrega (abajo)
-                fig.update_yaxes(autorange="reversed", showgrid=True)
-                
-                fig.update_layout(
-                    barmode='group', 
-                    bargap=0.4, 
-                    height=300 * len(proyectos_sel), 
-                    margin=dict(l=10, r=10, t=50, b=10), 
-                    showlegend=False
-                )
-                
-                fig.update_traces(marker_line_width=0, opacity=0.9)
-                fig.add_vline(x=pd.Timestamp.now().timestamp() * 1000, line_width=1.5, line_dash="dash", line_color="red")
-                
-                st.plotly_chart(fig, use_container_width=True)
+                # 3. FILTRADO DE SEGURIDAD: 
+                # Solo mostramos barras que tengan color (Planificado y Real). 
+                # El esqueleto solo sirve para reservar espacio si no hubiera nada.
+                df_visible = df_fig[df_fig['Color'] != "rgba(0,0,0,0)"].copy()
+
+                if not df_visible.empty:
+                    # 4. ORDEN FORZADO: Aplicar categorías para que el eje Y respete el ORDEN_ETAPAS
+                    df_visible['Etapa'] = pd.Categorical(
+                        df_visible['Etapa'], 
+                        categories=ORDEN_ETAPAS, 
+                        ordered=True
+                    )
+                    
+                    # Ordenar físicamente el dataframe
+                    df_visible = df_visible.sort_values(['Proyecto', 'Etapa'], ascending=[True, True])
+
+                    # 5. CREACIÓN DEL GRÁFICO
+                    fig = px.timeline(
+                        df_visible, 
+                        x_start="Inicio", 
+                        x_end="Fin", 
+                        y="Etapa", 
+                        color="Color", 
+                        facet_col="Proyecto", 
+                        facet_col_wrap=1, 
+                        color_discrete_map="identity",
+                        category_orders={"Etapa": ORDEN_ETAPAS} # Refuerzo de orden Diseño -> Entrega
+                    )
+
+                    # 6. CONFIGURACIÓN VISUAL Y DE EJES
+                    # Invertimos el eje Y para que el orden sea de ARRIBA hacia ABAJO
+                    fig.update_yaxes(autorange="reversed", showgrid=True)
+                    
+                    # Ajuste del rango del eje X (Línea de tiempo)
+                    f_plan_ref = df_visible[df_visible['Tipo'] == "1_Planificado"]['Inicio']
+                    f_min_x = f_plan_ref.min() if not f_plan_ref.empty else pd.Timestamp.now()
+                    fig.update_xaxes(
+                        range=[f_min_x - timedelta(days=2), f_min_x + timedelta(days=90)], 
+                        showgrid=True,
+                        dtick="M1", 
+                        tickformat="%b %Y"
+                    )
+
+                    # Estilos de barra y Layout
+                    fig.update_layout(
+                        barmode='group', 
+                        bargap=0.4, 
+                        height=350 * len(proyectos_sel), # Altura dinámica según cantidad de proyectos
+                        margin=dict(l=10, r=10, t=50, b=10), 
+                        showlegend=False
+                    )
+
+                    # Quitar bordes de las barras y aplicar opacidad
+                    fig.update_traces(marker_line_width=0, opacity=0.9)
+
+                    # Línea de "HOY" (Indicador de tiempo actual)
+                    fig.add_vline(
+                        x=pd.Timestamp.now().timestamp() * 1000, 
+                        line_width=1.5, 
+                        line_dash="dash", 
+                        line_color="red"
+                    )
+
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("No hay avances registrados para mostrar en el cronograma real.")
             else:
-                st.warning("No hay datos suficientes para generar el Gantt.")
+                st.warning("Seleccione al menos un proyecto para visualizar el Gantt.")
 
         # --- RENDERIZADO PESTAÑA MÉTRICAS ---
         with tab_metricas:
