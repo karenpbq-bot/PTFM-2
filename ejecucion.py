@@ -150,17 +150,14 @@ def mostrar():
                         range=[f_min_x - timedelta(days=2), f_min_x + timedelta(days=90)], 
                         showgrid=True,
                         dtick="M1", 
-                        tickformat="%b %Y",
-                        rangeslider=dict(visible=True, thickness=0.05) # Zoom habilitado
+                        tickformat="%b %Y"
                     )
 
-                    # --- CAMBIOS DE ALTURA Y ESPACIO ---
-                    # Reducimos bargap para que las barras sean más gruesas y se acerquen entre sí
-                    # Reducimos height para aplanar el gráfico completo
+                    # --- CAMBIOS SOLICITADOS: ALTURA FIJA Y MENOS ESPACIO ---
                     fig.update_layout(
                         barmode='group', 
-                        bargap=0.2, 
-                        height=250 * len(proyectos_sel), # Altura fija aplanada por proyecto
+                        bargap=0.2, # Reducción de espacio entre barras (más juntas)
+                        height=200 * len(proyectos_sel), # Altura aplanada fija por proyecto
                         margin=dict(l=10, r=10, t=50, b=10), 
                         showlegend=False
                     )
