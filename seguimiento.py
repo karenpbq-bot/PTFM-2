@@ -4,6 +4,13 @@ from datetime import datetime
 import io
 from base_datos import conectar, obtener_proyectos, obtener_productos_por_proyecto, obtener_seguimiento
 
+# --- AQUÍ VA EL CÓDIGO ---
+st.set_page_config(
+    page_title="Sistema de Seguimiento",
+    layout="wide", # <--- ESTO ES LO QUE PERMITE EL GIRO SIN DISTORSIÓN
+    initial_sidebar_state="collapsed"
+)
+
 # =========================================================
 # 1. CONFIGURACIÓN Y DICCIONARIOS MAESTROS
 # =========================================================
