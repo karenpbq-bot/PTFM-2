@@ -76,6 +76,7 @@ def mostrar():
             
             if res_av.data:
                 row_av = res_av.data[0]
+                # Mapeo exacto de columnas de tu base de datos
                 mapeo_cols = {
                     "Diseño": "av_diseno", 
                     "Fabricación": "av_fabricacion", 
@@ -84,6 +85,7 @@ def mostrar():
                     "Entrega": "av_entrega"
                 }
                 
+                # Extraemos las fechas base del proyecto en esta tabla
                 f_i_raw = row_av.get('fecha_inicio_real')
                 f_f_raw = row_av.get('fecha_fin_real')
 
@@ -93,9 +95,12 @@ def mostrar():
                         
                         if porcentaje_etapa > 0:
                             color_etapa = obtener_color_semaforo(porcentaje_etapa)
+                            
+                            # Convertimos a fecha real de Python
                             dt_i = pd.to_datetime(f_i_raw)
                             dt_f = pd.to_datetime(f_f_raw)
 
+                            # PARCHE DE VISIBILIDAD: Si es el mismo día, sumamos 23 horas
                             if dt_i.date() == dt_f.date():
                                 dt_f = dt_i + pd.Timedelta(hours=23)
 
@@ -108,28 +113,40 @@ def mostrar():
                                 Tipo="2_Real"
                             ))
 
-        # --- RENDERIZADO PESTAÑA GANTT ---
+       # --- RENDERIZADO PESTAÑA GANTT ---
         with tab_gantt:
             if data_final:
+                # 1. Crear DataFrame y asegurar tipos de tiempo
                 df_fig = pd.DataFrame(data_final)
                 df_fig['Inicio'] = pd.to_datetime(df_fig['Inicio'], errors='coerce')
                 df_fig['Fin'] = pd.to_datetime(df_fig['Fin'], errors='coerce')
+                
+                # Limpiar filas con fechas inválidas
                 df_fig = df_fig.dropna(subset=['Inicio', 'Fin'])
 
+                # 2. VISIBILIDAD CRÍTICA < 24H: 
+                # Si el hito se marcó el mismo día, Plotly no dibuja nada (ancho 0). 
+                # Forzamos un ancho mínimo de 23 horas para que la barra de color sea visible.
                 mask_mismo_dia = (df_fig['Inicio'] == df_fig['Fin'])
                 df_fig.loc[mask_mismo_dia, 'Fin'] = df_fig.loc[mask_mismo_dia, 'Fin'] + pd.Timedelta(hours=23)
 
+                # 3. FILTRADO DE SEGURIDAD: 
+                # Solo mostramos barras que tengan color (Planificado y Real). 
+                # El esqueleto solo sirve para reservar espacio si no hubiera nada.
                 df_visible = df_fig[df_fig['Color'] != "rgba(0,0,0,0)"].copy()
 
                 if not df_visible.empty:
+                    # 4. ORDEN FORZADO: Aplicar categorías para que el eje Y respete el ORDEN_ETAPAS
                     df_visible['Etapa'] = pd.Categorical(
                         df_visible['Etapa'], 
                         categories=ORDEN_ETAPAS, 
                         ordered=True
                     )
                     
+                    # Ordenar físicamente el dataframe
                     df_visible = df_visible.sort_values(['Proyecto', 'Etapa'], ascending=[True, True])
 
+                    # 5. CREACIÓN DEL GRÁFICO
                     fig = px.timeline(
                         df_visible, 
                         x_start="Inicio", 
@@ -139,11 +156,14 @@ def mostrar():
                         facet_col="Proyecto", 
                         facet_col_wrap=1, 
                         color_discrete_map="identity",
-                        category_orders={"Etapa": ORDEN_ETAPAS}
+                        category_orders={"Etapa": ORDEN_ETAPAS} # Refuerzo de orden Diseño -> Entrega
                     )
 
+                    # 6. CONFIGURACIÓN VISUAL Y DE EJES
+                    # Invertimos el eje Y para que el orden sea de ARRIBA hacia ABAJO
                     fig.update_yaxes(autorange="reversed", showgrid=True)
                     
+                    # Ajuste del rango del eje X (Línea de tiempo)
                     f_plan_ref = df_visible[df_visible['Tipo'] == "1_Planificado"]['Inicio']
                     f_min_x = f_plan_ref.min() if not f_plan_ref.empty else pd.Timestamp.now()
                     fig.update_xaxes(
@@ -153,17 +173,19 @@ def mostrar():
                         tickformat="%b %Y"
                     )
 
-                    # --- AJUSTES DE ALTURA Y ESPACIO (CAMBIOS SOLICITADOS) ---
+                    # Estilos de barra y Layout
                     fig.update_layout(
                         barmode='group', 
-                        bargap=0.15, # Barras más juntas (antes 0.4)
-                        height=220 * len(proyectos_sel), # Altura reducida y fija por proyecto (antes 350)
+                        bargap=0.4, 
+                        height=350 * len(proyectos_sel), # Altura dinámica según cantidad de proyectos
                         margin=dict(l=10, r=10, t=50, b=10), 
                         showlegend=False
                     )
 
+                    # Quitar bordes de las barras y aplicar opacidad
                     fig.update_traces(marker_line_width=0, opacity=0.9)
 
+                    # Línea de "HOY" (Indicador de tiempo actual)
                     fig.add_vline(
                         x=pd.Timestamp.now().timestamp() * 1000, 
                         line_width=1.5, 
@@ -183,6 +205,7 @@ def mostrar():
             
             with st.expander("🔍 Filtros de Auditoría Detallada", expanded=False):
                 c1, c2 = st.columns(2)
+                # Obtenemos productos para inicializar filtros
                 id_p_ini = dict_proy[proyectos_sel[0]]
                 df_prods_ini = obtener_productos_por_proyecto(id_p_ini)
                 
@@ -202,6 +225,7 @@ def mostrar():
                 
                 if df_prods_loop.empty: continue
                 
+                # Nombre de variable distinto a la función para evitar UnboundLocalError
                 stats_hitos = obtener_avance_por_hitos(id_p_loop, df_productos_filtrados=df_prods_loop)
                 
                 GRUPOS_GANTT = {
@@ -218,12 +242,16 @@ def mostrar():
                 reporte_final.append(fila)
 
             if reporte_final:
+                # CREAMOS EL DATAFRAME AQUÍ PARA QUE EXISTA EN TODA LA SECCIÓN
                 df_matriz_final = pd.DataFrame(reporte_final)
+                
                 st.dataframe(df_matriz_final, use_container_width=True, hide_index=True)
                 
+                # --- SECCIÓN C: BOTONES DE EXPORTACIÓN ---
                 st.divider()
                 col1, col2 = st.columns(2)
                 
+                # Reporte en CSV (Corregido el nombre de la variable)
                 csv_pct = df_matriz_final.to_csv(index=False).encode('utf-8')
                 col1.download_button("📥 Exportar Resumen (%)", csv_pct, "avance_proyectos.csv", "text/csv")
                 
@@ -237,6 +265,7 @@ def mostrar():
                 st.info("No hay datos para mostrar con los filtros seleccionados.")
             st.divider()
             
+            # 2. DETALLE INDIVIDUAL (Bucle para ver el detalle de los proyectos seleccionados)
             st.write("#### 🔍 Detalle por Hito Realizado")
             for p_nom in proyectos_sel:
                 id_p_int = dict_proy[p_nom]
