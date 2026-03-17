@@ -94,18 +94,49 @@ def mostrar():
                 df_fig['Inicio'] = pd.to_datetime(df_fig['Inicio'], errors='coerce')
                 df_fig['Fin'] = pd.to_datetime(df_fig['Fin'], errors='coerce')
                 df_fig = df_fig.dropna(subset=['Inicio', 'Fin'])
+
+                # 1. ORDEN FORZADO: Definimos el orden de arriba hacia abajo
                 df_fig['Etapa'] = pd.Categorical(df_fig['Etapa'], categories=ORDEN_ETAPAS, ordered=True)
-                df_fig = df_fig.sort_values(['Proyecto', 'Etapa', 'Tipo'], ascending=[True, True, True])
                 
-                fig = px.timeline(df_fig, x_start="Inicio", x_end="Fin", y="Etapa", color="Color", facet_col="Proyecto", facet_col_wrap=1, color_discrete_map="identity", category_orders={"Etapa": ORDEN_ETAPAS})
+                # 2. VISIBILIDAD < 24H: Si Inicio y Fin son iguales, sumamos un margen visual para que la barra exista
+                mask_mismo_dia = df_fig['Inicio'] == df_fig['Fin']
+                df_fig.loc[mask_mismo_dia, 'Fin'] = df_fig.loc[mask_mismo_dia, 'Fin'] + pd.Timedelta(hours=23)
+
+                # Ordenamos el dataframe para que Plotly respete las categorías
+                df_fig = df_fig.sort_values(['Proyecto', 'Etapa'], ascending=[True, True])
                 
+                fig = px.timeline(
+                    df_fig, 
+                    x_start="Inicio", 
+                    x_end="Fin", 
+                    y="Etapa", 
+                    color="Color", 
+                    facet_col="Proyecto", 
+                    facet_col_wrap=1, 
+                    color_discrete_map="identity",
+                    category_orders={"Etapa": ORDEN_ETAPAS} # Refuerza el orden visual
+                )
+                
+                # Configuración de ejes
                 f_plan_ref = df_fig[df_fig['Tipo'] == "1_Planificado"]['Inicio']
                 f_min_x = f_plan_ref.min() if not f_plan_ref.empty else pd.Timestamp.now()
-                fig.update_xaxes(range=[f_min_x - timedelta(days=2), f_min_x + timedelta(days=120)], dtick="M1", tickformat="%b %Y", showgrid=True)
+                
+                fig.update_xaxes(range=[f_min_x - timedelta(days=2), f_min_x + timedelta(days=90)], showgrid=True)
+                
+                # 3. REVERSA EL EJE Y: Para que el orden sea Diseño (arriba) -> Entrega (abajo)
                 fig.update_yaxes(autorange="reversed", showgrid=True)
-                fig.update_layout(barmode='group', bargap=0.5, height=250 * len(proyectos_sel), margin=dict(l=10, r=10, t=50, b=10), showlegend=False)
+                
+                fig.update_layout(
+                    barmode='group', 
+                    bargap=0.4, 
+                    height=300 * len(proyectos_sel), 
+                    margin=dict(l=10, r=10, t=50, b=10), 
+                    showlegend=False
+                )
+                
                 fig.update_traces(marker_line_width=0, opacity=0.9)
                 fig.add_vline(x=pd.Timestamp.now().timestamp() * 1000, line_width=1.5, line_dash="dash", line_color="red")
+                
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning("No hay datos suficientes para generar el Gantt.")
