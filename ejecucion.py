@@ -156,8 +156,8 @@ def mostrar():
                     # --- CAMBIOS SOLICITADOS: ALTURA FIJA Y MENOS ESPACIO ---
                     fig.update_layout(
                         barmode='group', 
-                        bargap=0.2, # Reducción de espacio entre barras (más juntas)
-                        height=200 * len(proyectos_sel), # Altura aplanada fija por proyecto
+                        bargap=0.15, 
+                        height=220 * len(proyectos_sel), 
                         margin=dict(l=10, r=10, t=50, b=10), 
                         showlegend=False
                     )
