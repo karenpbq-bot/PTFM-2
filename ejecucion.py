@@ -2,7 +2,13 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
-from base_datos import conectar, obtener_proyectos, obtener_gantt_real_data
+from base_datos import (
+    conectar, 
+    obtener_proyectos, 
+    obtener_gantt_real_data, 
+    obtener_productos_por_proyecto, # <-- FALTA ESTA
+    obtener_avance_por_hitos        # <-- ASEGURATE QUE ESTÉ ESTA TAMBIÉN
+)
 
 ORDEN_ETAPAS = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
 
@@ -111,12 +117,12 @@ def mostrar():
             # --- SECCIÓN A: FILTRO DINÁMICO ---
             with st.expander("🔍 Filtros de Auditoría Detallada", expanded=False):
                 c1, c2 = st.columns(2)
-                # Buscamos productos del primer proyecto seleccionado para obtener ubicaciones/tipos
+                # Obtenemos productos del primer proyecto seleccionado para llenar los filtros
                 id_p_ref = dict_proy[proyectos_sel[0]]
                 df_prods_ref = obtener_productos_por_proyecto(id_p_ref)
                 
-                filtro_ub = c1.multiselect("Filtrar por Ubicación:", options=df_prods_ref['ubicacion'].unique())
-                filtro_ti = c2.multiselect("Filtrar por Tipo:", options=df_prods_ref['tipo'].unique())
+                filtro_ub = c1.multiselect("Filtrar por Ubicación:", options=df_prods_ref['ubicacion'].unique() if not df_prods_ref.empty else [])
+                filtro_ti = c2.multiselect("Filtrar por Tipo:", options=df_prods_ref['tipo'].unique() if not df_prods_ref.empty else [])
 
             # --- SECCIÓN B: REPORTE MATRICIAL DINÁMICO ---
             reporte_data = []
@@ -130,11 +136,10 @@ def mostrar():
                 
                 if df_prods.empty: continue
                 
-                # Calculamos avance filtrado al vuelo
-                # Importamos la función que calcula % por hitos (ya la tienes en base_datos)
+                # Calculamos avance filtrado usando la función de base_datos
                 avances_hitos = obtener_avance_por_hitos(id_p, df_productos_filtrados=df_prods)
                 
-                # Agrupamos hitos en las 5 etapas para el reporte matricial
+                # Mapeo a las 5 etapas
                 GRUPOS = {
                     "Diseño": ["Diseñado"],
                     "Fabricación": ["Fabricado"],
@@ -145,7 +150,6 @@ def mostrar():
                 
                 fila = {"Proyecto": p_nom, "Productos": len(df_prods)}
                 for etapa, hitos in GRUPOS.items():
-                    # Promedio de los hitos que componen la etapa
                     porc_etapa = sum([avances_hitos.get(h, 0) for h in hitos]) / len(hitos)
                     fila[f"{etapa} %"] = round(porc_etapa, 1)
                 
@@ -154,6 +158,8 @@ def mostrar():
             if reporte_data:
                 df_matriz = pd.DataFrame(reporte_data)
                 st.dataframe(df_matriz, use_container_width=True, hide_index=True)
+                
+                # Botones de exportación... (tu código anterior)
                 
                 # --- SECCIÓN C: BOTONES DE EXPORTACIÓN ---
                 st.write("---")
