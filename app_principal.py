@@ -9,7 +9,12 @@ import seguimiento, ejecucion, login, usuarios, incidencias, proyectos
 # =========================================================
 # CONFIGURACIÓN INICIAL Y SESIÓN
 # =========================================================
-st.set_page_config(layout="wide", page_title="Carpintería Pro V2")
+st.set_page_config(
+    page_title="Carpintería Pro V2",
+    layout="wide", 
+    initial_sidebar_state="collapsed"
+)
+
 inicializar_bd()
 
 if 'autenticado' not in st.session_state:
