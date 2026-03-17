@@ -469,22 +469,39 @@ def sincronizar_avances_estructural(codigo_p):
             "av_entrega": ["Revisión y Observaciones", "Entrega"]
         }
 
+        # Obtenemos fechas de seguimiento para el Gantt
+        res_fechas = supabase.table("seguimiento").select("hito, fecha").in_("producto_id", ids_prods).execute()
+        df_f = pd.DataFrame(res_fechas.data) if res_fechas.data else pd.DataFrame()
+
         fila_horizontal = {
             "codigo": codigo_p, "proyecto_nombre": p_nom, "cliente": p_cli,
             "ultima_actualizacion": datetime.now().isoformat()
         }
 
+        fechas_globales = []
         for col, hitos in GRUPOS.items():
-            # Sumamos todos los 'logrados' de los productos en esos hitos específicos
-            conteo_total = 0
-            for h in hitos:
-                conteo_total += len(df_seg[df_seg['hito'] == h])
+            df_etapa = df_f[df_f['hito'].isin(hitos)] if not df_f.empty else pd.DataFrame()
             
-            # Promedio etapa = (logrados) / (posibles: num_productos * num_hitos_en_etapa)
+            conteo_total = len(df_etapa)
             max_posible = len(hitos) * num_prods
             fila_horizontal[col] = round((conteo_total / max_posible) * 100, 1)
 
+            if not df_etapa.empty:
+                # Conversión flexible de fecha para evitar errores
+                df_etapa['f_dt'] = pd.to_datetime(df_etapa['fecha'], errors='coerce', dayfirst=True)
+                df_etapa = df_etapa.dropna(subset=['f_dt'])
+                if not df_etapa.empty:
+                    f_min = df_etapa['f_dt'].min()
+                    f_max = df_etapa['f_dt'].max()
+                    # FORZAR VISIBILIDAD: Si inicio y fin son iguales, sumar 1 día
+                    if f_min == f_max: f_max = f_max + timedelta(days=1)
+                    
+                    # Guardamos la fecha más extremas del proyecto para el Gantt global
+                    fechas_globales.append(f_min); fechas_globales.append(f_max)
+
+        # Guardamos un rango de fechas real para que el Gantt sepa dónde dibujar
+        if fechas_globales:
+            fila_horizontal["fecha_inicio_real"] = min(fechas_globales).strftime('%Y-%m-%d')
+            fila_horizontal["fecha_fin_real"] = max(fechas_globales).strftime('%Y-%m-%d')
+
         supabase.table("avances_etapas").upsert(fila_horizontal).execute()
-        
-    except Exception as e:
-        st.error(f"Error en sincronización estructural: {e}")
