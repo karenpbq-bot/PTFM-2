@@ -119,14 +119,15 @@ def obtener_avance_por_hitos(id_proyecto, df_productos_filtrados=None):
                   "Revisión y Observaciones", "Entrega"]
     
     total = len(df_p)
-    
-    # --- VALIDACIÓN DE SEGURIDAD (Ubicación exacta) ---
     if total == 0: 
         return {h: 0.0 for h in HITOS_LIST}
-    # --------------------------------------------------
+
+    # Si no hay datos en seguimiento, devolvemos todo en 0 rápidamente
+    if df_s.empty:
+        return {h: 0.0 for h in HITOS_LIST}
 
     for h in HITOS_LIST:
-        conteo = len(df_s[df_s['hito'] == h]) if not df_s.empty else 0
+        conteo = len(df_s[df_s['hito'] == h])
         avances[h] = round((conteo / total) * 100, 1)
         
     return avances
