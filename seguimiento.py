@@ -158,12 +158,12 @@ def mostrar(supervisor_id=None):
                 p_data_obj = df_p_all[df_p_all['id'] == id_p].iloc[0]
                 sincronizar_avances_estructural(p_data_obj['codigo'])
             except Exception as e:
-                st.warning(f"Nota: Los datos de seguimiento se guardaron, pero hubo un problema actualizando el Gantt: {e}")
-            # ---------------------------------------
+                st.warning(f"Seguimiento guardado, pero el Gantt no se actualizó: {e}")
             
+            # ELIMINAR CAMBIOS Y REFRESCAR (Siempre se hace)
             st.session_state.cambios_pendientes, st.session_state.notas_pendientes = [], {}
-            st.success("✅ Seguimiento guardado y Gantt actualizado.")
-            st.rerun()
+            st.success("✅ Seguimiento guardado.")
+            st.rerun() # <--- IMPORTANTE: Aquí refresca toda la data para el Gantt
         
         except Exception as e: 
             st.error(f"Error crítico: {e}")
