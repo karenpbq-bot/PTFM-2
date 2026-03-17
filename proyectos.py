@@ -135,9 +135,10 @@ def mostrar():
     
     with tab3:
         if st.session_state.get('id_p_sel'):
-            # 0. Recuperar nombre del proyecto para el título
+            # 0. Recuperar info del proyecto para el título y código base
             info_p = df_p[df_p['id'] == st.session_state.id_p_sel].iloc[0]
             nombre_proyecto = info_p['proyecto_display']
+            p_cod_base = info_p['codigo'] # El prefijo del proyecto (ej: PTF-001)
             
             st.subheader(f"📦 Matriz de Productos: {nombre_proyecto}")
 
@@ -153,64 +154,78 @@ def mostrar():
                     if st.form_submit_button("Guardar Producto"):
                         if u and t:
                             try:
-                                # LIMPIEZA DE DATOS (Evita el TypeError)
+                                # CONSULTA CORRELATIVO ACTUAL
+                                res_c = conectar().table("productos").select("id", count="exact").eq("proyecto_id", st.session_state.id_p_sel).execute()
+                                nuevo_n = (res_c.count if res_c.count else 0) + 1
+                                etiqueta = f"{p_cod_base}-{str(nuevo_n).zfill(4)}"
+
                                 datos_producto = {
                                     "proyecto_id": int(st.session_state.id_p_sel),
+                                    "codigo_etiqueta": etiqueta, # <--- NUEVA COLUMNA
                                     "ubicacion": str(u).strip(),
                                     "tipo": str(t).strip(),
                                     "ctd": int(c),
                                     "ml": float(m)
                                 }
                                 conectar().table("productos").insert(datos_producto).execute()
-                                st.success("✅ Producto guardado"); st.rerun()
+                                st.success(f"✅ Guardado con código: {etiqueta}")
+                                st.rerun()
                             except Exception as e:
                                 st.error(f"Error técnico al guardar: {e}")
 
-            # --- 2. SECCIÓN: IMPORTAR LISTA DE PRODUCTOS ---
+            # --- 2. SECCIÓN: IMPORTAR LISTA DE PRODUCTOS (EXCEL) ---
             with st.expander("📥 Importar Lista de Productos"):
                 f_up = st.file_uploader("Subir Excel", type=["xlsx", "csv"])
                 if f_up and st.button("🚀 Iniciar Importación Masiva"):
-                    df_ex = pd.read_csv(f_up) if f_up.name.endswith('csv') else pd.read_excel(f_up)
-                    # Limpiamos filas vacías
-                    df_ex = df_ex.dropna(subset=['UBICACION', 'TIPO'])
-                    lote = []
-                    for _, r in df_ex.iterrows():
-                        # LIMPIEZA DE DATOS DEL EXCEL
-                        lote.append({
-                            "proyecto_id": int(st.session_state.id_p_sel),
-                            "ubicacion": str(r['UBICACION']).strip(),
-                            "tipo": str(r['TIPO']).strip(),
-                            "ctd": int(r['CTD']),
-                            "ml": float(r['Medidas (ml)'])
-                        })
-                    conectar().table("productos").insert(lote).execute()
-                    st.success(f"Se cargaron {len(lote)} productos"); st.rerun()
+                    try:
+                        df_ex = pd.read_csv(f_up) if f_up.name.endswith('csv') else pd.read_excel(f_up)
+                        df_ex = df_ex.dropna(subset=['UBICACION', 'TIPO'])
+                        
+                        # CONSULTA CORRELATIVO ACTUAL PARA EMPEZAR LA SERIE
+                        res_count = conectar().table("productos").select("id", count="exact").eq("proyecto_id", st.session_state.id_p_sel).execute()
+                        conteo_actual = res_count.count if res_count.count else 0
+                        
+                        lote = []
+                        # Usamos i para el correlativo sumando al conteo actual
+                        for i, (index, r) in enumerate(df_ex.iterrows(), start=1):
+                            correlativo = str(conteo_actual + i).zfill(4)
+                            codigo_etiqueta = f"{p_cod_base}-{correlativo}"
+                            
+                            lote.append({
+                                "proyecto_id": int(st.session_state.id_p_sel),
+                                "codigo_etiqueta": codigo_etiqueta, # <--- NUEVA COLUMNA
+                                "ubicacion": str(r['UBICACION']).strip(),
+                                "tipo": str(r['TIPO']).strip(),
+                                "ctd": int(r['CTD']),
+                                "ml": float(r['Medidas (ml)']) # Asegúrate que el Excel tenga este nombre exacto
+                            })
+                        
+                        conectar().table("productos").insert(lote).execute()
+                        st.success(f"✅ Se cargaron {len(lote)} productos nuevos con códigos correlativos.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al importar: {e}")
 
-            # --- 3. VISUALIZACIÓN DE LA MATRIZ (4 COLUMNAS) ---
+            # --- 3. VISUALIZACIÓN DE LA MATRIZ ---
             st.divider()
-            res_p = conectar().table("productos").select("ubicacion, tipo, ctd, ml").eq("proyecto_id", st.session_state.id_p_sel).execute()
+            # Añadimos codigo_etiqueta a la consulta
+            res_p = conectar().table("productos").select("codigo_etiqueta, ubicacion, tipo, ctd, ml").eq("proyecto_id", st.session_state.id_p_sel).order("codigo_etiqueta").execute()
             
             if res_p.data:
                 df_matriz = pd.DataFrame(res_p.data)
-                
-                # Definimos el orden y nombres finales
                 mapeo = {
+                    'codigo_etiqueta': 'Código ID',
                     'ubicacion': 'Ubicación',
                     'tipo': 'Tipo',
                     'ctd': 'Cantidad',
-                    'ml': 'Metros Lineales (ml)'
+                    'ml': 'ML'
                 }
-                
-                # Creamos el dataframe unificado para evitar NameError
-                df_unificado = df_matriz[list(mapeo.keys())].rename(columns=mapeo)
-                
-                # Mostramos la tabla unificada
+                df_unificado = df_matriz.rename(columns=mapeo)
                 st.dataframe(df_unificado, hide_index=True, use_container_width=True)
                 
-                # Resumen de totales debajo de la tabla
                 c1, c2 = st.columns(2)
                 c1.info(f"**Total Piezas:** {int(df_unificado['Cantidad'].sum())}")
-                c2.info(f"**Total Metraje:** {df_unificado['Metros Lineales (ml)'].sum():.2f} ml")
+                c2.info(f"**Total Metraje:** {df_unificado['ML'].sum():.2f} ml")
 
                 if st.button("🗑️ Vaciar Matriz del Proyecto", type="primary"):
                     conectar().table("productos").delete().eq("proyecto_id", st.session_state.id_p_sel).execute()
