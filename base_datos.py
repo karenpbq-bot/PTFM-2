@@ -114,6 +114,7 @@ def obtener_avance_por_hitos(id_proyecto, df_productos_filtrados=None):
                   "Revisión y Observaciones", "Entrega"]
     
     total = len(df_p)
+    if total == 0: return {h: 0.0 for h in HITOS_LIST}
     for h in HITOS_LIST:
         conteo = len(df_s[df_s['hito'] == h]) if not df_s.empty else 0
         avances[h] = round((conteo / total) * 100, 1)
