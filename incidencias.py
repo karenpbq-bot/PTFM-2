@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 from datetime import datetime
-from base_datos import conectar, obtener_proyectos, registrar_incidencia_detallada, obtener_incidencias_resumen, marcar_atencion_incidencia, guardar_obs_gestion, obtener_datos_reporte_incidencias
+from base_datos import conectar, obtener_proyectos, registrar_incidencia_detallada, obtener_incidencias_resumen
 
 def mostrar():
     st.header("⚠️ Gestión de Requerimientos")
@@ -99,52 +99,14 @@ def mostrar():
                 st.session_state.tmp_mats = []
                 st.success("Enviado con éxito"); st.rerun()
 
-    # --- PESTAÑA 3: HISTORIAL (REEMPLAZO TOTAL) ---
+    # --- PESTAÑA 3: HISTORIAL ---
     with tab_h:
-        st.subheader("📋 Seguimiento de Requerimientos")
-        
-        # 1. BOTÓN DE EXPORTACIÓN (Con todos los detalles)
-        df_export = obtener_datos_reporte_incidencias() # Esta función debe traer los 'detalles'
-        if not df_export.empty:
-            st.download_button("📥 Descargar Reporte Completo (Excel/CSV)", 
-                             df_export.to_csv(index=False).encode('utf-8'), 
-                             "reporte_requerimientos.csv", "text/csv")
-        
-        st.divider()
-
-        # 2. LISTADO SIMPLIFICADO CON CHECKS
         historial = obtener_incidencias_resumen()
         if not historial.empty:
             for _, inc in historial.iterrows():
                 with st.expander(f"REQ-{inc['id']} | {inc['proyecto_text']} | {inc['tipo_requerimiento']}"):
-                    st.write(f"**Motivo:** {inc['categoria']} | **Estado:** {inc['estado']}")
-                    
-                    # Matriz de Seguimiento (Checks y Fechas)
-                    c1, c2, c3 = st.columns(3)
-                    
-                    with c1:
-                        v_alm = st.checkbox("Almacén", value=inc.get('check_almacen', False), key=f"ch_alm_{inc['id']}")
-                        if v_alm != inc.get('check_almacen', False):
-                            actualizar_check_incidencia(inc['id'], 'check_almacen', 'fecha_almacen', v_alm)
-                            st.rerun()
-                        if inc.get('fecha_almacen'): st.caption(f"📅 {inc['fecha_almacen']}")
-
-                    with c2:
-                        v_rec = st.checkbox("Recepción", value=inc.get('check_recepcion', False), key=f"ch_rec_{inc['id']}")
-                        if v_rec != inc.get('check_recepcion', False):
-                            actualizar_check_incidencia(inc['id'], 'check_recepcion', 'fecha_recepcion', v_rec)
-                            st.rerun()
-                        if inc.get('fecha_recepcion'): st.caption(f"📅 {inc['fecha_recepcion']}")
-
-                    with c3:
-                        v_teo = st.checkbox("Teowin", value=inc.get('check_teowin', False), key=f"ch_teo_{inc['id']}")
-                        if v_teo != inc.get('check_teowin', False):
-                            actualizar_check_incidencia(inc['id'], 'check_teowin', 'fecha_teowin', v_teo)
-                            st.rerun()
-                        if inc.get('fecha_teowin'): st.caption(f"📅 {inc['fecha_teowin']}")
-
-                    # Observaciones
-                    obs_g = st.text_input("Observaciones de gestión:", value=inc.get('obs_gestion', ""), key=f"obs_{inc['id']}")
-                    if st.button("Guardar Nota", key=f"btn_obs_{inc['id']}"):
-                        guardar_obs_gestion(inc['id'], obs_g)
-                        st.success("Nota guardada")
+                    st.write(f"Estado: {inc['estado']} | Motivo: {inc['categoria']}")
+                    if inc.get('detalles'):
+                        st.dataframe(pd.DataFrame(inc['detalles']), use_container_width=True)
+        else:
+            st.info("No hay requerimientos registrados.")
