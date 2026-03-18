@@ -101,74 +101,50 @@ def mostrar():
 
     # --- PESTAÑA 3: HISTORIAL (REEMPLAZO TOTAL) ---
     with tab_h:
-        st.subheader("📋 Control de Atención de Requerimientos")
+        st.subheader("📋 Seguimiento de Requerimientos")
         
-        # Forzar limpieza de caché para ver datos nuevos de Supabase
-        st.cache_data.clear()
+        # 1. BOTÓN DE EXPORTACIÓN (Con todos los detalles)
+        df_export = obtener_datos_reporte_incidencias() # Esta función debe traer los 'detalles'
+        if not df_export.empty:
+            st.download_button("📥 Descargar Reporte Completo (Excel/CSV)", 
+                             df_export.to_csv(index=False).encode('utf-8'), 
+                             "reporte_requerimientos.csv", "text/csv")
         
-        # --- SECCIÓN DE EXPORTACIÓN (Accesible para todos) ---
-        df_reporte = obtener_datos_reporte_incidencias()
-        if not df_reporte.empty:
-            csv = df_reporte.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Descargar Reporte Completo (CSV)",
-                data=csv,
-                file_name=f"reporte_incidencias_{datetime.now().strftime('%d_%m_%Y')}.csv",
-                mime='text/csv',
-            )
         st.divider()
 
+        # 2. LISTADO SIMPLIFICADO CON CHECKS
         historial = obtener_incidencias_resumen()
         if not historial.empty:
             for _, inc in historial.iterrows():
                 with st.expander(f"REQ-{inc['id']} | {inc['proyecto_text']} | {inc['tipo_requerimiento']}"):
-                    # Mostrar detalles técnicos de la pieza/material
-                    if inc.get('detalles'):
-                        st.write("**Detalles del Pedido:**")
-                        st.dataframe(pd.DataFrame(inc['detalles']), use_container_width=True)
+                    st.write(f"**Motivo:** {inc['categoria']} | **Estado:** {inc['estado']}")
                     
-                    st.write("---")
-                    st.write("**📍 Trazabilidad de Atención**")
-                    
-                    # Matriz de Botones de Fecha
+                    # Matriz de Seguimiento (Checks y Fechas)
                     c1, c2, c3 = st.columns(3)
                     
-                    # ETAPA ALMACÉN
                     with c1:
-                        f_alm = inc.get('fecha_almacen')
-                        if not f_alm:
-                            if st.button("📦 Marcar Almacén", key=f"btn_alm_{inc['id']}"):
-                                marcar_atencion_incidencia(inc['id'], 'fecha_almacen')
-                                st.rerun()
-                        else:
-                            st.success(f"Almacén: {f_alm}")
+                        v_alm = st.checkbox("Almacén", value=inc.get('check_almacen', False), key=f"ch_alm_{inc['id']}")
+                        if v_alm != inc.get('check_almacen', False):
+                            actualizar_check_incidencia(inc['id'], 'check_almacen', 'fecha_almacen', v_alm)
+                            st.rerun()
+                        if inc.get('fecha_almacen'): st.caption(f"📅 {inc['fecha_almacen']}")
 
-                    # ETAPA RECEPCIÓN
                     with c2:
-                        f_rec = inc.get('fecha_recepcion')
-                        if not f_rec:
-                            if st.button("📩 Marcar Recepción", key=f"btn_rec_{inc['id']}"):
-                                marcar_atencion_incidencia(inc['id'], 'fecha_recepcion')
-                                st.rerun()
-                        else:
-                            st.success(f"Recepción: {f_rec}")
+                        v_rec = st.checkbox("Recepción", value=inc.get('check_recepcion', False), key=f"ch_rec_{inc['id']}")
+                        if v_rec != inc.get('check_recepcion', False):
+                            actualizar_check_incidencia(inc['id'], 'check_recepcion', 'fecha_recepcion', v_rec)
+                            st.rerun()
+                        if inc.get('fecha_recepcion'): st.caption(f"📅 {inc['fecha_recepcion']}")
 
-                    # ETAPA TEOWIN
                     with c3:
-                        f_teo = inc.get('fecha_teowin')
-                        if not f_teo:
-                            if st.button("💻 Marcar Teowin", key=f"btn_teo_{inc['id']}"):
-                                marcar_atencion_incidencia(inc['id'], 'fecha_teowin')
-                                st.rerun()
-                        else:
-                            st.success(f"Teowin: {f_teo}")
+                        v_teo = st.checkbox("Teowin", value=inc.get('check_teowin', False), key=f"ch_teo_{inc['id']}")
+                        if v_teo != inc.get('check_teowin', False):
+                            actualizar_check_incidencia(inc['id'], 'check_teowin', 'fecha_teowin', v_teo)
+                            st.rerun()
+                        if inc.get('fecha_teowin'): st.caption(f"📅 {inc['fecha_teowin']}")
 
-                    # OBSERVACIONES DE GESTIÓN
-                    st.write("---")
-                    obs_val = inc.get('obs_gestion', "")
-                    nueva_obs = st.text_area("Notas de atención:", value=obs_val, key=f"txt_obs_{inc['id']}")
-                    if st.button("💾 Guardar Nota", key=f"save_obs_{inc['id']}"):
-                        guardar_obs_gestion(inc['id'], nueva_obs)
-                        st.toast("Nota guardada correctamente")
-        else:
-            st.info("No hay requerimientos para mostrar.")
+                    # Observaciones
+                    obs_g = st.text_input("Observaciones de gestión:", value=inc.get('obs_gestion', ""), key=f"obs_{inc['id']}")
+                    if st.button("Guardar Nota", key=f"btn_obs_{inc['id']}"):
+                        guardar_obs_gestion(inc['id'], obs_g)
+                        st.success("Nota guardada")
