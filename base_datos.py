@@ -339,3 +339,18 @@ def obtener_datos_reporte_incidencias():
         return pd.DataFrame(res.data)
     except:
         return pd.DataFrame()
+
+def actualizar_check_incidencia(id_incidencia, campo_check, campo_fecha, valor_check):
+    """Actualiza el check y registra/borra la fecha automáticamente."""
+    try:
+        supabase = conectar()
+        fecha_valor = datetime.now().strftime("%d/%m/%Y") if valor_check else None
+        data = {
+            campo_check: valor_check,
+            campo_fecha: fecha_valor
+        }
+        supabase.table("incidencias").update(data).eq("id", id_incidencia).execute()
+        return True
+    except Exception as e:
+        st.error(f"Error al actualizar check: {e}")
+        return False
