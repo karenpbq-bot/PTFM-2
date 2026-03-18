@@ -10,7 +10,7 @@ def login_screen():
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h1 style='text-align: center;'>🪵</h1>", unsafe_allow_html=True)
-        st.markdown("<h2 style='text-align: center;'>Control de Producción</h2>", unsafe_allow_html=True)
+        st.markdown("<h2 style='text-align: center;'>Seguimiento y Control de Proyecto</h2>", unsafe_allow_html=True)
         
         with st.container(border=True):
             st.subheader("Acceso al Sistema")
