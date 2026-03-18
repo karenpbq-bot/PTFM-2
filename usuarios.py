@@ -72,26 +72,73 @@ def mostrar():
         # UBICACIÓN: Dentro de 'with tab2:'
         with tab2:
             try:
-                # Seleccionamos explícitamente nombre_completo
-                res_u = supabase.table("usuarios").select("nombre_completo, nombre_usuario, rol").execute()
-                if res_u.data:
-                    df_u = pd.DataFrame(res_u.data)
-                    # El orden debe coincidir con el select anterior
-                    df_u.columns = ['Nombre Real', 'Login Usuario', 'Rol Asignado']
-                    st.dataframe(df_u, use_container_width=True, hide_index=True)
-            except Exception as e:
-                st.error(f"No se pudo cargar la lista: {e}")
+                # 1. Recuperamos los datos incluyendo el ID necesario para las acciones
+                res_u = supabase.table("usuarios").select("id, nombre_completo, nombre_usuario, rol").execute()
                 
-        # RESET MAESTRO
-        st.markdown("---")
-        with st.expander("🛡️ Reset de Contraseñas (Uso Administrativo)"):
-            with st.form("reset_maestro"):
-                u_reset = st.text_input("Usuario a resetear:")
-                p_reset = st.text_input("Nueva contraseña:", type="password")
-                if st.form_submit_button("Ejecutar Cambio"):
-                    if u_reset and p_reset:
-                        supabase.table("usuarios").update({"contrasena": p_reset}).eq("nombre_usuario", u_reset).execute()
-                        st.success("✅ Contraseña reseteada.")
-    else:
-        # Esto te dirá por qué no entras
-        st.warning(f"Acceso Restringido. Tu rol registrado es: '{rol_actual}'. Se requiere 'Administrador'.")
+                if res_u.data:
+                    # Encabezados de tabla personalizados para mejor lectura
+                    c_h1, c_h2, c_h3, c_h4 = st.columns([2.5, 2, 1.5, 1])
+                    c_h1.subheader("Nombre Real")
+                    c_h2.subheader("Usuario")
+                    c_h3.subheader("Rol")
+                    c_h4.subheader("Acción")
+                    st.divider()
+
+                    for user in res_u.data:
+                        col1, col2, col3, col4 = st.columns([2.5, 2, 1.5, 1])
+                        
+                        col1.write(user['nombre_completo'])
+                        col2.write(user['nombre_usuario'])
+                        col3.write(user['rol'])
+                        
+                        # Usamos un popover para agrupar Editar y Eliminar y no saturar la fila
+                        with col4.popover("⚙️"):
+                            if st.button("📝 Editar", key=f"edit_{user['id']}", use_container_width=True):
+                                st.session_state.editando_id = user['id']
+                                st.session_state.datos_editar = user
+                                st.rerun()
+                            
+                            if st.button("🗑️ Borrar", key=f"del_{user['id']}", use_container_width=True):
+                                # Evitar que el usuario activo se borre a sí mismo
+                                if user['id'] == st.session_state.id_usuario:
+                                    st.error("No puedes eliminar tu propia cuenta.")
+                                else:
+                                    from base_datos import eliminar_usuario
+                                    if eliminar_usuario(user['id']):
+                                        st.success("Usuario eliminado.")
+                                        st.rerun()
+                        st.divider()
+
+                # 2. FORMULARIO FLOTANTE DE EDICIÓN
+                if "editando_id" in st.session_state:
+                    st.markdown("---")
+                    with st.expander("🛠️ EDITANDO USUARIO", expanded=True):
+                        with st.form("form_edicion_rapida"):
+                            u_id = st.session_state.editando_id
+                            nuevo_nom = st.text_input("Nombre Completo:", value=st.session_state.datos_editar['nombre_completo'])
+                            nuevo_user = st.text_input("Nombre de Usuario:", value=st.session_state.datos_editar['nombre_usuario'])
+                            
+                            # Mantenemos la consistencia con los roles originales
+                            roles_lista = ["Supervisor", "Gerente", "Administrador"]
+                            idx_rol = roles_lista.index(st.session_state.datos_editar['rol']) if st.session_state.datos_editar['rol'] in roles_lista else 0
+                            nuevo_rol = st.selectbox("Cambiar Rol:", roles_lista, index=idx_rol)
+                            
+                            col_btn1, col_btn2 = st.columns(2)
+                            if col_btn1.form_submit_button("✅ Guardar Cambios"):
+                                from base_datos import actualizar_datos_usuario
+                                exito = actualizar_datos_usuario(u_id, {
+                                    "nombre_completo": nuevo_nom,
+                                    "nombre_usuario": nuevo_user,
+                                    "rol": nuevo_rol
+                                })
+                                if exito:
+                                    del st.session_state.editando_id
+                                    st.success("Usuario actualizado correctamente.")
+                                    st.rerun()
+                            
+                            if col_btn2.form_submit_button("❌ Cancelar"):
+                                del st.session_state.editando_id
+                                st.rerun()
+
+            except Exception as e:
+                st.error(f"Error al cargar la lista de equipo: {e}")
