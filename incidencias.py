@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 from datetime import datetime
-from base_datos import conectar, obtener_proyectos, registrar_incidencia_detallada, obtener_incidencias_resumen
+from base_datos import conectar, obtener_proyectos, registrar_incidencia_detallada, obtener_incidencias_resumen, marcar_atencion_incidencia, guardar_obs_gestion, obtener_datos_reporte_incidencias
 
 def mostrar():
     st.header("⚠️ Gestión de Requerimientos")
@@ -102,6 +102,9 @@ def mostrar():
     # --- PESTAÑA 3: HISTORIAL (REEMPLAZO TOTAL) ---
     with tab_h:
         st.subheader("📋 Control de Atención de Requerimientos")
+        
+        # Forzar limpieza de caché para ver datos nuevos de Supabase
+        st.cache_data.clear()
         
         # --- SECCIÓN DE EXPORTACIÓN (Accesible para todos) ---
         df_reporte = obtener_datos_reporte_incidencias()
