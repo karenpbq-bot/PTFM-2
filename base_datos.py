@@ -300,4 +300,4 @@ def eliminar_usuario_bd(id_usuario):
 
 def actualizar_usuario_bd(id_usuario, datos):
     supabase = conectar()
-    return supabase.table("usuarios").update(datos).eq("id", id_usuario).execute()e
+    return supabase.table("usuarios").update(datos).eq("id", id_usuario).execute()
