@@ -7,14 +7,30 @@ from base_datos import conectar, obtener_proyectos, registrar_incidencia_detalla
 def mostrar():
     st.header("⚠️ Gestión de Requerimientos")
     
-    # Memoria temporal para consolidar antes de enviar
+    # --- NUEVO: BUSCADOR DE PROYECTO PARA ASOCIACIÓN ---
+    with st.container(border=True):
+        col_bus1, col_bus2 = st.columns([2, 1])
+        bus_proy = col_bus1.text_input("🔍 Localizar Proyecto para el Requerimiento:", 
+                                        placeholder="Escribe código o nombre...", key="bus_inc_proy")
+        
+        # Obtenemos proyectos filtrados
+        df_proyectos_all = obtener_proyectos(bus_proy)
+        
+        if not df_proyectos_all.empty:
+            dict_proyectos = {row['proyecto_display']: row['id'] for _, row in df_proyectos_all.iterrows()}
+            proy_seleccionado_display = col_bus2.selectbox("Confirmar Proyecto:", 
+                                                            list(dict_proyectos.keys()), key="sel_proy_inc")
+            id_proyecto_actual = dict_proyectos[proy_seleccionado_display]
+        else:
+            st.warning("⚠️ No se encontró el proyecto. Escribe otro nombre.")
+            return # Detiene la ejecución si no hay proyecto seleccionado
+
+    # Memoria temporal
     if 'tmp_piezas' not in st.session_state: st.session_state.tmp_piezas = []
     if 'tmp_mats' not in st.session_state: st.session_state.tmp_mats = []
 
-    tab_p, tab_m, tab_h = st.tabs(["🧩 Requerimiento de Piezas", "📦 Requerimiento de Material", "📜 Historial de Requerimientos"])
-
-    df_p = obtener_proyectos("")
-    dict_proyectos = {row['proyecto_text']: row['id'] for _, row in df_p.iterrows()}
+    tab_p, tab_m, tab_h = st.tabs(["🧩 Piezas", "📦 Materiales", "📜 Historial"])
+    
     MOTIVOS = ["Faltante", "Cambio", "Pieza Dañada", "Otros"]
 
     # --- PESTAÑA 1: PIEZAS ---
