@@ -254,6 +254,7 @@ def registrar_incidencia_detallada(proyecto_id, tipo, motivo, piezas, materiales
 def obtener_incidencias_resumen():
     try:
         supabase = conectar()
+        # El select("*") debería traer las nuevas columnas si ya las creaste en Supabase
         res = supabase.table("incidencias").select("*, proyectos(proyecto_text)").order("created_at", desc=True).execute()
         if not res.data: return pd.DataFrame()
         for r in res.data:
