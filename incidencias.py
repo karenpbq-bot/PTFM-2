@@ -119,50 +119,53 @@ def mostrar():
                 st.session_state.tmp_mats = []
                 st.success("Enviado con éxito"); st.rerun()
 
-    # --- PESTAÑA 3: HISTORIAL (GESTIÓN INTEGRADA EN RÓTULO) ---
+    # --- PESTAÑA 3: HISTORIAL (VERSIÓN COMPACTA EN UNA LÍNEA) ---
     with tab_h:
         historial = obtener_incidencias_resumen()
         if not historial.empty:
             for _, inc in historial.iterrows():
-                # 1. Definimos la fila del Rótulo (Título + Checks + Nota + Guardar)
-                # Ajustamos los pesos de las columnas para que la nota tenga espacio
-                c_tit, c_alm, c_sol, c_teo, c_not, c_sav = st.columns([2, 0.6, 0.7, 0.6, 1.8, 0.4])
-                
-                with c_tit:
-                    # El desplegable ahora solo envuelve el detalle interno
-                    exp = st.expander(f"REQ-{inc['id']} | {inc['proyecto_text']}")
-                
-                # 2. Checks de Fecha (Capturan la fecha al marcar y guardar)
-                f_alm = inc.get('fecha_almacen')
-                v_alm = c_alm.checkbox("Alm.", value=pd.notnull(f_alm) and f_alm != "", key=f"alm_{inc['id']}", help=f"Registrado: {f_alm}" if f_alm else "Pendiente")
-                
-                f_sol = inc.get('fecha_solicitante')
-                v_sol = c_sol.checkbox("Sol.", value=pd.notnull(f_sol) and f_sol != "", key=f"sol_{inc['id']}", help=f"Registrado: {f_sol}" if f_sol else "Pendiente")
-                
-                f_teo = inc.get('fecha_teowin')
-                v_teo = c_teo.checkbox("Teo.", value=pd.notnull(f_teo) and f_teo != "", key=f"teo_{inc['id']}", help=f"Registrado: {f_teo}" if f_teo else "Pendiente")
-                
-                # 3. La columna de Observaciones de Gestión (Visible en el rótulo)
-                v_not = c_not.text_input("Nota", value=inc.get('obs_gestion', ""), key=f"not_{inc['id']}", label_visibility="collapsed", placeholder="Notas de gestión...")
+                # El expander recupera su diseño original limpio
+                with st.expander(f"REQ-{inc['id']} | {inc['proyecto_text']} | {inc['tipo_requerimiento']}"):
+                    
+                    # --- FILA ÚNICA DE GESTIÓN ---
+                    # Usamos columnas proporcionales para que todo entre en una línea
+                    c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 2.5, 0.5])
+                    
+                    # 1. Checkboxes con sus fechas debajo (Captura automática)
+                    f_alm = inc.get('fecha_almacen')
+                    v_alm = c1.checkbox("📦 Almacén", value=pd.notnull(f_alm) and f_alm != "", key=f"alm_{inc['id']}")
+                    if f_alm: c1.caption(f"📅 {f_alm}")
 
-                # 4. Botón de Guardado
-                if c_sav.button("💾", key=f"save_{inc['id']}"):
-                    f_hoy = datetime.now().strftime("%d/%m/%Y %H:%M")
-                    datos_upd = {
-                        "fecha_almacen": f_hoy if v_alm and not f_alm else (None if not v_alm else f_alm),
-                        "fecha_solicitante": f_hoy if v_sol and not f_sol else (None if not v_sol else f_sol),
-                        "fecha_teowin": f_hoy if v_teo and not f_teo else (None if not v_teo else f_teo),
-                        "obs_gestion": v_not
-                    }
-                    from base_datos import actualizar_gestion_incidencia
-                    actualizar_gestion_incidencia(inc['id'], datos_upd)
-                    st.rerun()
+                    f_sol = inc.get('fecha_solicitante')
+                    v_sol = c2.checkbox("👤 Solicitante", value=pd.notnull(f_sol) and f_sol != "", key=f"sol_{inc['id']}")
+                    if f_sol: c2.caption(f"📅 {f_sol}")
 
-                # 5. CONTENIDO INTERNO (Lo que NO querías mover)
-                with exp:
-                    st.info(f"**Tipo:** {inc['tipo_requerimiento']} | **Motivo:** {inc['categoria']} | **Estado:** {inc['estado']}")
+                    f_teo = inc.get('fecha_teowin')
+                    v_teo = c3.checkbox("🖥️ Teowin", value=pd.notnull(f_teo) and f_teo != "", key=f"teo_{inc['id']}")
+                    if f_teo: c3.caption(f"📅 {f_teo}")
+                    
+                    # 2. Notas de gestión (Sin etiqueta para ahorrar espacio)
+                    v_not = c4.text_input("Notas de gestión", value=inc.get('obs_gestion', ""), 
+                                         key=f"not_{inc['id']}", placeholder="Escribir nota aquí...", label_visibility="collapsed")
+
+                    # 3. Botón de guardado alineado
+                    if c5.button("💾", key=f"save_{inc['id']}", help="Guardar cambios de gestión"):
+                        f_hoy = datetime.now().strftime("%d/%m/%Y %H:%M")
+                        datos_upd = {
+                            "fecha_almacen": f_hoy if v_alm and not f_alm else (None if not v_alm else f_alm),
+                            "fecha_solicitante": f_hoy if v_sol and not f_sol else (None if not v_sol else f_sol),
+                            "fecha_teowin": f_hoy if v_teo and not f_teo else (None if not v_teo else f_teo),
+                            "obs_gestion": v_not
+                        }
+                        from base_datos import actualizar_gestion_incidencia
+                        actualizar_gestion_incidencia(inc['id'], datos_upd)
+                        st.rerun()
+
+                    st.markdown("---") # Separador sutil antes del detalle de piezas
+
+                    # --- DETALLE ORIGINAL ---
+                    st.write(f"**Motivo:** {inc['categoria']} | **Estado:** {inc['estado']}")
                     if inc.get('detalles'):
-                        # Aquí siguen apareciendo las observaciones originales de cada pieza
                         st.dataframe(pd.DataFrame(inc['detalles']), use_container_width=True)
             st.divider()
         else:
