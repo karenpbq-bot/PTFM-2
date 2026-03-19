@@ -120,7 +120,7 @@ def mostrar():
                 st.success("Enviado con éxito"); st.rerun()
 
     # --- PESTAÑA 3: HISTORIAL ---
-   with tab_h:
+    with tab_h:
         historial = obtener_incidencias_resumen()
         if not historial.empty:
             for _, inc in historial.iterrows():
