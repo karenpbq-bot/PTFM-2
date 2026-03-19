@@ -119,72 +119,68 @@ def mostrar():
                 st.session_state.tmp_mats = []
                 st.success("Enviado con éxito"); st.rerun()
 
-   # --- PESTAÑA 3: HISTORIAL (CON SEMÁFORO VISUAL EN RÓTULO) ---
+   # --- PESTAÑA 3: HISTORIAL (VERSIÓN FINAL CORREGIDA) ---
     with tab_h:
         historial = obtener_incidencias_resumen()
+        
         if not historial.empty:
             for _, inc in historial.iterrows():
-                # 1. LÓGICA DE COLORES PARA EL RÓTULO (Antes del expander)
+                # 1. Recuperar datos actuales de la base de datos
                 f_alm = inc.get('fecha_almacen')
                 f_sol = inc.get('fecha_solicitante')
                 f_teo = inc.get('fecha_teowin')
+                id_inc = inc['id']
                 
-                # Definimos los cuadros: Verde si hay fecha, Rojo si está vacío
+                # 2. Semáforos Visuales para el Rótulo
                 s1 = "🟩" if pd.notnull(f_alm) and f_alm != "" else "🟥"
                 s2 = "🟩" if pd.notnull(f_sol) and f_sol != "" else "🟥"
                 s3 = "🟩" if pd.notnull(f_teo) and f_teo != "" else "🟥"
                 
-                # Texto de estado para el rótulo
-                conteo_ok = [s1, s2, s3].count("🟩")
-                if conteo_ok == 3: status_msg = "COMPLETO"
-                elif conteo_ok > 0: status_msg = "EN GESTIÓN"
-                else: status_msg = "PENDIENTE"
-                
-                # CONSTRUCCIÓN DEL TÍTULO DEL RÓTULO
-                titulo_rotulo = f"REQ-{inc['id']} | {inc['proyecto_text']} | {inc['tipo_requerimiento']}  [{s1}{s2}{s3}] {status_msg}"
+                titulo_rotulo = f"REQ-{id_inc} | {inc['proyecto_text']} | {inc['tipo_requerimiento']}  [{s1}{s2}{s3}]"
 
-                # 2. EL DESPLEGABLE (Mantiene el diseño anterior)
                 with st.expander(titulo_rotulo):
-                    
-                    # --- FILA ÚNICA DE GESTIÓN COMPACTA ---
+                    # --- FILA ÚNICA DE GESTIÓN (HORIZONTAL) ---
                     c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 2.5, 0.5])
                     
-                    # Checkbox Almacén
-                    v_alm = c1.checkbox("📦 Almacén", value=(s1 == "🟩"), key=f"alm_{inc['id']}")
+                    # Checkboxes (detectan el estado visual)
+                    v_alm = c1.checkbox("📦 Almacén", value=(s1 == "🟩"), key=f"check_alm_{id_inc}")
                     if f_alm: c1.caption(f"📅 {f_alm}")
 
-                    # Checkbox Solicitante
-                    v_sol = c2.checkbox("👤 Solicitante", value=(s2 == "🟩"), key=f"sol_{inc['id']}")
+                    v_sol = c2.checkbox("👤 Solicitante", value=(s2 == "🟩"), key=f"check_sol_{id_inc}")
                     if f_sol: c2.caption(f"📅 {f_sol}")
 
-                    # Checkbox Teowin
-                    v_teo = c3.checkbox("🖥️ Teowin", value=(s3 == "🟩"), key=f"teo_{inc['id']}")
+                    v_teo = c3.checkbox("🖥️ Teowin", value=(s3 == "🟩"), key=f"check_teo_{id_inc}")
                     if f_teo: c3.caption(f"📅 {f_teo}")
                     
-                    # Notas de Gestión (obs_gestion)
-                    v_not = c4.text_input("Notas de gestión", value=inc.get('obs_gestion', ""), 
-                                         key=f"not_{inc['id']}", placeholder="Escribir nota...", label_visibility="collapsed")
+                    # Nota de gestión
+                    v_not = c4.text_input("Nota", value=inc.get('obs_gestion', ""), 
+                                         key=f"input_not_{id_inc}", placeholder="Nota de gestión...", label_visibility="collapsed")
 
-                    # Botón de Guardado (💾)
-                    if c5.button("💾", key=f"save_{inc['id']}", help="Guardar gestión"):
+                    # BOTÓN DE GUARDADO (💾)
+                    if c5.button("💾", key=f"btn_save_{id_inc}"):
                         f_hoy = datetime.now().strftime("%d/%m/%Y %H:%M")
                         
-                        # Lógica: Si se marca el check y no había fecha, pone HOY.
-                        # Si se desmarca, limpia la fecha (None).
+                        # Construcción del paquete de datos
+                        # Si el check cambió de False a True -> ponemos fecha
+                        # Si el check se mantiene True -> dejamos la fecha que estaba
+                        # Si el check es False -> ponemos None
                         datos_upd = {
-                            "fecha_almacen": f_hoy if v_alm and not f_alm else (None if not v_alm else f_alm),
-                            "fecha_solicitante": f_hoy if v_sol and not f_sol else (None if not v_sol else f_sol),
-                            "fecha_teowin": f_hoy if v_teo and not f_teo else (None if not v_teo else f_teo),
+                            "fecha_almacen": f_hoy if v_alm and not f_alm else (f_alm if v_alm else None),
+                            "fecha_solicitante": f_hoy if v_sol and not f_sol else (f_sol if v_sol else None),
+                            "fecha_teowin": f_hoy if v_teo and not f_teo else (f_teo if v_teo else None),
                             "obs_gestion": v_not
                         }
                         
-                        from base_datos import actualizar_gestion_incidencia
-                        actualizar_gestion_incidencia(inc['id'], datos_upd)
-                        st.rerun()
+                        try:
+                            # Importación local para evitar errores de carga
+                            from base_datos import actualizar_gestion_incidencia
+                            actualizar_gestion_incidencia(id_inc, datos_upd)
+                            st.success(f"REQ-{id_inc} Actualizado")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar: {e}")
 
                     st.markdown("---")
-                    
-                    # --- DETALLE ORIGINAL (Lo que no querías mover) ---
                     st.write(f"**Motivo:** {inc['categoria']} | **Estado:** {inc['estado']}")
                     if inc.get('detalles'):
                         st.dataframe(pd.DataFrame(inc['detalles']), use_container_width=True)
