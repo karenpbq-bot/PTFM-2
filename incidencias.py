@@ -119,50 +119,57 @@ def mostrar():
                 st.session_state.tmp_mats = []
                 st.success("Enviado con éxito"); st.rerun()
 
-  # --- PESTAÑA 3: HISTORIAL (FORMATO DE FECHA D/M/Y) ---
+  # --- PESTAÑA 3: HISTORIAL (SEMÁFORO + GESTIÓN COMPACTA) ---
     with tab_h:
         historial = obtener_incidencias_resumen()
         
         if not historial.empty:
             for _, inc in historial.iterrows():
-                f_alm = inc.get('fecha_almacen')
-                f_sol = inc.get('fecha_solicitante')
-                f_teo = inc.get('fecha_teowin')
-                id_inc = inc['id']
+                # 1. Recuperar valores actuales
+                f_alm = inc.get('fecha_almacen', "")
+                f_sol = inc.get('fecha_solicitante', "")
+                f_teo = inc.get('fecha_teowin', "")
+                id_i = inc['id']
                 
-                # Semáforos Visuales
-                s1 = "🟩" if pd.notnull(f_alm) and str(f_alm).strip() != "" else "🟥"
-                s2 = "🟩" if pd.notnull(f_sol) and str(f_sol).strip() != "" else "🟥"
-                s3 = "🟩" if pd.notnull(f_teo) and str(f_teo).strip() != "" else "🟥"
+                # 2. Lógica de Semáforos (Rojo/Verde)
+                s1 = "🟩" if f_alm and str(f_alm).strip() != "" else "🟥"
+                s2 = "🟩" if f_sol and str(f_sol).strip() != "" else "🟥"
+                s3 = "🟩" if f_teo and str(f_teo).strip() != "" else "🟥"
                 
-                titulo_rotulo = f"REQ-{id_inc} | {inc['proyecto_text']} | {inc['tipo_requerimiento']}  [{s1}{s2}{s3}]"
+                titulo_rotulo = f"REQ-{id_i} | {inc['proyecto_text']} | {inc['tipo_requerimiento']}  [{s1}{s2}{s3}]"
 
                 with st.expander(titulo_rotulo):
+                    # --- FILA DE GESTIÓN HORIZONTAL ---
                     c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 2.5, 0.5])
                     
-                    v_alm = c1.checkbox("📦 Almacén", value=(s1 == "🟩"), key=f"chk_alm_{id_inc}")
+                    v_alm = c1.checkbox("📦 Almacén", value=(s1 == "🟩"), key=f"c_alm_{id_i}")
                     if f_alm: c1.caption(f"📅 {f_alm}")
 
-                    v_sol = c2.checkbox("👤 Solicitante", value=(s2 == "🟩"), key=f"chk_sol_{id_inc}")
+                    v_sol = c2.checkbox("👤 Solicitante", value=(s2 == "🟩"), key=f"c_sol_{id_i}")
                     if f_sol: c2.caption(f"📅 {f_sol}")
 
-                    v_teo = c3.checkbox("🖥️ Teowin", value=(s3 == "🟩"), key=f"chk_teo_{id_inc}")
+                    v_teo = c3.checkbox("🖥️ Teowin", value=(s3 == "🟩"), key=f"c_teo_{id_i}")
                     if f_teo: c3.caption(f"📅 {f_teo}")
                     
                     v_not = c4.text_input("Nota", value=inc.get('obs_gestion', ""), 
-                                         key=f"txt_not_{id_inc}", placeholder="Nota de gestión...", label_visibility="collapsed")
+                                         key=f"t_not_{id_i}", label_visibility="collapsed")
 
-                    if c5.button("💾", key=f"btn_test_{id_inc}"):
-                        # Intentamos actualizar SOLO la nota para ver si el problema es la columna de fecha
-                        try:
+                    # BOTÓN DE GUARDADO
+                    if c5.button("💾", key=f"b_sav_{id_i}"):
+                        # Formato Día/Mes/Año solicitado
+                        f_hoy = datetime.now().strftime("%d/%m/%Y %H:%M")
+                        
+                        # Si marcas el check y no hay fecha, ponemos hoy. Si desmarcas, limpiamos.
+                        p_datos = {
+                            "fecha_almacen": f_hoy if v_alm and not (f_alm and str(f_alm).strip()!="") else (f_alm if v_alm else ""),
+                            "fecha_solicitante": f_hoy if v_sol and not (f_sol and str(f_sol).strip()!="") else (f_sol if v_sol else ""),
+                            "fecha_teowin": f_hoy if v_teo and not (f_teo and str(f_teo).strip()!="") else (f_teo if v_teo else ""),
+                            "obs_gestion": v_not
+                        }
+                        
                         from base_datos import actualizar_gestion_incidencia
-                        # Probamos enviar solo la nota
-                        test_data = {"obs_gestion": v_not} 
-                        actualizar_gestion_incidencia(id_inc, test_data)
-                        st.success("Conexión probada con éxito")
+                        actualizar_gestion_incidencia(id_i, p_datos)
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Ni siquiera la nota pudo guardarse: {e}")
 
                     st.markdown("---")
                     st.write(f"**Motivo:** {inc['categoria']} | **Estado:** {inc['estado']}")
