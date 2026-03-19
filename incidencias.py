@@ -120,13 +120,57 @@ def mostrar():
                 st.success("Enviado con éxito"); st.rerun()
 
     # --- PESTAÑA 3: HISTORIAL ---
-    with tab_h:
+   with tab_h:
         historial = obtener_incidencias_resumen()
         if not historial.empty:
             for _, inc in historial.iterrows():
+                # Encabezado original del requerimiento
                 with st.expander(f"REQ-{inc['id']} | {inc['proyecto_text']} | {inc['tipo_requerimiento']}"):
-                    st.write(f"Estado: {inc['estado']} | Motivo: {inc['categoria']}")
+                    
+                    st.markdown("##### 🕒 Gestión de Seguimiento")
+                    c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+                    
+                    # --- LÓGICA DE FECHAS AUTOMÁTICAS ---
+                    # Almacén
+                    f_alm = inc.get('fecha_almacen')
+                    v_alm = c1.checkbox("📦 Almacén", value=pd.notnull(f_alm) and f_alm != "", key=f"alm_{inc['id']}")
+                    c1.caption(f"📅 {f_alm if f_alm else 'Pendiente'}")
+
+                    # Solicitante
+                    f_sol = inc.get('fecha_solicitante')
+                    v_sol = c2.checkbox("👤 Solicitante", value=pd.notnull(f_sol) and f_sol != "", key=f"sol_{inc['id']}")
+                    c2.caption(f"📅 {f_sol if f_sol else 'Pendiente'}")
+
+                    # Teowin
+                    f_teo = inc.get('fecha_teowin')
+                    v_teo = c3.columns(1)[0].checkbox("🖥️ Teowin", value=pd.notnull(f_teo) and f_teo != "", key=f"teo_{inc['id']}")
+                    c3.caption(f"📅 {f_teo if f_teo else 'Pendiente'}")
+                    
+                    # Observaciones de Gestión
+                    v_obs = c4.text_input("📝 Notas de Gestión", value=inc.get('obs_gestion', ""), key=f"obs_g_{inc['id']}")
+
+                    # --- BOTÓN DE GUARDADO Y PROCESAMIENTO ---
+                    if st.button("💾 Actualizar Gestión", key=f"btn_g_{inc['id']}"):
+                        f_hoy = datetime.now().strftime("%d/%m/%Y %H:%M")
+                        
+                        # Decidimos qué fecha mandar: 
+                        # Si el check está marcado y no había fecha, ponemos la de hoy.
+                        # Si el check se desmarca, limpiamos la fecha.
+                        datos_upd = {
+                            "fecha_almacen": f_hoy if v_alm and not f_alm else (None if not v_alm else f_alm),
+                            "fecha_solicitante": f_hoy if v_sol and not f_sol else (None if not v_sol else f_sol),
+                            "fecha_teowin": f_hoy if v_teo and not f_teo else (None if not v_teo else f_teo),
+                            "obs_gestion": v_obs
+                        }
+                        
+                        from base_datos import actualizar_gestion_incidencia
+                        actualizar_gestion_incidencia(inc['id'], datos_upd)
+                        st.success("Gestión Guardada")
+                        st.rerun()
+
+                    st.divider()
+                    # Detalle original de las piezas/materiales
+                    st.write(f"**Motivo:** {inc['categoria']} | **Estado:** {inc['estado']}")
                     if inc.get('detalles'):
                         st.dataframe(pd.DataFrame(inc['detalles']), use_container_width=True)
-        else:
-            st.info("No hay requerimientos registrados.")
+                        
