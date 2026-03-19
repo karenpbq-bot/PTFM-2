@@ -263,6 +263,16 @@ def obtener_incidencias_resumen():
     except Exception as e:
         print(f"Error en historial incidencias: {e}"); return pd.DataFrame()
 
+def actualizar_gestion_incidencia(incidencia_id, datos):
+    """Actualiza fechas de gestión y observaciones en un requerimiento."""
+    try:
+        supabase = conectar()
+        # 'datos' será un diccionario con las columnas: fecha_almacen, fecha_solicitante, etc.
+        return supabase.table("incidencias").update(datos).eq("id", incidencia_id).execute()
+    except Exception as e:
+        st.error(f"Error al actualizar gestión: {e}")
+        return None
+        
 # =========================================================
 # 7. FUNCIONES DE COMPATIBILIDAD (Legacy)
 # =========================================================
