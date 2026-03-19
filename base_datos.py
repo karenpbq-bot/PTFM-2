@@ -263,19 +263,15 @@ def obtener_incidencias_resumen():
     except Exception as e:
         print(f"Error en historial incidencias: {e}"); return pd.DataFrame()
 
-def actualizar_gestion_incidencia(incidencia_id, datos):
+def actualizar_gestion_incidencia(inc_id, datos_dict):
+    """Actualiza los campos de seguimiento de un requerimiento."""
     try:
         supabase = conectar()
-        # Paso A: Limpiamos el diccionario de posibles espacios en las llaves
-        datos_limpios = {str(k).strip(): v for k, v in datos.items()}
-        
-        # Paso B: Ejecutar la actualización
-        res = supabase.table("incidencias").update(datos_limpios).eq("id", incidencia_id).execute()
-        return res
+        # Aseguramos que los valores sean texto o vacíos
+        datos_limpios = {k: (str(v) if v else "") for k, v in datos_dict.items()}
+        return supabase.table("incidencias").update(datos_limpios).eq("id", inc_id).execute()
     except Exception as e:
-        # Esto nos mostrará el error real en la pantalla de Streamlit
-        st.error(f"Error de Columnas: {e}")
-        # Tip técnico: Si el error persiste, verifica si el nombre de la tabla es 'incidencias' en minúsculas.
+        st.error(f"Error en base de datos: {e}")
         return None
         
 # =========================================================
