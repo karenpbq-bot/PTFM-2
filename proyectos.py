@@ -125,8 +125,21 @@ def mostrar():
                 # Extraemos el ID del proyecto seleccionado
                 id_sel = df_p[df_p['proyecto_display'] == seleccionado]['id'].values[0]
                 st.session_state.id_p_sel = id_sel
-                
                 st.success(f"✅ Proyecto '{seleccionado}' seleccionado.")
+
+                # NUEVA RESTRICCIÓN DE ROL AQUÍ
+                if st.session_state.get('rol') in ["Administrador", "Gerente"]:
+                    with st.expander("🚫 Zona de Peligro"):
+                        st.write("Esta acción eliminará el proyecto y TODOS sus registros asociados.")
+                        confirmar = st.checkbox(f"Confirmo que deseo borrar permanentemente")
+            
+                        if st.button("🔥 Eliminar Proyecto Completo", type="primary", disabled=not confirmar):
+                            if eliminar_proyecto_completo(id_sel):
+                                st.success("Proyecto eliminado.")
+                                st.session_state.id_p_sel = None
+                                st.rerun()
+                else:
+                    st.info("ℹ️ La eliminación de proyectos está reservada para niveles administrativos.")
                 
                 # --- NUEVA ZONA DE PELIGRO (Punto 1 de tus requerimientos) ---
                 with st.expander("🚫 Zona de Peligro"):
