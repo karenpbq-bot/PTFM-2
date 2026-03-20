@@ -178,9 +178,25 @@ def mostrar():
             info_p = df_p[df_p['id'] == st.session_state.id_p_sel].iloc[0]
             nombre_proyecto = info_p['proyecto_display']
             p_cod_base = info_p['codigo'] # El prefijo del proyecto (ej: PTF-001)
-            
+
             st.subheader(f"📦 Matriz de Productos: {nombre_proyecto}")
 
+            rol_actual = st.session_state.get('rol')
+
+            # --- NUEVA VALIDACIÓN DE ROL PARA INGRESO ---
+            if rol_actual in ["Administrador", "Gerente"]:
+                # --- 1. SECCIÓN: AGREGAR PRODUCTO (MANUAL) ---
+                with st.expander("➕ Agregar Producto", expanded=False):
+                    # ... (Aquí va todo tu código actual de form_producto_manual) ...
+                    pass
+
+                # --- 2. SECCIÓN: IMPORTAR LISTA DE PRODUCTOS (EXCEL) ---
+                with st.expander("📥 Importar Lista de Productos"):
+                    # ... (Aquí va todo tu código actual de file_uploader e importación masiva) ...
+                    pass
+            else:
+                st.warning("🔒 Tu perfil de Supervisor solo permite la visualización de la matriz.")
+            
             # --- 1. SECCIÓN: AGREGAR PRODUCTO (MANUAL) ---
             with st.expander("➕ Agregar Producto", expanded=False):
                 with st.form("form_producto_manual", clear_on_submit=True):
@@ -266,6 +282,12 @@ def mostrar():
                 c1.info(f"**Total Piezas:** {int(df_unificado['Cantidad'].sum())}")
                 c2.info(f"**Total Metraje:** {df_unificado['ML'].sum():.2f} ml")
 
+                # --- RESTRICCIÓN PARA VACIAR MATRIZ ---
+                if st.session_state.get('rol') in ["Administrador", "Gerente"]:
+                    if st.button("🗑️ Vaciar Matriz del Proyecto", type="primary"):
+                        conectar().table("productos").delete().eq("proyecto_id", st.session_state.id_p_sel).execute()
+                        st.rerun()
+                
                 if st.button("🗑️ Vaciar Matriz del Proyecto", type="primary"):
                     conectar().table("productos").delete().eq("proyecto_id", st.session_state.id_p_sel).execute()
                     st.rerun()
