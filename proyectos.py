@@ -181,7 +181,7 @@ def mostrar():
             
             st.subheader(f"📦 Matriz de Productos: {nombre_proyecto}")
 
-            # --- VALIDACIÓN DE ROL CORREGIDA (lower y strip para evitar fallos) ---
+            # --- VALIDACIÓN DE ROL UNIFICADA (Evita duplicidad y errores) ---
             rol_actual = str(st.session_state.get('rol', '')).lower().strip()
 
             if rol_actual in ["administrador", "admin", "gerente"]:
@@ -216,7 +216,7 @@ def mostrar():
 
                 # --- 2. SECCIÓN: IMPORTAR LISTA DE PRODUCTOS (EXCEL) ---
                 with st.expander("📥 Importar Lista de Productos"):
-                    f_up = st.file_uploader("Subir Excel", type=["xlsx", "csv"], key="uploader_matriz")
+                    f_up = st.file_uploader("Subir Excel", type=["xlsx", "csv"], key="uploader_matriz_final")
                     if f_up and st.button("🚀 Iniciar Importación Masiva"):
                         try:
                             df_ex = pd.read_csv(f_up) if f_up.name.endswith('csv') else pd.read_excel(f_up)
@@ -256,7 +256,7 @@ def mostrar():
                 c1.info(f"**Total Piezas:** {int(df_unificado['Cantidad'].sum())}")
                 c2.info(f"**Total Metraje:** {df_unificado['ML'].sum():.2f} ml")
 
-                # Botón de Vaciar restringido
+                # Botón de Vaciar (Solo para niveles administrativos)
                 if rol_actual in ["administrador", "admin", "gerente"]:
                     if st.button("🗑️ Vaciar Matriz del Proyecto", type="primary"):
                         conectar().table("productos").delete().eq("proyecto_id", st.session_state.id_p_sel).execute()
