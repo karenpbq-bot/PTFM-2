@@ -174,14 +174,15 @@ def mostrar():
     
    with tab3:
         if st.session_state.get('id_p_sel'):
-            # 0. Recuperar info del proyecto para el título y código base
+            # 0. Recuperar información base del proyecto seleccionado
             info_p = df_p[df_p['id'] == st.session_state.id_p_sel].iloc[0]
             nombre_proyecto = info_p['proyecto_display']
-            p_cod_base = info_p['codigo'] 
+            p_cod_base = info_p['codigo']
             
             st.subheader(f"📦 Matriz de Productos: {nombre_proyecto}")
 
-            # --- VALIDACIÓN DE ROL UNIFICADA (Evita errores de mayúsculas) ---
+            # --- VALIDACIÓN DE ROL UNIFICADA ---
+            # Normalizamos el rol a minúsculas para que te reconozca como Admin siempre
             rol_actual = str(st.session_state.get('rol', '')).lower().strip()
 
             if rol_actual in ["administrador", "admin", "gerente"]:
@@ -197,9 +198,11 @@ def mostrar():
                         if st.form_submit_button("Guardar Producto"):
                             if u and t:
                                 try:
+                                    # CONSULTA CORRELATIVO ACTUAL
                                     res_c = conectar().table("productos").select("id", count="exact").eq("proyecto_id", st.session_state.id_p_sel).execute()
                                     nuevo_n = (res_c.count if res_c.count else 0) + 1
                                     etiqueta = f"{p_cod_base}-{str(nuevo_n).zfill(4)}"
+
                                     datos_producto = {
                                         "proyecto_id": int(st.session_state.id_p_sel),
                                         "codigo_etiqueta": etiqueta,
@@ -216,13 +219,15 @@ def mostrar():
 
                 # --- 2. SECCIÓN: IMPORTAR LISTA DE PRODUCTOS (EXCEL) ---
                 with st.expander("📥 Importar Lista de Productos"):
-                    f_up = st.file_uploader("Subir Excel", type=["xlsx", "csv"], key="up_matriz_final")
+                    f_up = st.file_uploader("Subir Excel", type=["xlsx", "csv"], key="uploader_final_fix")
                     if f_up and st.button("🚀 Iniciar Importación Masiva"):
                         try:
                             df_ex = pd.read_csv(f_up) if f_up.name.endswith('csv') else pd.read_excel(f_up)
                             df_ex = df_ex.dropna(subset=['UBICACION', 'TIPO'])
+                            
                             res_count = conectar().table("productos").select("id", count="exact").eq("proyecto_id", st.session_state.id_p_sel).execute()
                             conteo_actual = res_count.count if res_count.count else 0
+                            
                             lote = []
                             for i, (index, r) in enumerate(df_ex.iterrows(), start=1):
                                 correlativo = str(conteo_actual + i).zfill(4)
@@ -234,21 +239,29 @@ def mostrar():
                                     "ctd": int(r['CTD']),
                                     "ml": float(r['Medidas (ml)'])
                                 })
+                            
                             conectar().table("productos").insert(lote).execute()
-                            st.success(f"✅ Se cargaron {len(lote)} productos."); st.rerun()
+                            st.success(f"✅ Se cargaron {len(lote)} productos nuevos.")
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Error al importar: {e}")
             else:
-                # Mensaje visual para Supervisores
+                # Mensaje visual informativo para Supervisores
                 st.warning("🔒 Tu perfil de Supervisor solo permite la visualización de la matriz.")
 
-            # --- 3. VISUALIZACIÓN DE LA MATRIZ (Visible para todos) ---
+            # --- 3. VISUALIZACIÓN DE LA MATRIZ (Visible para TODOS) ---
             st.divider()
             res_p = conectar().table("productos").select("codigo_etiqueta, ubicacion, tipo, ctd, ml").eq("proyecto_id", st.session_state.id_p_sel).order("codigo_etiqueta").execute()
             
             if res_p.data:
                 df_matriz = pd.DataFrame(res_p.data)
-                mapeo = {'codigo_etiqueta': 'Código ID', 'ubicacion': 'Ubicación', 'tipo': 'Tipo', 'ctd': 'Cantidad', 'ml': 'ML'}
+                mapeo = {
+                    'codigo_etiqueta': 'Código ID',
+                    'ubicacion': 'Ubicación',
+                    'tipo': 'Tipo',
+                    'ctd': 'Cantidad',
+                    'ml': 'ML'
+                }
                 df_unificado = df_matriz.rename(columns=mapeo)
                 st.dataframe(df_unificado, hide_index=True, use_container_width=True)
                 
@@ -256,7 +269,7 @@ def mostrar():
                 c1.info(f"**Total Piezas:** {int(df_unificado['Cantidad'].sum())}")
                 c2.info(f"**Total Metraje:** {df_unificado['ML'].sum():.2f} ml")
 
-                # Botón de Vaciar Matriz (Protegido por rol)
+                # Botón de Vaciar Matriz: Solo para niveles administrativos
                 if rol_actual in ["administrador", "admin", "gerente"]:
                     if st.button("🗑️ Vaciar Matriz del Proyecto", type="primary"):
                         conectar().table("productos").delete().eq("proyecto_id", st.session_state.id_p_sel).execute()
