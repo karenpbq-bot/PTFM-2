@@ -159,17 +159,20 @@ def mostrar():
                         category_orders={"Etapa": ORDEN_ETAPAS} # Refuerzo de orden Diseño -> Entrega
                     )
 
-                    # 6. CONFIGURACIÓN VISUAL Y DE EJES (BLOQUE CORREGIDO)
-                    # Invertimos el eje Y y forzamos el tipo 'category' para evitar espacios fantasma
+                    # 6. CONFIGURACIÓN VISUAL (ALTA DENSIDAD: BARRAS DELGADAS Y COMPACTAS)
+                    
+                    # A. Ajuste de los Ejes
                     fig.update_yaxes(
                         autorange="reversed", 
                         showgrid=True, 
-                        type='category', 
-                        categoryorder='array', 
-                        categoryarray=ORDEN_ETAPAS
+                        type='category',
+                        categoryorder='array',
+                        categoryarray=ORDEN_ETAPAS,
+                        tickfont=dict(size=10), # Letra un poco más pequeña para ahorrar espacio
+                        gridcolor="#F0F0F0"
                     )
                     
-                    # Sincronizamos el eje X para que todos los proyectos usen la misma escala temporal
+                    # B. Sincronización del Eje X (Escala de tiempo)
                     f_plan_ref = df_visible[df_visible['Tipo'] == "1_Planificado"]['Inicio']
                     f_min_x = f_plan_ref.min() if not f_plan_ref.empty else pd.Timestamp.now()
                     fig.update_xaxes(
@@ -177,35 +180,36 @@ def mostrar():
                         showgrid=True,
                         dtick="M1", 
                         tickformat="%b %Y",
-                        matches='x' # <--- Esto iguala la escala visual entre proyectos
+                        matches='x',
+                        tickfont=dict(size=10),
+                        gridcolor="#F0F0F0"
                     )
 
-                    # --- CONTROL DE GROSOR Y POSICIÓN ---
-                    # Cambiamos barmode a 'overlay' para que la barra Real esté sobre la Planificada
-                    # Esto elimina el espacio entre ellas y las deja "juntas".
+                    # C. Control de Posición y Grosor Compacto
                     fig.update_layout(
-                        barmode='overlay', 
-                        bargap=0.4, # Espacio constante entre Diseño, Fab, etc.
-                        height=350 * len(proyectos_sel), 
-                        margin=dict(l=10, r=10, t=50, b=10), 
+                        barmode='group',     
+                        bargap=0.5,          # Mayor espacio entre Etapas (Diseño vs Fab) para que se vean delgadas
+                        bargroupgap=0.0,     # Pegadas entre sí (Planificado arriba / Real abajo)
+                        # REDUCIMOS ALTURA: Pasamos de 350 a 220px por proyecto para ver más a la vez
+                        height=220 * len(proyectos_sel), 
+                        margin=dict(l=10, r=10, t=30, b=10), 
                         showlegend=False,
                         plot_bgcolor='white'
                     )
 
-                    # Forzamos anchos fijos para que no varíen entre proyectos
-                    # 1_Planificado es más ancha (0.6) para servir de base
-                    fig.update_traces(width=0.6, selector=dict(customdata="1_Planificado"))
-                    # 2_Real es más delgada (0.4) para resaltar encima
-                    fig.update_traces(width=0.4, selector=dict(customdata="2_Real"))
-                    
-                    # Quitamos bordes y ajustamos opacidad general
-                    fig.update_traces(marker_line_width=0, opacity=0.9)
+                    # D. Forzamos Anchos Delgados
+                    # Reducimos width a 0.35 para que las barras sean finas y elegantes
+                    fig.update_traces(
+                        width=0.35, 
+                        marker_line_width=0, 
+                        opacity=0.9
+                    )
 
-                    # Línea de "HOY"
+                    # Línea de "HOY" (Indicador rojo)
                     fig.add_vline(
                         x=pd.Timestamp.now().timestamp() * 1000, 
-                        line_width=1.5, 
-                        line_dash="dash", 
+                        line_width=1, 
+                        line_dash="dot", 
                         line_color="red"
                     )
 
