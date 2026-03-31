@@ -280,41 +280,68 @@ def mostrar(supervisor_id=None):
         rol = st.session_state.get('rol', 'Supervisor')
         for _, p in df_r.iterrows():
             cols = st.columns([2.5] + [0.7]*8 + [1.5])
-            # Mostramos el Código de Etiqueta primero para identificación rápida
-            id_etiqueta = p.get('codigo_etiqueta', 'S/N')
+            
+            # Identificación del producto
             cols[0].write(f"{p['ubicacion']} | {p['tipo']} | **{p['ml']} ML**")
+            
             for i, h in enumerate(HITOS_LIST):
+                # --- 1. ESTADO DE LOS DATOS ---
+                # ¿Está ya guardado en la base de datos?
                 en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
-                idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) if d["pid"] == p['id'] and d["hito"] == h), None)
+                
+                # ¿Está marcado ahora mismo pero no guardado aún?
+                idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) 
+                              if d["pid"] == p['id'] and d["hito"] == h), None)
+                
                 existe = en_db or (idx_mem is not None)
-                tiene_post_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
-                bloqueado = (en_db and rol == "Supervisor") or tiene_post_db
+                
+                # --- 2. LÓGICA DE BLOQUEO ---
+                # Bloqueamos si ya está en DB y es supervisor (no puede borrar lo ya enviado)
+                # O si hay hitos posteriores ya guardados en DB
+                tiene_post_db = not segs[(segs['producto_id'] == p['id']) & 
+                                       (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
+                
+                # También bloqueamos si hay hitos posteriores marcados en MEMORIA
+                tiene_post_mem = any(d["pid"] == p['id'] and d["hito"] in HITOS_LIST[i+1:] 
+                                   for d in st.session_state.cambios_pendientes)
+                
+                bloqueado = (en_db and rol == "Supervisor") or tiene_post_db or tiene_post_mem
 
+                # --- 3. INTERFAZ (CHECKBOX) ---
                 if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
                         st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
                         st.rerun()
                 else:
                     if idx_mem is not None:
+                        # Si estaba en memoria, lo sacamos
                         st.session_state.cambios_pendientes.pop(idx_mem)
                         st.rerun()
                     elif en_db and not bloqueado:
-                        t_m = any(d["pid"] == p['id'] and d["hito"] in HITOS_LIST[i+1:] for d in st.session_state.cambios_pendientes)
-                        if not tiene_post_db and not t_m:
+                        # Si estaba en DB y el usuario tiene permiso (Admin/Gerente), borramos
+                        try:
                             supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
                             st.rerun()
-                        else: st.error("Borre posteriores primero")
+                        except Exception as e:
+                            st.error(f"Error al borrar: {e}")
 
-            n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
+            # --- 4. GESTIÓN DE NOTAS ---
+            n_db = segs[(segs['producto_id'] == p['id']) & 
+                        (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
+            
             n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
             nueva = cols[-1].text_input("N", value=n_act, key=f"n_{p['id']}", label_visibility="collapsed")
-            if nueva != n_act: st.session_state.notas_pendientes[str(p['id'])] = nueva
+            
+            if nueva != n_act: 
+                st.session_state.notas_pendientes[str(p['id'])] = nueva
 
-    # Renderizado final
+    # --- RENDERIZADO FINAL Y AGRUPACIÓN ---
     if agrupar_por != "Sin grupo":
         campo = "ubicacion" if agrupar_por == "Ubicación" else "tipo"
         for n, g in df_f.groupby(campo):
             st.markdown(f"**📂 {agrupar_por}: {n}**")
             render_matriz(g)
-    else: render_matriz(df_f)
+    else: 
+        render_matriz(df_f)
+    
     st.markdown('</div>', unsafe_allow_html=True)
