@@ -21,7 +21,7 @@ ruta_logo_pestaña = os.path.join(directorio_actual, nombre_logo_pestaña)
 # Esta debe ser la PRIMERA llamada de Streamlit que se ejecute
 st.set_page_config(
     layout="wide", 
-    page_title="PRACTIFORMAS | SGI PTFM", # <--- Título actualizado
+    page_title="PRACTIFORMAS | PROYECTOS", # <--- Título actualizado
     page_icon=ruta_logo_pestaña if os.path.exists(ruta_logo_pestaña) else "🪚" # <--- Tu logo aquí
 )
 
