@@ -229,7 +229,7 @@ def sincronizar_avances_estructural(codigo_p):
             fila_horizontal["fecha_inicio_real"] = min(fechas_globales).strftime('%Y-%m-%d')
             fila_horizontal["fecha_fin_real"] = max(fechas_globales).strftime('%Y-%m-%d')
 
-        supabase.table("avances_etapas").upsert(fila_horizontal).execute()
+        supabase.table("avances_etapas").upsert(fila_horizontal, on_conflict="codigo").execute()
         
     except Exception as e:
         st.error(f"Error en sincronización estructural: {e}")
