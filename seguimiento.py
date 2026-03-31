@@ -304,9 +304,9 @@ def mostrar(supervisor_id=None):
                                      for d in st.session_state.cambios_pendientes)
 
                 bloqueado_solo_lectura = (en_db and rol == "Supervisor")
-                bloqueado_por_jerarquia = tiene_post_db or tiene_post_mem
-
-                bloqueado = bloqueado_solo_lectura or bloqueado_por_jerarquiam
+                # CORRECCIÓN EN seguimiento.py (Línea ~275)
+                bloqueado_por_jerarquia = tiene_post_db or tiene_post_mem # Eliminar la 'm' final
+                bloqueado = bloqueado_solo_lectura or bloqueado_por_jerarquia
 
                 # --- 3. INTERFAZ (CHECKBOX) - REEMPLAZAR DESDE AQUÍ ---
                 if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=en_db, disabled=bloqueado, label_visibility="collapsed"):
