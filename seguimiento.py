@@ -166,7 +166,7 @@ def mostrar(supervisor_id=None):
 
     p_tot, p_par = calc_avance(prods_all, segs), calc_avance(df_f, segs)
 
-    # --- F. FILA DE ACCIONES ---
+    # --- F. FILA DE ACCIONES (INTEGRACIÓN CORREGIDA) ---
     st.divider()
     act1, act2, act3, act4, act5 = st.columns([1.5, 1, 1, 1.3, 1.3])
     f_reg = act1.date_input("Fecha Registro", datetime.now(), format="DD/MM/YYYY", key="f_reg_u")
@@ -176,38 +176,67 @@ def mostrar(supervisor_id=None):
     if act4.button("💾 Guardar Avance", type="primary", use_container_width=True, key="btn_guardar_final"):
         f_hoy = f_reg.strftime("%d/%m/%Y")
         try:
-            # 1. Notas... (Tu lógica de notas)
+            # 1. GESTIÓN DE NOTAS (Mantenemos tu lógica de notas activa)
+            if st.session_state.notas_pendientes:
+                for pid_nota, texto in st.session_state.notas_pendientes.items():
+                    supabase.table("seguimiento").upsert(
+                        {"producto_id": int(pid_nota), "hito": HITOS_LIST[0], "observaciones": texto},
+                        on_conflict="producto_id, hito"
+                    ).execute()
             
-            # 2. Guardar Seguimiento
-            df_cp = pd.DataFrame(st.session_state.cambios_pendientes).rename(columns={'pid': 'producto_id'}) if st.session_state.cambios_pendientes else pd.DataFrame(columns=['producto_id', 'hito'])
-            df_total = pd.concat([segs[['producto_id', 'hito']], df_cp[['producto_id', 'hito']]]).drop_duplicates()
-            lote_save = []
-            for pid in prods_all['id'].tolist():
-                hitos_p = df_total[df_total['producto_id'] == pid]['hito'].tolist()
-                if hitos_p:
-                    m_idx = max([HITOS_LIST.index(h) for h in hitos_p if h in HITOS_LIST])
-                    for i in range(m_idx + 1):
-                        if segs[(segs['producto_id'] == pid) & (segs['hito'] == HITOS_LIST[i])].empty:
-                            lote_save.append({"producto_id": pid, "hito": HITOS_LIST[i], "fecha": f_hoy})
-            
-            if lote_save:
-                supabase.table("seguimiento").upsert(lote_save, on_conflict="producto_id, hito").execute()
+            # 2. PROCESAMIENTO DE CAMBIOS PENDIENTES (Lógica Robusta)
+            if not st.session_state.cambios_pendientes:
+                st.warning("⚠️ No hay hitos nuevos marcados para guardar.")
+                st.stop()
 
-            # --- ACTUALIZACIÓN DE MÉTRICAS Y GANTT ---
-            try:
-                from base_datos import sincronizar_avances_estructural
-                p_data_obj = df_p_all[df_p_all['id'] == id_p].iloc[0]
-                sincronizar_avances_estructural(p_data_obj['codigo'])
-            except Exception as e:
-                st.warning(f"Seguimiento guardado, pero el Gantt no se actualizó: {e}")
+            lote_save = []
+            # Consolidamos qué productos tienen cambios para procesar su cascada
+            for cambio in st.session_state.cambios_pendientes:
+                pid = cambio['pid']
+                hito_sel = cambio['hito']
+                
+                # Buscamos el hito más avanzado seleccionado para este producto
+                m_idx = HITOS_LIST.index(hito_sel)
+                
+                # Cascada: Asegurar que desde el hito 0 hasta el seleccionado estén registrados
+                for i in range(m_idx + 1):
+                    h_nombre = HITOS_LIST[i]
+                    # Verificamos si ya existe en la base de datos cargada al inicio (segs)
+                    existe_en_db = not segs[(segs['producto_id'] == pid) & (segs['hito'] == h_nombre)].empty
+                    
+                    if not existe_en_db:
+                        lote_save.append({
+                            "producto_id": int(pid), 
+                            "hito": h_nombre, 
+                            "fecha": f_hoy
+                        })
             
-            # ELIMINAR CAMBIOS Y REFRESCAR (Siempre se hace)
-            st.session_state.cambios_pendientes, st.session_state.notas_pendientes = [], {}
-            st.success("✅ Seguimiento guardado.")
-            st.rerun() # <--- IMPORTANTE: Aquí refresca toda la data para el Gantt
-        
+            # 3. EJECUCIÓN DEL GUARDADO EN SUPABASE
+            if lote_save:
+                # Eliminamos duplicados antes de enviar para optimizar la carga
+                df_final = pd.DataFrame(lote_save).drop_duplicates(subset=['producto_id', 'hito'])
+                supabase.table("seguimiento").upsert(df_final.to_dict(orient='records'), on_conflict="producto_id, hito").execute()
+
+                # --- ACTUALIZACIÓN DE MÉTRICAS Y GANTT ---
+                try:
+                    from base_datos import sincronizar_avances_estructural
+                    p_data_obj = df_p_all[df_p_all['id'] == id_p].iloc[0]
+                    sincronizar_avances_estructural(p_data_obj['codigo'])
+                except Exception as e:
+                    st.warning(f"Datos guardados, pero hubo un error en el Gantt: {e}")
+
+                # LIMPIEZA DE MEMORIA Y REFRESCO
+                st.session_state.cambios_pendientes = []
+                st.session_state.notas_pendientes = {}
+                st.success(f"✅ Avance guardado correctamente ({len(df_final)} registros).")
+                st.rerun()
+            else:
+                st.info("Los hitos seleccionados ya se encontraban registrados en la base de datos.")
+                st.session_state.cambios_pendientes = []
+                st.rerun()
+
         except Exception as e: 
-            st.error(f"Error crítico: {e}")
+            st.error(f"Error crítico durante el guardado: {e}")
 
     if act5.button("🗑️ Descartar", type="secondary", use_container_width=True, key="btn_des_final"):
         st.session_state.cambios_pendientes, st.session_state.notas_pendientes = [], {}
