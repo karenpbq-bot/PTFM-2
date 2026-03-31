@@ -295,35 +295,60 @@ def mostrar(supervisor_id=None):
                 
                 existe = en_db or (idx_mem is not None)
                 
-                # --- 2. LÓGICA DE BLOQUEO ---
-                # Bloqueamos si ya está en DB y es supervisor (no puede borrar lo ya enviado)
-                # O si hay hitos posteriores ya guardados en DB
+                # LÓGICA DE BLOQUEO: 
+                # 1. Bloqueado si ya está en DB y el usuario es Supervisor (No puede desmarcar).
+                # 2. Bloqueado si existen hitos posteriores ya marcados (para mantener la coherencia).
                 tiene_post_db = not segs[(segs['producto_id'] == p['id']) & 
-                                       (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
-                
-                # También bloqueamos si hay hitos posteriores marcados en MEMORIA
+                                         (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
                 tiene_post_mem = any(d["pid"] == p['id'] and d["hito"] in HITOS_LIST[i+1:] 
-                                   for d in st.session_state.cambios_pendientes)
-                
-                bloqueado = (en_db and rol == "Supervisor") or tiene_post_db or tiene_post_mem
+                                     for d in st.session_state.cambios_pendientes)
 
-                # --- 3. INTERFAZ (CHECKBOX) ---
-                if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed"):
-                    if not existe:
-                        st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
-                        st.rerun()
+                bloqueado_solo_lectura = (en_db and rol == "Supervisor")
+                bloqueado_por_jerarquia = tiene_post_db or tiene_post_mem
+
+                bloqueado = bloqueado_solo_lectura or bloqueado_por_jerarquiam
+
+                # --- 3. INTERFAZ (CHECKBOX) - REEMPLAZAR DESDE AQUÍ ---
+                if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=en_db, disabled=bloqueado, label_visibility="collapsed"):
+                    if not en_db:
+                        # --- GUARDADO INMEDIATO EN CASCADA ---
+                        m_idx = HITOS_LIST.index(h)
+                        lote_directo = []
+                        # Tomamos la fecha del selector superior (f_reg definida en la línea 121)
+                        f_string = f_reg.strftime("%d/%m/%Y")
+                        
+                        for j in range(m_idx + 1):
+                            h_nom = HITOS_LIST[j]
+                            # Si no existe en la base de datos, lo preparamos para guardar
+                            if segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h_nom)].empty:
+                                lote_directo.append({
+                                    "producto_id": int(p['id']), 
+                                    "hito": h_nom, 
+                                    "fecha": f_string
+                                })
+                        
+                        if lote_directo:
+                            # Guardamos directamente en Supabase
+                            supabase.table("seguimiento").upsert(lote_directo, on_conflict="producto_id, hito").execute()
+                            
+                            # Sincronizamos con el Gantt
+                            try:
+                                from base_datos import sincronizar_avances_estructural
+                                p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
+                                sincronizar_avances_estructural(p_cod)
+                            except: pass
+                            
+                            # Forzamos recarga: Ahora 'en_db' será True y el check aparecerá marcado y BLOQUEADO
+                            st.rerun()
                 else:
-                    if idx_mem is not None:
-                        # Si estaba en memoria, lo sacamos
-                        st.session_state.cambios_pendientes.pop(idx_mem)
-                        st.rerun()
-                    elif en_db and not bloqueado:
-                        # Si estaba en DB y el usuario tiene permiso (Admin/Gerente), borramos
+                    # Lógica para desmarcar: Solo permitida para Administradores/Gerentes
+                    if en_db and rol in ["Administrador", "Gerente"]:
                         try:
                             supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Error al borrar: {e}")
+                            st.error(f"Error al eliminar: {e}")
+                # --- FIN DEL REEMPLAZO ---
 
             # --- 4. GESTIÓN DE NOTAS ---
             n_db = segs[(segs['producto_id'] == p['id']) & 
