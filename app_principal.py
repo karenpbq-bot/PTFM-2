@@ -1,15 +1,30 @@
+# =========================================================
+# 1. IMPORTACIONES (MODIFICADO: Incluye 'os')
+# =========================================================
 import streamlit as st
 import pandas as pd
 from datetime import timedelta, datetime, date
 import plotly.express as px
 from base_datos import *
+import os  # <-- Importante para manejar rutas de archivos
 import seguimiento, ejecucion, login, usuarios, incidencias, proyectos 
 
+# --- Lógica para localizar el logo ---
+# Esto debe estar ANTES de st.set_page_config
+directorio_actual = os.path.dirname(__file__)
+nombre_logo_pestaña = "LOGO PRACTIFORMAS SIN FONDO.PNG" # Nombre exacto del archivo
+ruta_logo_pestaña = os.path.join(directorio_actual, nombre_logo_pestaña)
 
 # =========================================================
-# CONFIGURACIÓN INICIAL Y SESIÓN
+# 2. CONFIGURACIÓN DE PÁGINA (MODIFICADO: Incorpora tu logo)
 # =========================================================
-st.set_page_config(layout="wide", page_title="Carpintería Pro V2")
+# Esta debe ser la PRIMERA llamada de Streamlit que se ejecute
+st.set_page_config(
+    layout="wide", 
+    page_title="PRACTIFORMAS | SGI PTFM", # <--- Título actualizado
+    page_icon=ruta_logo_pestaña if os.path.exists(ruta_logo_pestaña) else "🪚" # <--- Tu logo aquí
+)
+
 inicializar_bd()
 
 if 'autenticado' not in st.session_state:
