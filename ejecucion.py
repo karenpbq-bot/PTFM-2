@@ -159,38 +159,49 @@ def mostrar():
                         category_orders={"Etapa": ORDEN_ETAPAS} # Refuerzo de orden Diseño -> Entrega
                     )
 
-                    # 6. CONFIGURACIÓN VISUAL Y DE EJES
-                    # Invertimos el eje Y para que el orden sea de ARRIBA hacia ABAJO
-                    fig.update_yaxes(autorange="reversed", showgrid=True)
+                    # 6. CONFIGURACIÓN VISUAL Y DE EJES (BLOQUE CORREGIDO)
+                    # Invertimos el eje Y y forzamos el tipo 'category' para evitar espacios fantasma
+                    fig.update_yaxes(
+                        autorange="reversed", 
+                        showgrid=True, 
+                        type='category', 
+                        categoryorder='array', 
+                        categoryarray=ORDEN_ETAPAS
+                    )
                     
-                    # Ajuste del rango del eje X (Línea de tiempo)
+                    # Sincronizamos el eje X para que todos los proyectos usen la misma escala temporal
                     f_plan_ref = df_visible[df_visible['Tipo'] == "1_Planificado"]['Inicio']
                     f_min_x = f_plan_ref.min() if not f_plan_ref.empty else pd.Timestamp.now()
                     fig.update_xaxes(
                         range=[f_min_x - timedelta(days=2), f_min_x + timedelta(days=90)], 
                         showgrid=True,
                         dtick="M1", 
-                        tickformat="%b %Y"
+                        tickformat="%b %Y",
+                        matches='x' # <--- Esto iguala la escala visual entre proyectos
                     )
 
-                    # --- CONTROL DE ALTURA DINÁMICA CON TOPE ---
-                    # Mantenemos tus 350px por proyecto, pero limitamos el máximo a 800px (ajustable)
-                    # para que no se extienda demasiado en pantalla.
-                    altura_plana = min(max(225, 210 * len(proyectos_sel)), 500)
-
-                    # Estilos de barra y Layout
+                    # --- CONTROL DE GROSOR Y POSICIÓN ---
+                    # Cambiamos barmode a 'overlay' para que la barra Real esté sobre la Planificada
+                    # Esto elimina el espacio entre ellas y las deja "juntas".
                     fig.update_layout(
-                        barmode='group', 
-                        bargap=0.4, 
-                        height=350 * len(proyectos_sel), # Altura dinámica según cantidad de proyectos
+                        barmode='overlay', 
+                        bargap=0.4, # Espacio constante entre Diseño, Fab, etc.
+                        height=350 * len(proyectos_sel), 
                         margin=dict(l=10, r=10, t=50, b=10), 
-                        showlegend=False
+                        showlegend=False,
+                        plot_bgcolor='white'
                     )
 
-                    # Quitar bordes de las barras y aplicar opacidad
+                    # Forzamos anchos fijos para que no varíen entre proyectos
+                    # 1_Planificado es más ancha (0.6) para servir de base
+                    fig.update_traces(width=0.6, selector=dict(customdata="1_Planificado"))
+                    # 2_Real es más delgada (0.4) para resaltar encima
+                    fig.update_traces(width=0.4, selector=dict(customdata="2_Real"))
+                    
+                    # Quitamos bordes y ajustamos opacidad general
                     fig.update_traces(marker_line_width=0, opacity=0.9)
 
-                    # Línea de "HOY" (Indicador de tiempo actual)
+                    # Línea de "HOY"
                     fig.add_vline(
                         x=pd.Timestamp.now().timestamp() * 1000, 
                         line_width=1.5, 
