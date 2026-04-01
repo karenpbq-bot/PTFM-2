@@ -50,7 +50,7 @@ def mostrar():
                 u_real = st.text_input("Nombre Completo (Ej: Juan Pérez)")
                 u_nombre = st.text_input("Nombre de Usuario (Login)")
                 u_pass = st.text_input("Contraseña Temporal", type="password")
-                u_rol = st.selectbox("Rol y Permisos", ["Supervisor", "Gerente", "Administrador"])
+                u_rol = st.selectbox("Rol y Permisos", ["admin", "Gerente", "Supervisor"])
                 
                 if st.form_submit_button("🚀 Registrar en el Sistema"):
                     if u_nombre and u_pass and u_real:
@@ -105,8 +105,8 @@ def mostrar():
                         with st.form("edit_form"):
                             n_nom = st.text_input("Nombre Real", value=st.session_state.user_edit_data['nombre_completo'])
                             n_usu = st.text_input("Usuario (Login)", value=st.session_state.user_edit_data['nombre_usuario'])
-                            n_rol = st.selectbox("Rol", ["Supervisor", "Gerente", "Administrador"], 
-                                               index=["Supervisor", "Gerente", "Administrador"].index(st.session_state.user_edit_data['rol']))
+                            n_rol = st.selectbox("Rol", ["admin", "Gerente", "Supervisor"], 
+                                               index=["admin", "Gerente", "Supevisor"].index(st.session_state.user_edit_data['rol']))
                             
                             col_f1, col_f2 = st.columns(2)
                             if col_f1.form_submit_button("Guardar"):
