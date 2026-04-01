@@ -42,6 +42,33 @@ st.markdown("""
         padding-bottom: 0rem;
     }
     </style>
+    """, unsafe_allow_html=True)# --- CÓDIGO PARA PERSONALIZAR SIN PERDER EL MENÚ EN MÓVILES ---
+st.markdown("""
+    <style>
+    /* 1. Ocultamos el botón de 'Deploy' y la marca de agua de Streamlit */
+    .stDeployButton {display:none;}
+    footer {visibility: hidden;}
+    
+    /* 2. En lugar de ocultar el header completo, ocultamos solo los elementos 
+       innecesarios pero DEJAMOS el botón del menú (hamburguesa) */
+    header {
+        background-color: rgba(0,0,0,0); /* Lo hacemos transparente */
+    }
+    
+    /* Ocultamos el menú de opciones predeterminado de Streamlit (el de la derecha) */
+    #MainMenu {visibility: hidden;}
+
+    /* 3. Ajustamos el espacio superior para que no se desperdicie espacio en el iPhone */
+    .block-container {
+        padding-top: 3rem;
+        padding-bottom: 0rem;
+    }
+
+    /* 4. OPCIONAL: Si quieres que el título del Sidebar sea más llamativo */
+    [data-testid="stSidebarNav"] {
+        padding-top: 2rem;
+    }
+    </style>
     """, unsafe_allow_html=True)
 
 inicializar_bd()
