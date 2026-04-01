@@ -189,13 +189,42 @@ def mostrar(supervisor_id=None):
         st.rerun()
 
     # Botón Guardar (Columna 4)
-    if cols_acc[4].button("💾 Guardar", type="primary", use_container_width=True):
+    if cols_acc[4].button("💾 Guardar", type="primary", use_container_width=True, key="btn_save_final_v2"):
         f_hoy = f_reg.strftime("%d/%m/%Y")
-        if st.session_state.cambios_pendientes or st.session_state.notas_pendientes:
-            # ... (Aquí va tu lógica de guardado de notas y cambios que ya tienes)
-            # Nota: Asegúrate de mantener la lógica de 'lote_save' que tenías
-            st.success("✅ Guardado correctamente")
-            st.rerun()
+        try:
+            # --- A. GUARDAR NOTAS SI EXISTEN ---
+            if st.session_state.notas_pendientes:
+                for pid_n, texto in st.session_state.notas_pendientes.items():
+                    supabase.table("seguimiento").upsert(
+                        {"producto_id": int(pid_n), "hito": HITOS_LIST[0], "observaciones": texto},
+                        on_conflict="producto_id, hito"
+                    ).execute()
+                st.session_state.notas_pendientes = {}
+
+            # --- B. GUARDAR HITOS Y RECALCULAR ---
+            if st.session_state.cambios_pendientes:
+                lote_save = []
+                for cambio in st.session_state.cambios_pendientes:
+                    lote_save.append({"producto_id": cambio['pid'], "hito": cambio['hito'], "fecha": f_hoy})
+                
+                # 1. Guardar hitos
+                supabase.table("seguimiento").upsert(lote_save, on_conflict="producto_id, hito").execute()
+                
+                # 2. Recalcular porcentajes
+                from base_datos import sincronizar_avances_estructural
+                p_cod_actual = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
+                sincronizar_avances_estructural(p_cod_actual)
+                
+                # 3. Limpiar y refrescar
+                st.session_state.cambios_pendientes = []
+                st.success("✅ Avance guardado y porcentajes actualizados.")
+                st.rerun()
+            else:
+                st.info("Hitos guardados o sin cambios nuevos.")
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Error al sincronizar: {e}")
 
     # Botón Descartar (Columna 5)
     if cols_acc[5].button("🚫 Descartar", use_container_width=True):
