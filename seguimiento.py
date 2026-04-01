@@ -188,43 +188,40 @@ def mostrar(supervisor_id=None):
         st.cache_data.clear()
         st.rerun()
 
-    # Botón Guardar (Columna 4)
-    if cols_acc[4].button("💾 Guardar", type="primary", use_container_width=True, key="btn_save_final_v2"):
+    if cols_acc[4].button("💾 Guardar", type="primary", use_container_width=True, key="btn_save_simple_v3"):
         f_hoy = f_reg.strftime("%d/%m/%Y")
         try:
-            # --- A. GUARDAR NOTAS SI EXISTEN ---
-            if st.session_state.notas_pendientes:
-                for pid_n, texto in st.session_state.notas_pendientes.items():
-                    supabase.table("seguimiento").upsert(
-                        {"producto_id": int(pid_n), "hito": HITOS_LIST[0], "observaciones": texto},
-                        on_conflict="producto_id, hito"
-                    ).execute()
-                st.session_state.notas_pendientes = {}
+            # 1. Verificar si hay algo que guardar (Cambios o Notas)
+            hay_cambios = len(st.session_state.cambios_pendientes) > 0
+            hay_notas = len(st.session_state.notas_pendientes) > 0
 
-            # --- B. GUARDAR HITOS Y RECALCULAR ---
-            if st.session_state.cambios_pendientes:
-                lote_save = []
-                for cambio in st.session_state.cambios_pendientes:
-                    lote_save.append({"producto_id": cambio['pid'], "hito": cambio['hito'], "fecha": f_hoy})
-                
-                # 1. Guardar hitos
-                supabase.table("seguimiento").upsert(lote_save, on_conflict="producto_id, hito").execute()
-                
-                # 2. Recalcular porcentajes
+            if hay_cambios or hay_notas:
+                # A. Procesar Notas primero
+                if hay_notas:
+                    for pid_n, texto in st.session_state.notas_pendientes.items():
+                        supabase.table("seguimiento").upsert(
+                            {"producto_id": int(pid_n), "hito": HITOS_LIST[0], "observaciones": texto},
+                            on_conflict="producto_id, hito"
+                        ).execute()
+                    st.session_state.notas_pendientes = {}
+
+                # B. Procesar Hitos marcados
+                if hay_cambios:
+                    lote_save = [{"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy} for c in st.session_state.cambios_pendientes]
+                    supabase.table("seguimiento").upsert(lote_save, on_conflict="producto_id, hito").execute()
+                    st.session_state.cambios_pendientes = []
+
+                # 2. Sincronizar Porcentajes de Avance
                 from base_datos import sincronizar_avances_estructural
-                p_cod_actual = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
-                sincronizar_avances_estructural(p_cod_actual)
+                p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
+                sincronizar_avances_estructural(p_cod)
                 
-                # 3. Limpiar y refrescar
-                st.session_state.cambios_pendientes = []
-                st.success("✅ Avance guardado y porcentajes actualizados.")
+                st.success(f"✅ Datos guardados y porcentajes actualizados.")
                 st.rerun()
             else:
-                st.info("Hitos guardados o sin cambios nuevos.")
-                st.rerun()
-                
+                st.info("No hay cambios nuevos para guardar.")
         except Exception as e:
-            st.error(f"Error al sincronizar: {e}")
+            st.error(f"Error al guardar: {e}")
 
     # Botón Descartar (Columna 5)
     if cols_acc[5].button("🚫 Descartar", use_container_width=True):
@@ -242,76 +239,78 @@ def mostrar(supervisor_id=None):
             st.warning("⚠️ Avance del proyecto reseteado.")
             st.rerun()
     
-    # --- G. MATRIZ ---
+    # --- G. MATRIZ (Cabecera con Botón de Marcado Grupal Filtrado) ---
+    st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
+    cols_h = st.columns([2.5] + [0.7]*8 + [1.5])
+    cols_h[0].write("**Producto**")
+    
+    for i, h in enumerate(HITOS_LIST):
+        with cols_h[i+1]:
+            st.write(MAPEO_HITOS[h])
+            # BOTÓN GRUPAL: ✅ (Solo actúa sobre 'df_f', los filtrados)
+            if st.button("✅", key=f"btn_all_{h}"):
+                f_hoy = f_reg.strftime("%d/%m/%Y")
+                lote_grupal = []
+                for pid in df_f['id'].tolist():
+                    if segs[(segs['producto_id'] == pid) & (segs['hito'] == h)].empty:
+                        lote_grupal.append({"producto_id": int(pid), "hito": h, "fecha": f_hoy})
+                
+                if lote_grupal:
+                    try:
+                        supabase.table("seguimiento").upsert(lote_grupal, on_conflict="producto_id, hito").execute()
+                        from base_datos import sincronizar_avances_estructural
+                        p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
+                        sincronizar_avances_estructural(p_cod)
+                        st.success(f"✅ {h} marcado en productos filtrados.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+    cols_h[-1].write("**Notas**")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- FUNCIÓN PARA FILAS INDIVIDUALES ---
     def render_matriz(df_r):
-        # 1. Definimos el rol localmente (Limpieza total)
         rol_local = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
         es_jefe_m = rol_local in ["admin", "gerente", "administrador"]
 
         for _, p in df_r.iterrows():
             cols = st.columns([2.5] + [0.7]*8 + [1.5])
-            
-            # Identificación del producto
             cols[0].write(f"{p['ubicacion']} | {p['tipo']} | **{p['ml']} ML**")
             
             for i, h in enumerate(HITOS_LIST):
-                # Estado de base de datos
                 en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
-                
-                # Cascada visual
-                tiene_post_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
                 idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) if d["pid"] == p['id'] and d["hito"] == h), None)
+                existe = en_db or (idx_mem is not None)
                 
-                existe = en_db or tiene_post_db or (idx_mem is not None)
-                
-                # Regla de bloqueo: Jefe nunca bloqueado, Supervisor bloqueado si ya está en DB
-                bloqueado = False if es_jefe_m else (en_db or tiene_post_db)
+                # Regla de bloqueo simple para mejorar velocidad
+                bloqueado = (en_db and not es_jefe_m)
 
-                # Key dinámica para evitar errores de duplicidad
                 key_chx = f"v_chk_{p['id']}_{h}_{'1' if existe else '0'}"
 
-                # --- BUSCA ESTA LÍNEA Y REEMPLAZA DESDE AQUÍ ---
                 if cols[i+1].checkbox("", key=key_chx, value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
-                        # Buscamos la posición del hito actual
-                        idx_actual = HITOS_LIST.index(h)
-                        
-                        # Bucle de Cascada: Marcamos desde el inicio hasta el hito actual en memoria
-                        for j in range(idx_actual + 1):
-                            h_pasado = HITOS_LIST[j]
-                            
-                            # Verificamos si NO está en base de datos para añadirlo a la memoria
-                            en_db_pasado = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h_pasado)].empty
-                            
-                            if not en_db_pasado:
-                                # Si no está en la lista de cambios pendientes, lo agregamos
-                                ya_en_memoria = any(d["pid"] == p['id'] and d["hito"] == h_pasado for d in st.session_state.cambios_pendientes)
-                                if not ya_en_memoria:
-                                    st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h_pasado})
-                        
-                        # Refresco instantáneo para que veas los cambios en pantalla
+                        if not any(d["pid"] == p['id'] and d["hito"] == h for d in st.session_state.cambios_pendientes):
+                            st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
                         st.rerun()
                 else:
                     if existe:
-                        # Acción: Desmarcar (Solo permitido si NO está bloqueado)
                         if idx_mem is not None:
                             st.session_state.cambios_pendientes.pop(idx_mem)
                         elif en_db and es_jefe_m:
-                            # Borrado real en Supabase para el Admin
                             supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
                             from base_datos import sincronizar_avances_estructural
-                            p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
-                            sincronizar_avances_estructural(p_cod)
+                            sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
                         st.rerun()
 
-            # Gestión de Notas
+            # Notas
             n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
             n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
             nueva = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}", label_visibility="collapsed")
-            if nueva != n_act: 
-                st.session_state.notas_pendientes[str(p['id'])] = nueva
+            if nueva != n_act: st.session_state.notas_pendientes[str(p['id'])] = nueva
 
-    # --- RENDERIZADO FINAL (Fuera de la función render_matriz) ---
+    # --- EJECUCIÓN FINAL ---
+    st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
     if agrupar_por != "Sin grupo":
         campo = "ubicacion" if agrupar_por == "Ubicación" else "tipo"
         for n, g in df_f.groupby(campo):
@@ -319,5 +318,4 @@ def mostrar(supervisor_id=None):
             render_matriz(g)
     else: 
         render_matriz(df_f)
-    
     st.markdown('</div>', unsafe_allow_html=True)
