@@ -188,40 +188,35 @@ def mostrar(supervisor_id=None):
         st.cache_data.clear()
         st.rerun()
 
-    if cols_acc[4].button("💾 Guardar", type="primary", use_container_width=True, key="btn_save_simple_v3"):
+    if cols_acc[4].button("💾 Guardar Cambios", type="primary", use_container_width=True, key="btn_save_batch"):
         f_hoy = f_reg.strftime("%d/%m/%Y")
         try:
-            # 1. Verificar si hay algo que guardar (Cambios o Notas)
-            hay_cambios = len(st.session_state.cambios_pendientes) > 0
-            hay_notas = len(st.session_state.notas_pendientes) > 0
-
-            if hay_cambios or hay_notas:
-                # A. Procesar Notas primero
-                if hay_notas:
-                    for pid_n, texto in st.session_state.notas_pendientes.items():
-                        supabase.table("seguimiento").upsert(
-                            {"producto_id": int(pid_n), "hito": HITOS_LIST[0], "observaciones": texto},
-                            on_conflict="producto_id, hito"
-                        ).execute()
-                    st.session_state.notas_pendientes = {}
-
-                # B. Procesar Hitos marcados
-                if hay_cambios:
-                    lote_save = [{"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy} for c in st.session_state.cambios_pendientes]
-                    supabase.table("seguimiento").upsert(lote_save, on_conflict="producto_id, hito").execute()
+            if st.session_state.cambios_pendientes or st.session_state.notas_pendientes:
+                with st.spinner("Sincronizando con el servidor..."):
+                    # A. Guardar Notas
+                    if st.session_state.notas_pendientes:
+                        for pid_n, txt in st.session_state.notas_pendientes.items():
+                            supabase.table("seguimiento").upsert({"producto_id": int(pid_n), "hito": HITOS_LIST[0], "observaciones": txt}, on_conflict="producto_id, hito").execute()
+                    
+                    # B. Guardar todos los hitos marcados de UNA SOLA VEZ
+                    if st.session_state.cambios_pendientes:
+                        lote = [{"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy} for c in st.session_state.cambios_pendientes]
+                        supabase.table("seguimiento").upsert(lote, on_conflict="producto_id, hito").execute()
+                    
+                    # C. Recalcular porcentajes (Una sola vez al final)
+                    from base_datos import sincronizar_avances_estructural
+                    p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
+                    sincronizar_avances_estructural(p_cod)
+                    
+                    # Limpieza y Refresco final
                     st.session_state.cambios_pendientes = []
-
-                # 2. Sincronizar Porcentajes de Avance
-                from base_datos import sincronizar_avances_estructural
-                p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
-                sincronizar_avances_estructural(p_cod)
-                
-                st.success(f"✅ Datos guardados y porcentajes actualizados.")
-                st.rerun()
+                    st.session_state.notas_pendientes = {}
+                    st.success("✅ ¡Todo sincronizado con éxito!")
+                    st.rerun()
             else:
-                st.info("No hay cambios nuevos para guardar.")
+                st.info("No has realizado cambios nuevos.")
         except Exception as e:
-            st.error(f"Error al guardar: {e}")
+            st.error(f"Error de conexión: {e}")
 
     # Botón Descartar (Columna 5)
     if cols_acc[5].button("🚫 Descartar", use_container_width=True):
@@ -290,18 +285,18 @@ def mostrar(supervisor_id=None):
 
                 if cols[i+1].checkbox("", key=key_chx, value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
+                        # Solo anotamos en la memoria temporal, NO guardamos en DB aún
                         if not any(d["pid"] == p['id'] and d["hito"] == h for d in st.session_state.cambios_pendientes):
                             st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
-                        st.rerun()
+                        # ELIMINAMOS st.rerun() para que puedas hacer clics rápidos
                 else:
                     if existe:
                         if idx_mem is not None:
                             st.session_state.cambios_pendientes.pop(idx_mem)
                         elif en_db and es_jefe_m:
+                            # Aquí borramos directo de DB porque el Admin ya dio la orden
                             supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
-                            from base_datos import sincronizar_avances_estructural
-                            sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
-                        st.rerun()
+                            st.rerun()
 
             # Notas
             n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
