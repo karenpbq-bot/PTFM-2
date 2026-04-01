@@ -16,33 +16,31 @@ nombre_logo_pestaña = "LOGO PRACTIFORMAS SIN FONDO.PNG" # Nombre exacto del arc
 ruta_logo_pestaña = os.path.join(directorio_actual, nombre_logo_pestaña)
 
 # =========================================================
-# 2. CONFIGURACIÓN DE PÁGINA (MODIFICADO: Incorpora tu logo)
+# 2. CONFIGURACIÓN DE PÁGINA (MODIFICADO: Menú Fijo)
 # =========================================================
 st.set_page_config(
     layout="wide", 
     page_title="PRACTIFORMAS | PROYECTOS", 
-    page_icon=ruta_logo_pestaña if os.path.exists(ruta_logo_pestaña) else "🪚"
+    page_icon=ruta_logo_pestaña if os.path.exists(ruta_logo_pestaña) else "🪚",
+    initial_sidebar_state="expanded" # <--- ESTO hace que el menú inicie SIEMPRE abierto
 )
 
-# --- CÓDIGO PARA OCULTAR STREAMLIT Y PERSONALIZAR ---
+# --- ESTILO SEGURO (Mantenemos limpieza sin bloquear acceso) ---
 st.markdown("""
     <style>
-    /* Oculta el menú de hamburguesa (las 3 líneas) */
-    #MainMenu {visibility: hidden;}
-    
-    /* Oculta la marca de agua 'Made with Streamlit' al final */
+    /* Ocultamos basura de Streamlit pero NO el header completo */
+    .stDeployButton {display:none;}
     footer {visibility: hidden;}
-    
-    /* Oculta la barra de encabezado superior */
-    header {visibility: hidden;}
-    
-    /* Opcional: Elimina el espacio extra arriba para que tu logo luzca más */
+    #MainMenu {visibility: hidden;}
+
+    /* Ajuste para que el contenido no se pegue al borde superior */
     .block-container {
         padding-top: 2rem;
-        padding-bottom: 0rem;
     }
     </style>
-    """, unsafe_allow_html=True)# --- CÓDIGO PARA PERSONALIZAR SIN PERDER EL MENÚ EN MÓVILES ---
+    """, unsafe_allow_html=True)
+
+# --- CÓDIGO PARA PERSONALIZAR SIN PERDER EL MENÚ EN MÓVILES ---
 st.markdown("""
     <style>
     /* 1. Ocultamos el botón de 'Deploy' y la marca de agua de Streamlit */
