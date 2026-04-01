@@ -18,12 +18,31 @@ ruta_logo_pestaña = os.path.join(directorio_actual, nombre_logo_pestaña)
 # =========================================================
 # 2. CONFIGURACIÓN DE PÁGINA (MODIFICADO: Incorpora tu logo)
 # =========================================================
-# Esta debe ser la PRIMERA llamada de Streamlit que se ejecute
 st.set_page_config(
     layout="wide", 
-    page_title="PRACTIFORMAS | PROYECTOS", # <--- Título actualizado
-    page_icon=ruta_logo_pestaña if os.path.exists(ruta_logo_pestaña) else "🪚" # <--- Tu logo aquí
+    page_title="PRACTIFORMAS | PROYECTOS", 
+    page_icon=ruta_logo_pestaña if os.path.exists(ruta_logo_pestaña) else "🪚"
 )
+
+# --- CÓDIGO PARA OCULTAR STREAMLIT Y PERSONALIZAR ---
+st.markdown("""
+    <style>
+    /* Oculta el menú de hamburguesa (las 3 líneas) */
+    #MainMenu {visibility: hidden;}
+    
+    /* Oculta la marca de agua 'Made with Streamlit' al final */
+    footer {visibility: hidden;}
+    
+    /* Oculta la barra de encabezado superior */
+    header {visibility: hidden;}
+    
+    /* Opcional: Elimina el espacio extra arriba para que tu logo luzca más */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 0rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 inicializar_bd()
 
