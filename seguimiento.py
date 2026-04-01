@@ -214,9 +214,8 @@ def mostrar(supervisor_id=None):
             st.rerun()
     
     def render_matriz(df_r):
-        # CAMBIO: Normalizar el rol aquí también
-        rol_act = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
-        es_jefe_m = rol_act in ["admin", "gerente", "administrador"]
+        rol = st.session_state.get('rol', 'Supervisor') # <-- ASEGÚRATE DE QUE ESTA LÍNEA EXISTA
+        for _, p in df_r.iterrows():
         
         for _, p in df_r.iterrows():
             cols = st.columns([2.5] + [0.7]*8 + [1.5])
