@@ -270,21 +270,34 @@ def mostrar(supervisor_id=None):
                 # Key dinámica para evitar errores de duplicidad
                 key_chx = f"v_chk_{p['id']}_{h}_{'1' if existe else '0'}"
 
+                # --- BUSCA ESTA LÍNEA Y REEMPLAZA DESDE AQUÍ ---
                 if cols[i+1].checkbox("", key=key_chx, value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
-                        # Acción: Marcar
-                        for idx_p in range(i + 1):
-                            h_p = HITOS_LIST[idx_p]
-                            if segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h_p)].empty:
-                                if not any(d["pid"] == p['id'] and d["hito"] == h_p for d in st.session_state.cambios_pendientes):
-                                    st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h_p})
+                        # Buscamos la posición del hito actual
+                        idx_actual = HITOS_LIST.index(h)
+                        
+                        # Bucle de Cascada: Marcamos desde el inicio hasta el hito actual en memoria
+                        for j in range(idx_actual + 1):
+                            h_pasado = HITOS_LIST[j]
+                            
+                            # Verificamos si NO está en base de datos para añadirlo a la memoria
+                            en_db_pasado = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h_pasado)].empty
+                            
+                            if not en_db_pasado:
+                                # Si no está en la lista de cambios pendientes, lo agregamos
+                                ya_en_memoria = any(d["pid"] == p['id'] and d["hito"] == h_pasado for d in st.session_state.cambios_pendientes)
+                                if not ya_en_memoria:
+                                    st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h_pasado})
+                        
+                        # Refresco instantáneo para que veas los cambios en pantalla
                         st.rerun()
                 else:
                     if existe:
-                        # Acción: Desmarcar (Solo si es Jefe)
+                        # Acción: Desmarcar (Solo permitido si NO está bloqueado)
                         if idx_mem is not None:
                             st.session_state.cambios_pendientes.pop(idx_mem)
                         elif en_db and es_jefe_m:
+                            # Borrado real en Supabase para el Admin
                             supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
                             from base_datos import sincronizar_avances_estructural
                             p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
