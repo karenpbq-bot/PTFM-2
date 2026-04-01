@@ -73,7 +73,7 @@ def mostrar(supervisor_id=None):
     segs = pd.DataFrame(segs_res.data) if segs_res.data else pd.DataFrame(columns=['producto_id','hito','fecha','observaciones'])
 
     # --- E. HERRAMIENTAS ---
-    with st.expander("⚙️ CONFIGURACIÓN AVANZADA Y HERRAMIENTAS"):
+    with st.expander("⚙️ Configuración Avanzada y Herramientas"):
         t1, t2, t3, t4 = st.tabs(["⚖️ Ponderación", "🔍 Filtros", "📥 Importar", "📤 Exportación"])
         
         with t1:
@@ -88,7 +88,7 @@ def mostrar(supervisor_id=None):
 
         with t3:
             f_av = st.file_uploader("Subir Excel", type=["xlsx", "csv"], key="uploader_excel")
-            if f_av and st.button("🚀 Iniciar Importación con Fechas del Excel"):
+            if f_av and st.button("🚀 Iniciar Importación Excel"):
                 try:
                     df_imp = pd.read_excel(f_av) if f_av.name.endswith('xlsx') else pd.read_csv(f_av)
                     lote_imp = []
@@ -188,7 +188,7 @@ def mostrar(supervisor_id=None):
         st.cache_data.clear()
         st.rerun()
 
-    if cols_acc[4].button("💾 Guardar Cambios", type="primary", use_container_width=True, key="btn_save_batch"):
+    if cols_acc[4].button("💾 Guardar Avances", type="primary", use_container_width=True, key="btn_save_batch"):
         f_hoy = f_reg.strftime("%d/%m/%Y")
         try:
             if st.session_state.cambios_pendientes or st.session_state.notas_pendientes:
@@ -219,7 +219,7 @@ def mostrar(supervisor_id=None):
             st.error(f"Error de conexión: {e}")
 
     # Botón Descartar (Columna 5)
-    if cols_acc[5].button("🚫 Descartar", use_container_width=True):
+    if cols_acc[5].button("🚫 Limpiar Selección", use_container_width=True):
         st.session_state.cambios_pendientes, st.session_state.notas_pendientes = [], {}
         st.rerun()
 
