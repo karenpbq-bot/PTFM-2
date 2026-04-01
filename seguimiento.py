@@ -213,10 +213,12 @@ def mostrar(supervisor_id=None):
             st.warning("⚠️ Avance del proyecto reseteado.")
             st.rerun()
     
+    # --- G. MATRIZ ---
     def render_matriz(df_r):
-        rol = st.session_state.get('rol', 'Supervisor') # <-- ASEGÚRATE DE QUE ESTA LÍNEA EXISTA
-        for _, p in df_r.iterrows():
-        
+        # 1. Definimos el rol localmente (Limpieza total)
+        rol_local = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
+        es_jefe_m = rol_local in ["admin", "gerente", "administrador"]
+
         for _, p in df_r.iterrows():
             cols = st.columns([2.5] + [0.7]*8 + [1.5])
             
@@ -224,83 +226,50 @@ def mostrar(supervisor_id=None):
             cols[0].write(f"{p['ubicacion']} | {p['tipo']} | **{p['ml']} ML**")
             
             for i, h in enumerate(HITOS_LIST):
-                # --- 1. ESTADO DE LOS DATOS ---
-                # ¿Está ya guardado en la base de datos?
+                # Estado de base de datos
                 en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
                 
-                # ¿Está marcado ahora mismo pero no guardado aún?
-                idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) 
-                              if d["pid"] == p['id'] and d["hito"] == h), None)
+                # Cascada visual
+                tiene_post_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
+                idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) if d["pid"] == p['id'] and d["hito"] == h), None)
                 
-                existe = en_db or (idx_mem is not None)
+                existe = en_db or tiene_post_db or (idx_mem is not None)
                 
-                # LÓGICA DE BLOQUEO: 
-                # 1. Bloqueado si ya está en DB y el usuario es Supervisor (No puede desmarcar).
-                # 2. Bloqueado si existen hitos posteriores ya marcados (para mantener la coherencia).
-                tiene_post_db = not segs[(segs['producto_id'] == p['id']) & 
-                                         (segs['hito'].isin(HITOS_LIST[i+1:]))].empty
-                tiene_post_mem = any(d["pid"] == p['id'] and d["hito"] in HITOS_LIST[i+1:] 
-                                     for d in st.session_state.cambios_pendientes)
+                # Regla de bloqueo: Jefe nunca bloqueado, Supervisor bloqueado si ya está en DB
+                bloqueado = False if es_jefe_m else (en_db or tiene_post_db)
 
-                bloqueado_solo_lectura = (en_db and rol == "Supervisor")
-                # CORRECCIÓN EN seguimiento.py (Línea ~275)
-                bloqueado_por_jerarquia = tiene_post_db or tiene_post_mem # Eliminar la 'm' final
-                # El jefe nunca está bloqueado. El supervisor se bloquea si ya está en DB o hay hitos posteriores.
-                bloqueado = False if es_jefe_m else (en_db or tiene_post_db or tiene_post_mem)
+                # Key dinámica para evitar errores de duplicidad
+                key_chx = f"v_chk_{p['id']}_{h}_{'1' if existe else '0'}"
 
-                # --- 3. INTERFAZ (CHECKBOX) - REEMPLAZAR DESDE AQUÍ ---
-                if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=en_db, disabled=bloqueado, label_visibility="collapsed"):
-                    if not en_db:
-                        # --- GUARDADO INMEDIATO EN CASCADA ---
-                        m_idx = HITOS_LIST.index(h)
-                        lote_directo = []
-                        # Tomamos la fecha del selector superior (f_reg definida en la línea 121)
-                        f_string = f_reg.strftime("%d/%m/%Y")
-                        
-                        for j in range(m_idx + 1):
-                            h_nom = HITOS_LIST[j]
-                            # Si no existe en la base de datos, lo preparamos para guardar
-                            if segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h_nom)].empty:
-                                lote_directo.append({
-                                    "producto_id": int(p['id']), 
-                                    "hito": h_nom, 
-                                    "fecha": f_string
-                                })
-                        
-                        if lote_directo:
-                            # Guardamos directamente en Supabase
-                            supabase.table("seguimiento").upsert(lote_directo, on_conflict="producto_id, hito").execute()
-                            
-                            # Sincronizamos con el Gantt
-                            try:
-                                from base_datos import sincronizar_avances_estructural
-                                p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
-                                sincronizar_avances_estructural(p_cod)
-                            except: pass
-                            
-                            # Forzamos recarga: Ahora 'en_db' será True y el check aparecerá marcado y BLOQUEADO
-                            st.rerun()
+                if cols[i+1].checkbox("", key=key_chx, value=existe, disabled=bloqueado, label_visibility="collapsed"):
+                    if not existe:
+                        # Acción: Marcar
+                        for idx_p in range(i + 1):
+                            h_p = HITOS_LIST[idx_p]
+                            if segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h_p)].empty:
+                                if not any(d["pid"] == p['id'] and d["hito"] == h_p for d in st.session_state.cambios_pendientes):
+                                    st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h_p})
+                        st.rerun()
                 else:
-                    # Lógica para desmarcar: Solo permitida para Administradores/Gerentes
-                    if en_db and rol in ["Administrador", "Gerente"]:
-                        try:
+                    if existe:
+                        # Acción: Desmarcar (Solo si es Jefe)
+                        if idx_mem is not None:
+                            st.session_state.cambios_pendientes.pop(idx_mem)
+                        elif en_db and es_jefe_m:
                             supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al eliminar: {e}")
-                # --- FIN DEL REEMPLAZO ---
+                            from base_datos import sincronizar_avances_estructural
+                            p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
+                            sincronizar_avances_estructural(p_cod)
+                        st.rerun()
 
-            # --- 4. GESTIÓN DE NOTAS ---
-            n_db = segs[(segs['producto_id'] == p['id']) & 
-                        (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
-            
+            # Gestión de Notas
+            n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
             n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
-            nueva = cols[-1].text_input("N", value=n_act, key=f"n_{p['id']}", label_visibility="collapsed")
-            
+            nueva = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}", label_visibility="collapsed")
             if nueva != n_act: 
                 st.session_state.notas_pendientes[str(p['id'])] = nueva
 
-    # --- RENDERIZADO FINAL Y AGRUPACIÓN ---
+    # --- RENDERIZADO FINAL (Fuera de la función render_matriz) ---
     if agrupar_por != "Sin grupo":
         campo = "ubicacion" if agrupar_por == "Ubicación" else "tipo"
         for n, g in df_f.groupby(campo):
