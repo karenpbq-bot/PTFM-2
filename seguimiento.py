@@ -188,45 +188,51 @@ def mostrar(supervisor_id=None):
         st.cache_data.clear()
         st.rerun()
 
-    # --- REEMPLAZAR DESDE AQUÍ (Línea 141 aprox.) ---
+    # --- Guardar Avances 
     if cols_acc[4].button("💾 Guardar Avances", type="primary", use_container_width=True):
         f_hoy = f_reg.strftime("%d/%m/%Y")
         try:
             if st.session_state.cambios_pendientes or st.session_state.notas_pendientes:
-                with st.status("🚀 Sincronizando con Practiformas...", expanded=True) as status:
-                    # A. Guardar Notas (Solo las que cambiaron)
+                # Usamos st.status para que el proceso sea visible y no se interrumpa
+                with st.status("🚀 Procesando Avances...", expanded=True) as status:
+                    
+                    # 1. GUARDADO DE NOTAS (Paso independiente)
                     if st.session_state.notas_pendientes:
-                        st.write("Anotando observaciones...")
+                        st.write("📝 Guardando notas...")
                         for pid_n, txt in st.session_state.notas_pendientes.items():
                             supabase.table("seguimiento").upsert({
-                                "producto_id": int(pid_n), 
-                                "hito": HITOS_LIST[0], 
-                                "observaciones": txt
+                                "producto_id": int(pid_n), "hito": HITOS_LIST[0], "observaciones": txt
                             }, on_conflict="producto_id, hito").execute()
-                    
-                    # B. Guardar Hitos (Envío masivo optimizado)
+
+                    # 2. GUARDADO DE HITOS EN LOTES (Batching dinámico)
                     if st.session_state.cambios_pendientes:
-                        st.write("Registrando hitos de producción...")
-                        lote = [{"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy} for c in st.session_state.cambios_pendientes]
-                        # Enviamos todo el bloque de una vez, eliminando el bucle lento anterior
-                        supabase.table("seguimiento").upsert(lote, on_conflict="producto_id, hito").execute()
-                    
-                    # C. Lanzar Sincronización (Optimización del motor de base_datos)
-                    st.write("Actualizando indicadores estructurales...")
+                        st.write("📦 Sincronizando productos con la nube...")
+                        lote_total = [{"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy} for c in st.session_state.cambios_pendientes]
+                        
+                        # Dividimos en trozos pequeños para asegurar que lleguen (Opción 1)
+                        chunk_size = 50 
+                        for i in range(0, len(lote_total), chunk_size):
+                            chunk = lote_total[i:i + chunk_size]
+                            supabase.table("seguimiento").upsert(chunk, on_conflict="producto_id, hito").execute()
+                            st.write(f"✅ Procesados {min(i + chunk_size, len(lote_total))} de {len(lote_total)} hitos...")
+
+                    # 3. SINCRONIZACIÓN DEL GANTT (Opción 2 optimizada)
+                    st.write("📊 Actualizando Tablero de Control...")
                     from base_datos import sincronizar_avances_estructural
                     p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
                     sincronizar_avances_estructural(p_cod)
                     
-                    status.update(label="✅ ¡Avance guardado con éxito!", state="complete")
+                    status.update(label="✅ ¡Todo guardado y sincronizado!", state="complete")
 
-                # Limpieza de memoria y refresco inmediato
+                # Limpieza de memoria solo tras éxito total
                 st.session_state.cambios_pendientes = []
                 st.session_state.notas_pendientes = {}
+                st.toast("Avance registrado con éxito.")
                 st.rerun()
             else:
-                st.info("No has realizado cambios nuevos.")
+                st.info("No hay cambios pendientes por guardar.")
         except Exception as e:
-            st.error(f"Error en la comunicación: {e}")
+            st.error(f"❌ Error crítico: Los datos no se guardaron. Verifique su conexión. Detalle: {e}")
 
     # Botón Descartar (Columna 5)
     if cols_acc[5].button("🚫 Limpiar Selección", use_container_width=True):
