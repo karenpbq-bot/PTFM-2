@@ -204,17 +204,33 @@ def mostrar(supervisor_id=None):
                                 "producto_id": int(pid_n), "hito": HITOS_LIST[0], "observaciones": txt
                             }, on_conflict="producto_id, hito").execute()
 
-                    # 2. GUARDADO DE HITOS EN LOTES (Batching dinámico)
+                    # 2. GUARDADO DE HITOS (CON PROTECCIÓN ANTI-BORRADO E INTEGRIDAD)
                     if st.session_state.cambios_pendientes:
-                        st.write("📦 Sincronizando productos con la nube...")
-                        lote_total = [{"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy} for c in st.session_state.cambios_pendientes]
+                        st.write("📦 Verificando integridad de datos...")
+                        lote_final = []
                         
-                        # Dividimos en trozos pequeños para asegurar que lleguen (Opción 1)
-                        chunk_size = 50 
-                        for i in range(0, len(lote_total), chunk_size):
-                            chunk = lote_total[i:i + chunk_size]
-                            supabase.table("seguimiento").upsert(chunk, on_conflict="producto_id, hito").execute()
-                            st.write(f"✅ Procesados {min(i + chunk_size, len(lote_total))} de {len(lote_total)} hitos...")
+                        for c in st.session_state.cambios_pendientes:
+                            # Buscamos si el hito YA existe en el DataFrame 'segs' (cargado al inicio en la línea 79)
+                            ya_grabado = not segs[(segs['producto_id'] == c['pid']) & (segs['hito'] == c['hito'])].empty
+                            
+                            # REGLA DE ORO: Solo agregamos al lote si NO está en la base de datos
+                            # Esto evita que se sobreescriban fechas antiguas con la fecha de hoy
+                            if not ya_grabado:
+                                lote_final.append({
+                                    "producto_id": int(c['pid']), 
+                                    "hito": c['hito'], 
+                                    "fecha": f_hoy
+                                })
+                        
+                        if lote_final:
+                            st.write(f"🚀 Sincronizando {len(lote_final)} hitos nuevos...")
+                            # Dividimos en trozos de 50 para máxima estabilidad de conexión
+                            chunk_size = 50 
+                            for i in range(0, len(lote_final), chunk_size):
+                                chunk = lote_final[i:i + chunk_size]
+                                supabase.table("seguimiento").upsert(chunk, on_conflict="producto_id, hito").execute()
+                        else:
+                            st.write("ℹ️ Los hitos seleccionados ya estaban registrados. No se requirió escritura.")
 
                     # 3. SINCRONIZACIÓN DEL GANTT (Opción 2 optimizada)
                     st.write("📊 Actualizando Tablero de Control...")
