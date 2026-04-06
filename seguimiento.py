@@ -13,7 +13,6 @@ MAPEO_HITOS = {
 HITOS_LIST = list(MAPEO_HITOS.keys())
 
 def mostrar(supervisor_id=None):
-    # --- 1. CONFIGURACIÓN Y ESTADOS ---
     if 'ref_matriz' not in st.session_state:
         st.session_state.ref_matriz = 0
 
@@ -21,7 +20,6 @@ def mostrar(supervisor_id=None):
         <style>
         .sticky-top { position: sticky; top: 0; background: white; z-index: 1000; padding: 10px 0; border-bottom: 3px solid #FF8C00; }
         [data-testid="stMetricValue"] { color: #FF8C00 !important; font-weight: bold !important; font-size: 22px !important; }
-        .stDataEditor { border: 1px solid #ddd; border-radius: 8px; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -29,15 +27,13 @@ def mostrar(supervisor_id=None):
 
     # --- 2. SELECCIÓN DE PROYECTO ---
     nombre_p_act = st.session_state.get('p_nom_sel', "Ninguno")
-    st.markdown(f"### Seguimiento: <span style='color:#666; font-size:18px;'>{nombre_p_act}</span>", unsafe_allow_html=True)
+    st.markdown(f"### Seguimiento: {nombre_p_act}")
 
-    with st.expander("🔍 Cambiar Proyecto", expanded=not st.session_state.get('id_p_sel')):
+    with st.expander("🔍 Seleccionar Proyecto", expanded=not st.session_state.get('id_p_sel')):
         c1, c2 = st.columns([2, 1])
-        bus_p = c1.text_input("Buscar proyecto...", key="bus_master_final")
+        bus_p = c1.text_input("Buscar proyecto...", key="bus_v_final")
         df_p_all = obtener_proyectos(bus_p)
-        if supervisor_id and not df_p_all.empty:
-            df_p_all = df_p_all[df_p_all['supervisor_id'] == supervisor_id]
-
+        
         if not df_p_all.empty:
             opciones = {f"[{r['codigo']}] {r['proyecto_text']}": r['id'] for _, r in df_p_all.iterrows()}
             lista_opc = ["-- Seleccionar --"] + list(opciones.keys())
@@ -48,28 +44,29 @@ def mostrar(supervisor_id=None):
                 st.rerun()
 
     if not st.session_state.get('id_p_sel'):
-        st.info("💡 Seleccione un proyecto para comenzar."); return
+        st.info("💡 Seleccione un proyecto."); return
 
     # --- 3. CARGA DE DATOS ---
     id_p = st.session_state.id_p_sel
     prods_all = obtener_productos_por_proyecto(id_p)
-    res_db = supabase.table("seguimiento").select("producto_id, hito, fecha, observaciones").in_("producto_id", prods_all['id'].tolist()).execute()
-    segs = pd.DataFrame(res_db.data) if res_db.data else pd.DataFrame(columns=['producto_id','hito','fecha','observaciones'])
+    # Cargamos TODO el seguimiento incluyendo observaciones y supervisor_id
+    res_db = supabase.table("seguimiento").select("*").in_("producto_id", prods_all['id'].tolist()).execute()
+    segs = pd.DataFrame(res_db.data) if res_db.data else pd.DataFrame(columns=['producto_id','hito','fecha','observaciones','supervisor_id'])
 
-    # --- 4. FILTROS Y MÉTRICAS ---
+    # --- 4. FILTROS ---
     with st.sidebar:
-        st.header("⚙️ Filtros")
-        bus_u = st.text_input("Filtrar Ubicación (ej: 701)")
-        bus_t = st.text_input("Filtrar Tipo")
-        st.divider()
-        if st.button("🔄 Forzar Recarga de DB", use_container_width=True):
+        st.header("⚙️ Filtros de Vista")
+        bus_u = st.text_input("Ubicación (ej: 701)")
+        bus_t = st.text_input("Tipo")
+        if st.button("🔄 Forzar Sincronización DB"):
             st.cache_data.clear(); st.rerun()
 
     df_f = prods_all.copy()
     if bus_u: df_f = df_f[df_f['ubicacion'].astype(str).str.contains(bus_u, case=False)]
     if bus_t: df_f = df_f[df_f['tipo'].astype(str).str.contains(bus_t, case=False)]
 
-    pesos = {h: 12.5 for h in HITOS_LIST}
+    # Usamos los pesos reales de base_datos
+    pesos = obtener_pesos_seguimiento()
     
     def calc_avance(df_m, df_s):
         if df_m.empty: return 0.0
@@ -78,25 +75,26 @@ def mostrar(supervisor_id=None):
         pts_db = sum([pesos.get(h, 0) for h in db_v['hito']])
         return round(pts_db / len(df_m), 2)
 
-    # Roles
-    rol_u = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
-    es_jefe = rol_u in ["admin", "gerente", "administrador"]
-
-    # Construir matriz para el editor
+    # --- 5. PREPARACIÓN DE MATRIZ ---
     df_editor = df_f.copy()
     for h in HITOS_LIST:
         df_editor[h] = df_editor['id'].apply(lambda x: True if not segs[(segs['producto_id'] == x) & (segs['hito'] == h)].empty else False)
     
-    df_editor['Notas'] = df_editor['id'].apply(lambda x: segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])].empty else "")
+    # Nota: vinculamos la nota al hito "Diseñado" (Hito 0) como estándar de almacenamiento
+    df_editor['Notas'] = df_editor['id'].apply(
+        lambda x: segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] 
+        if not segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])].empty else ""
+    )
 
-    # --- 5. INTERFAZ Y GUARDADO ---
+    # --- 6. FORMULARIO DE GUARDADO ---
+    st.divider()
     c1, c2, c3 = st.columns([1.5, 1, 1])
-    f_reg = c1.date_input("Fecha de aplicación", datetime.now(), format="DD/MM/YYYY")
-    c2.metric("Avance Parcial", f"{calc_avance(df_f, segs)}%")
-    c3.metric("Avance Global", f"{calc_avance(prods_all, segs)}%")
+    f_reg = c1.date_input("Fecha aplicación", datetime.now(), format="DD/MM/YYYY")
+    c2.metric("Av. Parcial", f"{calc_avance(df_f, segs)}%")
+    c3.metric("Av. Global", f"{calc_avance(prods_all, segs)}%")
 
-    # FORMULARIO PARA EVITAR RECARGAS ENTRE CLICS
-    with st.form(key=f"f_master_{id_p}_{st.session_state.ref_matriz}"):
+    # IMPORTANTE: st.form evita que la app "piense" en cada click
+    with st.form(key=f"f_save_{id_p}_{st.session_state.ref_matriz}"):
         cambios_df = st.data_editor(
             df_editor,
             column_config={
@@ -105,178 +103,65 @@ def mostrar(supervisor_id=None):
                 "tipo": st.column_config.TextColumn("Tipo", disabled=True),
                 "ctd": st.column_config.NumberColumn("Cant.", disabled=True),
                 "ml": st.column_config.NumberColumn("ML", disabled=True),
-                "Notas": st.column_config.TextColumn("Notas", width="medium"),
                 **{h: st.column_config.CheckboxColumn(h) for h in HITOS_LIST}
             },
             disabled=['id', 'ubicacion', 'tipo', 'ctd', 'ml'],
             hide_index=True,
-            use_container_width=True,
+            use_container_width=True
         )
-        btn_save = st.form_submit_button("💾 GUARDAR TODOS LOS AVANCES", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("💾 GUARDAR CAMBIOS DEFINITIVOS", type="primary", use_container_width=True)
 
-    if btn_save:
-        lote_ins, lote_del, lote_not = [], [], []
-        for idx in range(len(df_editor)):
-            pid = int(df_editor.iloc[idx]['id'])
-            for h in HITOS_LIST:
-                v_orig, v_nuev = bool(df_editor.iloc[idx][h]), bool(cambios_df.iloc[idx][h])
-                if v_nuev and not v_orig:
-                    lote_ins.append({"producto_id": pid, "hito": h, "fecha": f_reg.strftime("%d/%m/%Y")})
-                elif not v_nuev and v_orig and es_jefe:
-                    lote_del.append({"pid": pid, "hito": h})
+    if submitted:
+        lote_upsert = []
+        lote_delete = []
+        rol_u = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
+        es_jefe = rol_u in ["admin", "gerente", "administrador"]
+
+        # Procesamos por ID de producto (No por índice, para evitar errores con filtros)
+        for _, row in cambios_df.iterrows():
+            pid = int(row['id'])
+            original_row = df_editor[df_editor['id'] == pid].iloc[0]
             
-            n_orig, n_nuev = str(df_editor.iloc[idx]['Notas']), str(cambios_df.iloc[idx]['Notas'])
-            if n_nuev != n_orig: lote_not.append({"pid": pid, "txt": n_nuev})
-
-        if lote_ins or lote_del or lote_not:
-            try:
-                with st.status("📡 Sincronizando...") as status:
-                    if lote_del:
-                        for d in lote_del:
-                            supabase.table("seguimiento").delete().eq("producto_id", d['pid']).eq("hito", d['hito']).execute()
-                    if lote_ins:
-                        supabase.table("seguimiento").upsert(lote_ins, on_conflict="producto_id, hito").execute()
-                    for n in lote_not:
-                        supabase.table("seguimiento").upsert({"producto_id": n['pid'], "hito": HITOS_LIST[0], "observaciones": n['txt']}, on_conflict="producto_id, hito").execute()
-                    
-                    from base_datos import sincronizar_avances_estructural
-                    sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
-                    status.update(label="✅ Éxito", state="complete")
+            for h in HITOS_LIST:
+                v_orig = bool(original_row[h])
+                v_nuev = bool(row[h])
                 
-                st.cache_data.clear()
-                st.session_state.ref_matriz += 1
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
-        else:
-            st.warning("⚠️ No hay cambios nuevos.")
-
-    # --- F. PREPARACIÓN DE LA TABLA Y CÁLCULOS ---
-    def calc_avance(df_m, df_s):
-        if df_m.empty: return 0.0
-        ids_v = df_m['id'].tolist()
-        # Filtramos solo lo que está en la DB
-        db_v = df_s[df_s['producto_id'].isin(ids_v)].drop_duplicates(subset=['producto_id', 'hito'])
-        pts_db = sum([pesos.get(h, 0) for h in db_v['hito']])
-        return round(pts_db / len(df_m), 2)
-
-    # Determinación de Rol
-    rol_u = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
-    es_jefe = rol_u in ["admin", "gerente", "administrador"]
-
-    # Construcción de la matriz base (Lectura real de segs)
-    df_editor = df_f.copy()
-    for h in HITOS_LIST:
-        df_editor[h] = df_editor['id'].apply(
-            lambda x: True if not segs[(segs['producto_id'] == x) & (segs['hito'] == h)].empty else False
-        )
-    
-    # Notas integradas en la matriz
-    df_editor['Notas'] = df_editor['id'].apply(
-        lambda x: segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])].empty else ""
-    )
-
-    # --- G. MÉTRICAS ---
-    st.divider()
-    c1, c2, c3, c4 = st.columns([1.5, 1, 1, 1])
-    f_reg = c1.date_input("Fecha de Registro", datetime.now(), format="DD/MM/YYYY")
-    
-    p_tot, p_par = calc_avance(prods_all, segs), calc_avance(df_f, segs)
-    c2.metric("Av. Parcial", f"{p_par}%")
-    c3.metric("Av. Global", f"{p_tot}%")
-
-    if c4.button("🔄 Refrescar", use_container_width=True):
-        st.cache_data.clear(); st.rerun()
-
-    # --- H. MATRIZ INTELIGENTE (VERSIÓN CORREGIDA) ---
-    st.write("📋 **Matriz de Seguimiento:** (Doble clic para marcar/desmarcar)")
-    
-    # Columnas que NO se pueden editar
-    cols_fijas = ['id', 'ubicacion', 'tipo', 'ctd', 'ml']
-    
-    # El editor debe usar cambios_df como variable de salida
-    cambios_df = st.data_editor(
-        df_editor,
-        column_config={
-            "id": None,
-            "ubicacion": st.column_config.TextColumn("Ubicación", disabled=True),
-            "tipo": st.column_config.TextColumn("Tipo", disabled=True),
-            "ctd": st.column_config.NumberColumn("Cant.", disabled=True),
-            "ml": st.column_config.NumberColumn("ML", disabled=True),
-            "Notas": st.column_config.TextColumn("Notas", width="medium"),
-            **{h: st.column_config.CheckboxColumn(h) for h in HITOS_LIST}
-        },
-        disabled=cols_fijas, # Liberamos todos los hitos
-        hide_index=True,
-        use_container_width=True,
-        key=f"editor_final_{id_p}_{st.session_state.ref_matriz}" # Key ultra-segura
-    )
-
-    # --- I. PROCESAMIENTO DE GUARDADO (SOLUCIÓN FINAL) ---
-    if st.button("💾 GUARDAR CAMBIOS EN NUBE", type="primary", use_container_width=True):
-        lote_ins = []
-        lote_del = []
-        lote_not = []
-
-        # Recorremos el DataFrame que sale del editor
-        for idx in range(len(df_editor)):
-            # Usamos el ID real del producto
-            pid = int(df_editor.iloc[idx]['id'])
-            
-            for h in HITOS_LIST:
-                # Comparamos valor original (DB) con el nuevo (Editor)
-                v_orig = bool(df_editor.iloc[idx][h])
-                v_nuev = bool(cambios_df.iloc[idx][h])
-
-                # Si es nuevo y antes no estaba: AGREGAR
-                if v_nuev and not v_orig:
-                    lote_ins.append({
-                        "producto_id": pid, 
-                        "hito": h, 
-                        "fecha": f_reg.strftime("%d/%m/%Y")
+                # Caso A: Marcar nuevo hito o mantener uno existente (evitando borrar notas)
+                if v_nuev:
+                    # Buscamos si ya existe el registro en la DB para preservar su info
+                    match_db = segs[(segs['producto_id'] == pid) & (segs['hito'] == h)]
+                    fecha_val = match_db['fecha'].iloc[0] if not match_db.empty else f_reg.strftime("%d/%m/%Y")
+                    obs_val = row['Notas'] if h == HITOS_LIST[0] else (match_db['observaciones'].iloc[0] if not match_db.empty else "")
+                    
+                    lote_upsert.append({
+                        "producto_id": pid,
+                        "hito": h,
+                        "fecha": fecha_val,
+                        "observaciones": obs_val,
+                        "supervisor_id": supervisor_id
                     })
-                # Si estaba y se quitó: BORRAR (Solo Admin/Gerente)
+                
+                # Caso B: Desmarcar (Solo Jefes)
                 elif not v_nuev and v_orig and es_jefe:
-                    lote_del.append({"pid": pid, "hito": h})
-            
-            # Procesar Notas
-            n_orig = str(df_editor.iloc[idx].get('Notas', ''))
-            n_nuev = str(cambios_df.iloc[idx].get('Notas', ''))
-            if n_nuev != n_orig:
-                lote_not.append({"pid": pid, "txt": n_nuev})
+                    lote_delete.append({"pid": pid, "hito": h})
 
-        if lote_ins or lote_del or lote_not:
-            try:
-                with st.status("📡 Grabando en Supabase...") as status:
-                    # 1. Ejecutar Borrados
-                    for d in lote_del:
+        try:
+            with st.status("📡 Sincronizando con Supabase...") as status:
+                if lote_delete:
+                    for d in lote_delete:
                         supabase.table("seguimiento").delete().eq("producto_id", d['pid']).eq("hito", d['hito']).execute()
-                    
-                    # 2. Ejecutar Inserciones (Upsert Limpio)
-                    if lote_ins:
-                        # Enviamos solo lo que la tabla acepta sí o sí (sin supervisor_id)
-                        supabase.table("seguimiento").upsert(lote_ins, on_conflict="producto_id, hito").execute()
-                    
-                    # 3. Notas
-                    for n in lote_not:
-                        supabase.table("seguimiento").upsert({
-                            "producto_id": n['pid'], 
-                            "hito": HITOS_LIST[0], 
-                            "observaciones": n['txt']
-                        }, on_conflict="producto_id, hito").execute()
-                    
-                    # Sincronizar estructural
-                    from base_datos import sincronizar_avances_estructural
-                    sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
-                    
-                    status.update(label=f"✅ ¡Éxito! {len(lote_ins)} hitos guardados.", state="complete")
                 
-                # Limpiar caché y forzar recarga
-                st.cache_data.clear()
-                st.session_state.ref_matriz += 1
-                st.rerun()
+                if lote_upsert:
+                    supabase.table("seguimiento").upsert(lote_upsert, on_conflict="producto_id, hito").execute()
                 
-            except Exception as e:
-                st.error(f"❌ ERROR AL GUARDAR: {e}")
-        else:
-            st.warning("No detectamos cambios nuevos para guardar.")
+                # Actualizar motor estructural
+                from base_datos import sincronizar_avances_estructural
+                sincronizar_avances_estructural(st.session_state.p_nom_sel.split(']')[0][1:])
+                
+                status.update(label="✅ Éxito: Datos protegidos y guardados", state="complete")
+            
+            st.cache_data.clear()
+            st.session_state.ref_matriz += 1
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error crítico: {e}")
