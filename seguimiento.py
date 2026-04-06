@@ -188,15 +188,19 @@ def mostrar(supervisor_id=None):
         st.cache_data.clear()
         st.rerun()
 
-    # --- Guardar Avances 
+    # --- Guardar Avances (BLOQUE CORREGIDO: Protección Anti-Borrado)
     if cols_acc[4].button("💾 Guardar Avances", type="primary", use_container_width=True):
         f_hoy = f_reg.strftime("%d/%m/%Y")
         try:
             if st.session_state.cambios_pendientes or st.session_state.notas_pendientes:
-                # Usamos st.status para que el proceso sea visible y no se interrumpa
-                with st.status("🚀 Procesando Avances...", expanded=True) as status:
+                with st.status("🚀 Sincronizando Avances...", expanded=True) as status:
                     
-                    # 1. GUARDADO DE NOTAS (Paso independiente)
+                    # A. CONSULTA DE SEGURIDAD (Obtenemos la realidad de la DB en este instante)
+                    # Esto evita usar el DataFrame 'segs' inicial que puede estar desactualizado
+                    res_seg_actual = supabase.table("seguimiento").select("producto_id, hito").in_("producto_id", prods_all['id'].tolist()).execute()
+                    df_db_actual = pd.DataFrame(res_seg_actual.data) if res_seg_actual.data else pd.DataFrame(columns=['producto_id','hito'])
+
+                    # B. GUARDADO DE NOTAS
                     if st.session_state.notas_pendientes:
                         st.write("📝 Guardando notas...")
                         for pid_n, txt in st.session_state.notas_pendientes.items():
@@ -204,18 +208,15 @@ def mostrar(supervisor_id=None):
                                 "producto_id": int(pid_n), "hito": HITOS_LIST[0], "observaciones": txt
                             }, on_conflict="producto_id, hito").execute()
 
-                    # 2. GUARDADO DE HITOS (CON PROTECCIÓN ANTI-BORRADO E INTEGRIDAD)
+                    # C. GUARDADO DE HITOS (SOLO LOS QUE NO EXISTEN EN LA DB)
                     if st.session_state.cambios_pendientes:
                         st.write("📦 Verificando integridad de datos...")
                         lote_final = []
-                        
                         for c in st.session_state.cambios_pendientes:
-                            # Buscamos si el hito YA existe en el DataFrame 'segs' (cargado al inicio en la línea 79)
-                            ya_grabado = not segs[(segs['producto_id'] == c['pid']) & (segs['hito'] == c['hito'])].empty
+                            # Filtro estricto: Si el hito ya está en la DB actual, lo ignoramos
+                            ya_esta_en_nube = not df_db_actual[(df_db_actual['producto_id'] == c['pid']) & (df_db_actual['hito'] == c['hito'])].empty
                             
-                            # REGLA DE ORO: Solo agregamos al lote si NO está en la base de datos
-                            # Esto evita que se sobreescriban fechas antiguas con la fecha de hoy
-                            if not ya_grabado:
+                            if not ya_esta_en_nube:
                                 lote_final.append({
                                     "producto_id": int(c['pid']), 
                                     "hito": c['hito'], 
@@ -223,32 +224,31 @@ def mostrar(supervisor_id=None):
                                 })
                         
                         if lote_final:
-                            st.write(f"🚀 Sincronizando {len(lote_final)} hitos nuevos...")
-                            # Dividimos en trozos de 50 para máxima estabilidad de conexión
+                            st.write(f"🚀 Subiendo {len(lote_final)} hitos nuevos...")
                             chunk_size = 50 
                             for i in range(0, len(lote_final), chunk_size):
                                 chunk = lote_final[i:i + chunk_size]
                                 supabase.table("seguimiento").upsert(chunk, on_conflict="producto_id, hito").execute()
                         else:
-                            st.write("ℹ️ Los hitos seleccionados ya estaban registrados. No se requirió escritura.")
+                            st.write("ℹ️ Los hitos marcados ya estaban registrados anteriormente.")
 
-                    # 3. SINCRONIZACIÓN DEL GANTT (Opción 2 optimizada)
+                    # D. SINCRONIZACIÓN DEL GANTT (Motor optimizado)
                     st.write("📊 Actualizando Tablero de Control...")
                     from base_datos import sincronizar_avances_estructural
                     p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
                     sincronizar_avances_estructural(p_cod)
                     
-                    status.update(label="✅ ¡Todo guardado y sincronizado!", state="complete")
+                    status.update(label="✅ Avance guardado y protegido con éxito", state="complete")
 
-                # Limpieza de memoria solo tras éxito total
+                # LIMPIEZA Y REFRESCO FORZADO
                 st.session_state.cambios_pendientes = []
                 st.session_state.notas_pendientes = {}
-                st.toast("Avance registrado con éxito.")
+                st.cache_data.clear() # CRÍTICO: Limpia el caché para que al recargar lea los nuevos datos
                 st.rerun()
             else:
                 st.info("No hay cambios pendientes por guardar.")
         except Exception as e:
-            st.error(f"❌ Error crítico: Los datos no se guardaron. Verifique su conexión. Detalle: {e}")
+            st.error(f"❌ Error crítico en la comunicación: {e}")
 
     # Botón Descartar (Columna 5)
     if cols_acc[5].button("🚫 Limpiar Selección", use_container_width=True):
