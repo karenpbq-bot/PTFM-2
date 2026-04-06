@@ -141,14 +141,20 @@ def mostrar(supervisor_id=None):
                     
                     # A. Guardado de Hitos con Tipado Estricto
                     if cambios_lote:
-                        lote_final = [
-                            {
+                        lote_final = []
+                        for c in cambios_lote:
+                            dato = {
                                 "producto_id": int(c['pid']), 
                                 "hito": str(c['hito']), 
-                                "fecha": str(f_hoy_str),
-                                "supervisor_id": int(supervisor_id) if supervisor_id else None
-                            } for c in cambios_lote
-                        ]
+                                "fecha": str(f_hoy_str)
+                            }
+                            # Solo agregamos supervisor_id si estamos seguros de que existe en la sesión
+                            if supervisor_id:
+                                dato["supervisor_id"] = int(supervisor_id)
+                            
+                            lote_final.append(dato)
+
+                        # Ejecución en Supabase (Upsert para evitar duplicados)
                         supabase.table("seguimiento").upsert(lote_final, on_conflict="producto_id, hito").execute()
                     
                     # B. Guardado de Notas
