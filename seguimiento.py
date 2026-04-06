@@ -188,35 +188,45 @@ def mostrar(supervisor_id=None):
         st.cache_data.clear()
         st.rerun()
 
-    if cols_acc[4].button("💾 Guardar Avances", type="primary", use_container_width=True, key="btn_save_batch"):
+    # --- REEMPLAZAR DESDE AQUÍ (Línea 141 aprox.) ---
+    if cols_acc[4].button("💾 Guardar Avances", type="primary", use_container_width=True):
         f_hoy = f_reg.strftime("%d/%m/%Y")
         try:
             if st.session_state.cambios_pendientes or st.session_state.notas_pendientes:
-                with st.spinner("Sincronizando con el servidor..."):
-                    # A. Guardar Notas
+                with st.status("🚀 Sincronizando con Practiformas...", expanded=True) as status:
+                    # A. Guardar Notas (Solo las que cambiaron)
                     if st.session_state.notas_pendientes:
+                        st.write("Anotando observaciones...")
                         for pid_n, txt in st.session_state.notas_pendientes.items():
-                            supabase.table("seguimiento").upsert({"producto_id": int(pid_n), "hito": HITOS_LIST[0], "observaciones": txt}, on_conflict="producto_id, hito").execute()
+                            supabase.table("seguimiento").upsert({
+                                "producto_id": int(pid_n), 
+                                "hito": HITOS_LIST[0], 
+                                "observaciones": txt
+                            }, on_conflict="producto_id, hito").execute()
                     
-                    # B. Guardar todos los hitos marcados de UNA SOLA VEZ
+                    # B. Guardar Hitos (Envío masivo optimizado)
                     if st.session_state.cambios_pendientes:
+                        st.write("Registrando hitos de producción...")
                         lote = [{"producto_id": c['pid'], "hito": c['hito'], "fecha": f_hoy} for c in st.session_state.cambios_pendientes]
+                        # Enviamos todo el bloque de una vez, eliminando el bucle lento anterior
                         supabase.table("seguimiento").upsert(lote, on_conflict="producto_id, hito").execute()
                     
-                    # C. Recalcular porcentajes (Una sola vez al final)
+                    # C. Lanzar Sincronización (Optimización del motor de base_datos)
+                    st.write("Actualizando indicadores estructurales...")
                     from base_datos import sincronizar_avances_estructural
                     p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
                     sincronizar_avances_estructural(p_cod)
                     
-                    # Limpieza y Refresco final
-                    st.session_state.cambios_pendientes = []
-                    st.session_state.notas_pendientes = {}
-                    st.success("✅ ¡Todo sincronizado con éxito!")
-                    st.rerun()
+                    status.update(label="✅ ¡Avance guardado con éxito!", state="complete")
+
+                # Limpieza de memoria y refresco inmediato
+                st.session_state.cambios_pendientes = []
+                st.session_state.notas_pendientes = {}
+                st.rerun()
             else:
                 st.info("No has realizado cambios nuevos.")
         except Exception as e:
-            st.error(f"Error de conexión: {e}")
+            st.error(f"Error en la comunicación: {e}")
 
     # Botón Descartar (Columna 5)
     if cols_acc[5].button("🚫 Limpiar Selección", use_container_width=True):
