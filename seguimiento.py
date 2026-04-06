@@ -122,27 +122,62 @@ def mostrar(supervisor_id=None):
     if cols_acc[3].button("🔄 Refrescar", use_container_width=True):
         st.cache_data.clear(); st.rerun()
 
+    # --- G. FILA DE ACCIONES (SECCIÓN DEL BOTÓN GUARDAR) ---
     if cols_acc[4].button("💾 Guardar Avances", type="primary", use_container_width=True):
         if st.session_state.cambios_pendientes or st.session_state.notas_pendientes:
-            with st.status("🚀 Sincronizando Avances...") as status:
-                f_hoy = f_reg.strftime("%d/%m/%Y")
-                # Guardar Hitos
-                if st.session_state.cambios_pendientes:
-                    lote = [{"producto_id": int(c['pid']), "hito": c['hito'], "fecha": f_hoy} for c in st.session_state.cambios_pendientes]
-                    supabase.table("seguimiento").upsert(lote, on_conflict="producto_id, hito").execute()
-                # Guardar Notas
-                if st.session_state.notas_pendientes:
-                    for pid, txt in st.session_state.notas_pendientes.items():
-                        supabase.table("seguimiento").upsert({"producto_id": int(pid), "hito": HITOS_LIST[0], "observaciones": txt}, on_conflict="producto_id, hito").execute()
-                
-                from base_datos import sincronizar_avances_estructural
-                p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
-                sincronizar_avances_estructural(p_cod)
-                status.update(label="✅ Avance guardado", state="complete")
             
+            # 1. CAPTURAMOS LOS DATOS EN VARIABLES LOCALES
+            cambios_lote = list(st.session_state.cambios_pendientes)
+            notas_lote = dict(st.session_state.notas_pendientes)
+            
+            # 2. LÓGICA DE BORRADO PREVENTIVO: Limpiamos la memoria ANTES del intento
+            # Si el proceso falla, los checks rojos habrán desaparecido como señal de alerta.
             st.session_state.cambios_pendientes = []
             st.session_state.notas_pendientes = {}
-            st.cache_data.clear(); st.rerun()
+
+            try:
+                with st.status("🚀 Sincronizando con Supabase...") as status:
+                    f_hoy_str = f_reg.strftime("%d/%m/%Y")
+                    
+                    # A. Guardado de Hitos con Tipado Estricto
+                    if cambios_lote:
+                        lote_final = [
+                            {
+                                "producto_id": int(c['pid']), 
+                                "hito": str(c['hito']), 
+                                "fecha": str(f_hoy_str),
+                                "supervisor_id": int(supervisor_id) if supervisor_id else None
+                            } for c in cambios_lote
+                        ]
+                        supabase.table("seguimiento").upsert(lote_final, on_conflict="producto_id, hito").execute()
+                    
+                    # B. Guardado de Notas
+                    if notas_lote:
+                        for pid_nota, texto_nota in notas_lote.items():
+                            supabase.table("seguimiento").upsert({
+                                "producto_id": int(pid_nota), 
+                                "hito": str(HITOS_LIST[0]), 
+                                "observaciones": str(texto_nota),
+                                "supervisor_id": int(supervisor_id) if supervisor_id else None
+                            }, on_conflict="producto_id, hito").execute()
+                    
+                    # C. Sincronización del Tablero (Gantt)
+                    from base_datos import sincronizar_avances_estructural
+                    proy_info = df_p_all[df_p_all['id'] == id_p]
+                    if not proy_info.empty:
+                        cod_proy = proy_info.iloc[0]['codigo']
+                        sincronizar_avances_estructural(cod_proy)
+                    
+                    status.update(label="✅ Avance procesado con éxito", state="complete")
+                
+                st.cache_data.clear()
+                st.rerun()
+
+            except Exception as e:
+                # La memoria ya se limpió, el usuario verá que los cambios se borraron si hay error
+                st.error(f"❌ FALLO DE COMUNICACIÓN: No se pudo guardar en Supabase. Detalles: {e}")
+        else:
+            st.warning("No hay marcaciones pendientes para enviar.")
 
     if cols_acc[5].button("🚫 Limpiar Selección", use_container_width=True):
         st.session_state.cambios_pendientes = []; st.rerun()
@@ -156,9 +191,7 @@ def mostrar(supervisor_id=None):
     st.markdown('</div>', unsafe_allow_html=True)
 
     def render_matriz(df_r):
-        # El formulario actúa como amortiguador para marcar muchos checks sin recargar
         with st.form(key=f"f_g_{df_r.index[0]}"):
-            # Diccionario temporal para capturar el estado de los checks en este instante
             estados_form = {}
             for _, p in df_r.iterrows():
                 cols = st.columns([2.5] + [0.7]*8 + [1.5])
@@ -168,31 +201,24 @@ def mostrar(supervisor_id=None):
                     en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
                     en_mem = any(c['pid'] == p['id'] and c['hito'] == h for c in st.session_state.cambios_pendientes)
                     
-                    bloq = (en_db and not es_jefe)
-                    # El checkbox del form captura el valor visual (DB o Memoria)
+                    bloqueado = (en_db and not es_jefe)
                     key_item = f"{p['id']}_{h}"
-                    estados_form[key_item] = cols[i+1].checkbox("", key=f"chk_{key_item}", value=(en_db or en_mem), disabled=bloq, label_visibility="collapsed")
+                    estados_form[key_item] = cols[i+1].checkbox("", key=f"chk_{key_item}", value=(en_db or en_mem), disabled=bloqueado, label_visibility="collapsed")
             
-            # BOTÓN CRÍTICO: Al presionarlo, pasamos los datos del "sobre" a la "memoria global"
             if st.form_submit_button("📎 Confirmar marcaciones de este grupo", use_container_width=True):
                 for clave, marcado in estados_form.items():
                     pid_f, hito_f = clave.split("_")
                     pid_f = int(pid_f)
-                    
-                    # Verificamos si ya estaba en la lista de cambios para no duplicar
                     ya_en_mem = any(c['pid'] == pid_f and c['hito'] == hito_f for c in st.session_state.cambios_pendientes)
                     ya_en_db = not segs[(segs['producto_id'] == pid_f) & (segs['hito'] == hito_f)].empty
                     
                     if marcado and not ya_en_mem and not ya_en_db:
-                        # Si el usuario lo marcó y no existe en ningún lado, lo agregamos a la sesión global
                         st.session_state.cambios_pendientes.append({"pid": pid_f, "hito": hito_f})
                     elif not marcado and ya_en_mem:
-                        # Si el usuario lo desmarcó pero estaba en la lista roja, lo quitamos
                         st.session_state.cambios_pendientes = [c for c in st.session_state.cambios_pendientes if not (c['pid'] == pid_f and c['hito'] == hito_f)]
-                
-                st.rerun() # Refresca para que el botón "Guardar Avances" vea los nuevos datos
+                st.rerun()
 
-    # --- EJECUCIÓN FINAL ---
+    # --- EJECUCIÓN FINAL (Recorre los productos agrupados) ---
     st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
     if agrupar_por != "Sin grupo":
         campo = "ubicacion" if agrupar_por == "Ubicación" else "tipo"
