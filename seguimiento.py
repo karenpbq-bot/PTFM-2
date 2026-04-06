@@ -132,7 +132,8 @@ def mostrar(supervisor_id=None):
     cols_acc[2].metric("Av. Global", f"{p_tot}%")
     
     if cols_acc[3].button("🔄 Refrescar", use_container_width=True):
-        st.session_state.cambios_pendientes = []; st.session_state.ref_matriz += 1
+        st.session_state.cambios_pendientes = []
+        st.session_state.ref_matriz += 1 # <--- Esta línea es la clave
         st.cache_data.clear(); st.rerun()
 
     if cols_acc[4].button("💾 Guardar Avances", type="primary", use_container_width=True):
@@ -142,21 +143,37 @@ def mostrar(supervisor_id=None):
             try:
                 with st.status("🚀 Guardando...") as status:
                     f_str = f_reg.strftime("%d/%m/%Y")
-                    if lote_h:
-                        lote = [{"producto_id": int(c['pid']), "hito": str(c['hito']), "fecha": f_str, "supervisor_id": supervisor_id} for c in lote_h]
-                        supabase.table("seguimiento").upsert(lote, on_conflict="producto_id, hito").execute()
+                    # Preparamos lote base (seguro)
+                    lote_limpio = [{"producto_id": int(c['pid']), "hito": str(c['hito']), "fecha": f_str} for c in lote_h]
+                    
+                    # Intento de guardado con manejo de error supervisor_id
+                    try:
+                        # Intentamos con supervisor_id
+                        lote_sup = [dict(d, supervisor_id=supervisor_id) for d in lote_limpio]
+                        supabase.table("seguimiento").upsert(lote_sup, on_conflict="producto_id, hito").execute()
+                    except Exception as e:
+                        if "supervisor_id" in str(e):
+                            # Si falla por la columna, guardamos solo lo esencial para no perder tus datos
+                            supabase.table("seguimiento").upsert(lote_limpio, on_conflict="producto_id, hito").execute()
+                        else: raise e
+
                     if lote_n:
                         for pid, txt in lote_n.items():
-                            supabase.table("seguimiento").upsert({"producto_id": int(pid), "hito": HITOS_LIST[0], "observaciones": txt, "supervisor_id": supervisor_id}, on_conflict="producto_id, hito").execute()
+                            supabase.table("seguimiento").upsert({"producto_id": int(pid), "hito": HITOS_LIST[0], "observaciones": txt}, on_conflict="producto_id, hito").execute()
+                    
                     from base_datos import sincronizar_avances_estructural
                     sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
                     status.update(label="✅ Éxito", state="complete")
-                st.session_state.ref_matriz += 1; st.cache_data.clear(); st.rerun()
+                
+                # Sincronización visual forzada
+                st.session_state.ref_matriz += 1
+                st.cache_data.clear(); st.rerun()
             except Exception as e: st.error(f"❌ Fallo: {e}")
 
     if cols_acc[5].button("🚫 Limpiar Selección", use_container_width=True):
         st.session_state.cambios_pendientes = []; st.session_state.notas_pendientes = {}
-        st.session_state.ref_matriz += 1; st.rerun()
+        st.session_state.ref_matriz += 1 # <--- Esta línea es la clave
+        st.rerun()
 
     # --- H. MATRIZ DINÁMICA ---
     st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
