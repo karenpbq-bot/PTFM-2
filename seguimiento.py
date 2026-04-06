@@ -317,45 +317,48 @@ def mostrar(supervisor_id=None):
         rol_local = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
         es_jefe_m = rol_local in ["admin", "gerente", "administrador"]
 
-        for _, p in df_r.iterrows():
-            cols = st.columns([2.5] + [0.7]*8 + [1.5])
-            cols[0].write(f"{p['ubicacion']} | {p['tipo']} | **{p['ml']} ML**")
-            
-            for i, h in enumerate(HITOS_LIST):
-                # 1. ¿Está en la Base de Datos? (Esto define el color GRIS/Bloqueado)
-                en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
+        # IMPORTANTE: Usamos un st.form para agrupar todos los clics y evitar que la app "piense" con cada uno
+        # Le ponemos un nombre único al formulario para evitar conflictos
+        with st.form(key=f"form_matriz_{df_r.iloc[0]['id'] if not df_r.empty else 'vacia'}"):
+            for _, p in df_r.iterrows():
+                cols = st.columns([2.5] + [0.7]*8 + [1.5])
+                cols[0].write(f"{p['ubicacion']} | {p['tipo']} | **{p['ml']} ML**")
                 
-                # 2. ¿Está marcado ahora pero no guardado? (Esto define el color ROJO)
-                idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) 
-                              if d["pid"] == p['id'] and d["hito"] == h), None)
-                
-                existe = en_db or (idx_mem is not None)
-                
-                # REGLA DE BLOQUEO: Si ya está en DB y NO es administrador, se bloquea (Gris)
-                bloqueado = (en_db and not es_jefe_m)
+                for i, h in enumerate(HITOS_LIST):
+                    # 1. Estado real en Base de Datos
+                    en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
+                    
+                    # 2. Estado en memoria temporal
+                    idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) 
+                                  if d["pid"] == p['id'] and d["hito"] == h), None)
+                    
+                    existe = en_db or (idx_mem is not None)
+                    
+                    # Bloqueo: Si ya está en DB y no es jefe, deshabilitamos
+                    bloqueado = (en_db and not es_jefe_m)
 
-                # Key estática para evitar que el check "parpadee" o se pierda
-                key_chx = f"chk_{p['id']}_{h}"
-
-                if cols[i+1].checkbox("", key=key_chx, value=existe, disabled=bloqueado, label_visibility="collapsed"):
-                    if not existe:
-                        st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
-                else:
-                    # Si desmarcamos algo que estaba en memoria (rojo), lo quitamos
-                    if idx_mem is not None:
+                    # KEY ÚNICA: Sin rerun automático
+                    # Al estar dentro de un form, el checkbox NO hará que la app piense
+                    check_val = cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed")
+                    
+                    # Guardamos la intención en una lista temporal si el valor cambió respecto a 'existe'
+                    if check_val and not existe:
+                        if not any(d["pid"] == p['id'] and d["hito"] == h for d in st.session_state.cambios_pendientes):
+                            st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
+                    elif not check_val and idx_mem is not None:
                         st.session_state.cambios_pendientes.pop(idx_mem)
-                        st.rerun()
-                    # Si un jefe desmarca algo que ya estaba en DB (gris), lo borramos
-                    elif en_db and es_jefe_m:
-                        supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
-                        st.cache_data.clear()
-                        st.rerun()
 
-            # Notas
-            n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
-            n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
-            nueva = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}", label_visibility="collapsed")
-            if nueva != n_act: st.session_state.notas_pendientes[str(p['id'])] = nueva
+                # Notas (dentro del form también para que no refresque)
+                n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
+                n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
+                nueva = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}", label_visibility="collapsed")
+                if nueva != n_act: st.session_state.notas_pendientes[str(p['id'])] = nueva
+
+            # Botón de confirmación local para el formulario (es obligatorio en st.form)
+            # Lo llamamos "Preparar estos cambios"
+            submit_local = st.form_submit_button("📎 Confirmar marcaciones de este grupo", use_container_width=True)
+            if submit_local:
+                st.rerun() # Aquí recién la app "piensa" una sola vez para anotar todo en memoria roja
 
     # --- EJECUCIÓN FINAL ---
     st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
