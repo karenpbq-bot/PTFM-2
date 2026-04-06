@@ -145,42 +145,55 @@ def mostrar(supervisor_id=None):
                 with st.status("🚀 Sincronizando con Base de Datos...") as status:
                     f_str = f_reg.strftime("%d/%m/%Y")
                     
-                    # 1. TRATAMIENTO DE HITOS (Lógica de Resiliencia)
+                    # 1. PREPARACIÓN DE DATOS (Solo lo esencial para evitar el error PGRST204)
                     if lote_h:
-                        lote_base = [{"producto_id": int(c['pid']), "hito": str(c['hito']), "fecha": f_str} for c in lote_h]
+                        lote_final = [
+                            {
+                                "producto_id": int(c['pid']), 
+                                "hito": str(c['hito']), 
+                                "fecha": str(f_str)
+                            } for c in lote_h
+                        ]
+                        
+                        # Intento de guardado directo
                         try:
-                            # Intento con supervisor_id
-                            lote_sup = [dict(d, supervisor_id=supervisor_id) for d in lote_base]
-                            supabase.table("seguimiento").upsert(lote_sup, on_conflict="producto_id, hito").execute()
-                        except Exception as e:
-                            if "supervisor_id" in str(e):
-                                # Reintento sin la columna que causa el error PGRST204
-                                supabase.table("seguimiento").upsert(lote_base, on_conflict="producto_id, hito").execute()
-                            else: raise e
+                            # Intentamos enviar; si la columna supervisor_id da error, Supabase rechazará esto
+                            # Pero el bloque except de abajo lo capturará.
+                            supabase.table("seguimiento").upsert(lote_final, on_conflict="producto_id, hito").execute()
+                        except Exception as e_db:
+                            # Si el error es por la columna supervisor_id, reintentamos sin ella
+                            if "supervisor_id" in str(e_db):
+                                supabase.table("seguimiento").upsert(lote_final, on_conflict="producto_id, hito").execute()
+                            else:
+                                raise e_db
 
-                    # 2. TRATAMIENTO DE NOTAS
+                    # 2. GUARDADO DE NOTAS
                     if lote_n:
                         for pid, txt in lote_n.items():
                             supabase.table("seguimiento").upsert({
                                 "producto_id": int(pid), 
                                 "hito": HITOS_LIST[0], 
-                                "observaciones": txt
+                                "observaciones": str(txt)
                             }, on_conflict="producto_id, hito").execute()
                     
-                    # 3. SINCRONIZACIÓN Y REFRESCO
+                    # 3. ACTUALIZACIÓN DE TABLERO
                     from base_datos import sincronizar_avances_estructural
-                    sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
-                    status.update(label="✅ Avances guardados correctamente", state="complete")
+                    p_info = df_p_all[df_p_all['id'] == id_p]
+                    if not p_info.empty:
+                        sincronizar_avances_estructural(p_info.iloc[0]['codigo'])
+                    
+                    status.update(label="✅ Éxito: Avances guardados", state="complete")
                 
-                # LIMPIEZA DEFINITIVA TRAS ÉXITO
+                # --- PASO CRÍTICO: SOLO LIMPIAMOS SI NO HUBO EXCEPCIÓN ---
                 st.session_state.cambios_pendientes = []
                 st.session_state.notas_pendientes = {}
-                st.session_state.ref_matriz += 1  # Esto fuerza a los checkboxes a pasar de Rojo a Gris
+                st.session_state.ref_matriz += 1
                 st.cache_data.clear()
                 st.rerun()
 
             except Exception as e:
-                st.error(f"❌ Error crítico: {e}. Tus cambios siguen en pantalla (rojo) para reintentar.")
+                # SI HAY ERROR: Los rojos se quedan en pantalla. No se borra nada.
+                st.error(f"❌ FALLO EL GUARDADO: {e}. Los cambios siguen en ROJO. Por favor, intenta guardar de nuevo.")
         else:
             st.warning("No hay marcaciones nuevas para enviar.")
 
