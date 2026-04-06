@@ -121,7 +121,7 @@ def mostrar(supervisor_id=None):
 
     p_tot, p_par = calc_avance(prods_all, segs), calc_avance(df_f, segs)
 
-    # --- G. FILA DE ACCIONES (CONTROL DE GUARDADO SEGURO) ---
+    # --- G. FILA DE ACCIONES ---
     st.divider()
     rol_u = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
     es_jefe = rol_u in ["admin", "gerente", "administrador"]
@@ -137,71 +137,52 @@ def mostrar(supervisor_id=None):
         st.cache_data.clear(); st.rerun()
 
     if cols_acc[4].button("💾 GUARDAR AVANCES", type="primary", use_container_width=True):
-        if st.session_state.cambios_pendientes or st.session_state.notas_pendientes:
-            lote_h = list(st.session_state.cambios_pendientes)
-            lote_n = dict(st.session_state.notas_pendientes)
-            
+        if st.session_state.cambios_pendientes or st.session_state.get('borrados_pendientes'):
             try:
-                with st.status("🚀 Sincronizando con Base de Datos...") as status:
+                with st.status("🚀 Sincronizando...") as status:
                     f_str = f_reg.strftime("%d/%m/%Y")
                     
-                    # 1. PREPARACIÓN DE DATOS (Solo lo esencial para evitar el error PGRST204)
-                    if lote_h:
-                        lote_final = [
-                            {
-                                "producto_id": int(c['pid']), 
-                                "hito": str(c['hito']), 
-                                "fecha": str(f_str)
-                            } for c in lote_h
-                        ]
-                        
-                        # Intento de guardado directo
-                        try:
-                            # Intentamos enviar; si la columna supervisor_id da error, Supabase rechazará esto
-                            # Pero el bloque except de abajo lo capturará.
-                            supabase.table("seguimiento").upsert(lote_final, on_conflict="producto_id, hito").execute()
-                        except Exception as e_db:
-                            # Si el error es por la columna supervisor_id, reintentamos sin ella
-                            if "supervisor_id" in str(e_db):
-                                supabase.table("seguimiento").upsert(lote_final, on_conflict="producto_id, hito").execute()
-                            else:
-                                raise e_db
+                    # 1. ELIMINACIONES (Solo Admin/Gerente)
+                    if es_jefe and st.session_state.get('borrados_pendientes'):
+                        for b in st.session_state.borrados_pendientes:
+                            supabase.table("seguimiento").delete().eq("producto_id", b['pid']).eq("hito", b['hito']).execute()
+                        st.session_state.borrados_pendientes = []
 
-                    # 2. GUARDADO DE NOTAS
-                    if lote_n:
-                        for pid, txt in lote_n.items():
-                            supabase.table("seguimiento").upsert({
-                                "producto_id": int(pid), 
-                                "hito": HITOS_LIST[0], 
-                                "observaciones": str(txt)
-                            }, on_conflict="producto_id, hito").execute()
+                    # 2. INSERCIONES/ACTUALIZACIONES
+                    if st.session_state.cambios_pendientes:
+                        lote = [{"producto_id": int(c['pid']), "hito": str(c['hito']), "fecha": f_str} for c in st.session_state.cambios_pendientes]
+                        # Intento robusto para evitar error PGRST204
+                        try:
+                            lote_sup = [dict(d, supervisor_id=supervisor_id) for d in lote]
+                            supabase.table("seguimiento").upsert(lote_sup, on_conflict="producto_id, hito").execute()
+                        except:
+                            supabase.table("seguimiento").upsert(lote, on_conflict="producto_id, hito").execute()
+
+                    # 3. NOTAS
+                    if st.session_state.notas_pendientes:
+                        for pid, txt in st.session_state.notas_pendientes.items():
+                            supabase.table("seguimiento").upsert({"producto_id": int(pid), "hito": HITOS_LIST[0], "observaciones": str(txt)}, on_conflict="producto_id, hito").execute()
                     
-                    # 3. ACTUALIZACIÓN DE TABLERO
                     from base_datos import sincronizar_avances_estructural
-                    p_info = df_p_all[df_p_all['id'] == id_p]
-                    if not p_info.empty:
-                        sincronizar_avances_estructural(p_info.iloc[0]['codigo'])
-                    
-                    status.update(label="✅ Éxito: Avances guardados", state="complete")
+                    sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
+                    status.update(label="✅ Éxito al guardar", state="complete")
                 
-                # --- PASO CRÍTICO: SOLO LIMPIAMOS SI NO HUBO EXCEPCIÓN ---
                 st.session_state.cambios_pendientes = []
                 st.session_state.notas_pendientes = {}
                 st.session_state.ref_matriz += 1
-                st.cache_data.clear()
-                st.rerun()
-
+                st.cache_data.clear(); st.rerun()
             except Exception as e:
-                # SI HAY ERROR: Los rojos se quedan en pantalla. No se borra nada.
-                st.error(f"❌ FALLO EL GUARDADO: {e}. Los cambios siguen en ROJO. Por favor, intenta guardar de nuevo.")
+                st.error(f"❌ Error crítico: {e}")
         else:
-            st.warning("No hay marcaciones nuevas para enviar.")
+            st.warning("No hay cambios para guardar.")
 
     if cols_acc[5].button("🚫 Limpiar Selección", use_container_width=True):
-        st.session_state.cambios_pendientes = []; st.session_state.notas_pendientes = {}
+        st.session_state.cambios_pendientes = []
         st.session_state.ref_matriz += 1; st.rerun()
 
-    # --- H. MATRIZ DINÁMICA (LÓGICA DE PERMISOS Y ACUMULACIÓN) ---
+    # --- H. MATRIZ DINÁMICA ---
+    if 'borrados_pendientes' not in st.session_state: st.session_state.borrados_pendientes = []
+
     st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
     cols_h = st.columns([2.5] + [0.7]*8 + [1.5])
     cols_h[0].write("**Producto**")
@@ -215,45 +196,42 @@ def mostrar(supervisor_id=None):
             for _, p in df_r.iterrows():
                 cols = st.columns([2.5] + [0.7]*8 + [1.5])
                 cols[0].write(f"<p style='font-size:11px;'>{p['ubicacion']} | {p['tipo']}</p>", unsafe_allow_html=True)
-                
                 for i, h in enumerate(HITOS_LIST):
-                    # Verificamos estado en DB y en Memoria
                     en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
                     en_mem = any(c['pid'] == p['id'] and c['hito'] == h for c in st.session_state.cambios_pendientes)
+                    en_borrado = any(b['pid'] == p['id'] and b['hito'] == h for b in st.session_state.borrados_pendientes)
                     
-                    # REGLA DE NEGOCIO: Solo Admin/Gerente pueden desmarcar lo que ya está en DB
                     bloqueado = (en_db and not es_jefe)
                     k = f"{p['id']}_{h}"
-                    res_form[k] = cols[i+1].checkbox("", key=f"c_{k}_{st.session_state.ref_matriz}", value=(en_db or en_mem), disabled=bloqueado)
+                    # El valor del checkbox es True si está en DB (y no marcado para borrar) O si está en memoria roja
+                    val = (en_db and not en_borrado) or en_mem
+                    res_form[k] = cols[i+1].checkbox("", key=f"c_{k}_{st.session_state.ref_matriz}", value=val, disabled=bloqueado, label_visibility="collapsed")
                 
-                # Notas
                 n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
                 n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
-                nueva_n = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}_{st.session_state.ref_matriz}", label_visibility="collapsed")
-                if nueva_n != n_act: st.session_state.notas_pendientes[str(p['id'])] = nueva_n
+                st.session_state.notas_pendientes[str(p['id'])] = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}_{st.session_state.ref_matriz}", label_visibility="collapsed")
 
             if st.form_submit_button("📎 Confirmar marcaciones de este grupo", use_container_width=True):
                 for key_id, valor_check in res_form.items():
                     pid_f, hito_f = key_id.split("_", 1)
                     pid_f = int(pid_f)
-                    
-                    # 1. ¿Está en la Base de Datos?
                     ya_en_db = not segs[(segs['producto_id'] == pid_f) & (segs['hito'] == hito_f)].empty
-                    # 2. ¿Está en la memoria temporal?
-                    idx_en_mem = next((i for i, c in enumerate(st.session_state.cambios_pendientes) if c['pid'] == pid_f and c['hito'] == hito_f), None)
                     
-                    # Lógica de eliminación (Si es jefe y desmarca algo de la DB)
-                    if not valor_check and ya_en_db and es_jefe:
-                        supabase.table("seguimiento").delete().eq("producto_id", pid_f).eq("hito", hito_f).execute()
+                    # 1. Lógica de Adición a Memoria Roja
+                    if valor_check and not ya_en_db:
+                        if not any(c['pid'] == pid_f and c['hito'] == hito_f for c in st.session_state.cambios_pendientes):
+                            st.session_state.cambios_pendientes.append({"pid": pid_f, "hito": hito_f})
+                        st.session_state.borrados_pendientes = [b for b in st.session_state.borrados_pendientes if not (b['pid'] == pid_f and b['hito'] == hito_f)]
                     
-                    # Lógica de adición a memoria (Si marca algo nuevo)
-                    if valor_check and not ya_en_db and idx_en_mem is None:
-                        st.session_state.cambios_pendientes.append({"pid": pid_f, "hito": hito_f})
+                    # 2. Lógica de Marcado para Borrar (Solo Admin/Gerente)
+                    elif not valor_check and ya_en_db and es_jefe:
+                        if not any(b['pid'] == pid_f and b['hito'] == hito_f for b in st.session_state.borrados_pendientes):
+                            st.session_state.borrados_pendientes.append({"pid": pid_f, "hito": hito_f})
+                        st.session_state.cambios_pendientes = [c for c in st.session_state.cambios_pendientes if not (c['pid'] == pid_f and c['hito'] == hito_f)]
                     
-                    # Lógica de quitar de memoria (Si desmarca algo que aún no se ha guardado)
-                    elif not valor_check and idx_en_mem is not None:
-                        st.session_state.cambios_pendientes.pop(idx_en_mem)
-                
+                    # 3. Quitar de Memoria Roja si se desmarca
+                    elif not valor_check and not ya_en_db:
+                        st.session_state.cambios_pendientes = [c for c in st.session_state.cambios_pendientes if not (c['pid'] == pid_f and c['hito'] == hito_f)]
                 st.rerun()
 
     st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
