@@ -76,9 +76,17 @@ def mostrar(supervisor_id=None):
     with st.expander("⚙️ Configuración Avanzada y Herramientas"):
         t1, t2, t3, t4 = st.tabs(["⚖️ Ponderación", "🔍 Filtros", "📥 Importar", "📤 Exportación"])
         
+        # --- Definición de Pesos (Garantiza que el % no sea 0) ---
+        pesos_base = obtener_pesos_seguimiento() # Trae los pesos desde base_datos.py
+    
         with t1:
             cols_w = st.columns(4)
-            pesos = {h: cols_w[i % 4].number_input(f"{h} (%)", value=12.5, step=0.5, key=f"peso_{h}") for i, h in enumerate(HITOS_LIST)}
+            # Creamos un diccionario para guardar lo que el usuario escriba, 
+            # pero si no escribe nada, usa el valor de pesos_base
+            pesos = {}
+            for i, h in enumerate(HITOS_LIST):
+                val_base = pesos_base.get(h, 12.5)
+                pesos[h] = cols_w[i % 4].number_input(f"{h} (%)", value=float(val_base), step=0.5, key=f"peso_{h}")
         
         with t2:
             f1, f2, f3 = st.columns(3)
@@ -160,9 +168,17 @@ def mostrar(supervisor_id=None):
     if bus_c2: df_f = df_f[df_f['ubicacion'].str.contains(bus_c2, case=False) | df_f['tipo'].str.contains(bus_c2, case=False)]
 
     def calc_avance(df_m, df_s):
-        if df_m.empty: return 0.0
-        puntos = sum([pesos.get(h, 0) for h in df_s[df_s['producto_id'].isin(df_m['id'].tolist())]['hito']])
-        return round(puntos / len(df_m), 2)
+        if df_m.empty or df_s.empty: return 0.0
+        
+        ids_visibles = df_m['id'].tolist()
+        # Filtramos solo los seguimientos de los productos que estamos viendo
+        segs_visibles = df_s[df_s['producto_id'].isin(ids_visibles)]
+        
+        # Sumamos los pesos de cada hito encontrado
+        total_puntos = sum([pesos.get(h, 0) for h in segs_visibles['hito']])
+        
+        # El porcentaje es: (Suma de pesos) / (Cantidad de productos)
+        return round(total_puntos / len(df_m), 2)
 
     p_tot, p_par = calc_avance(prods_all, segs), calc_avance(df_f, segs)
 
