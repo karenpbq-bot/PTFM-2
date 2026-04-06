@@ -63,13 +63,16 @@ def mostrar(supervisor_id=None):
     if not st.session_state.get('id_p_sel'):
         st.info("💡 Por favor, seleccione un proyecto."); return
 
-    # --- D. CARGA DE DATOS ---
+    # --- D. CARGA DE DATOS (REPARADO PARA REFRESCO INMEDIATO) ---
     id_p = st.session_state.id_p_sel
     prods_all = obtener_productos_por_proyecto(id_p)
     if prods_all.empty: st.warning("Sin productos."); return
 
-    # Cargamos seguimiento una sola vez al inicio
+    # Forzamos una consulta fresca a Supabase
+    # Al no estar envuelta en ninguna función con @st.cache_data, leerá la DB siempre
     segs_res = supabase.table("seguimiento").select("*").in_("producto_id", prods_all['id'].tolist()).execute()
+    
+    # Creamos el DataFrame 'segs' que usará toda la matriz y el cálculo de avance
     segs = pd.DataFrame(segs_res.data) if segs_res.data else pd.DataFrame(columns=['producto_id','hito','fecha','observaciones'])
 
     # --- E. HERRAMIENTAS ---
@@ -171,19 +174,30 @@ def mostrar(supervisor_id=None):
         if df_m.empty: return 0.0
         
         ids_visibles = df_m['id'].tolist()
-        # A. Puntos de lo que YA está guardado
-        segs_visibles = df_s[df_s['producto_id'].isin(ids_visibles)]
-        puntos_db = sum([pesos.get(h, 0) for h in segs_visibles['hito']])
+        num_productos = len(ids_visibles)
         
-        # B. Puntos de lo que el supervisor TIENE MARCADO pero aún no guarda
-        cambios_visibles = [c for c in st.session_state.cambios_pendientes if c['pid'] in ids_visibles]
-        puntos_memoria = sum([pesos.get(c['hito'], 0) for c in cambios_visibles])
+        # 1. Obtenemos hitos ÚNICOS ya guardados en la DB para estos productos
+        # Filtramos df_s por los IDs visibles y eliminamos cualquier duplicado accidental
+        db_visibles = df_s[df_s['producto_id'].isin(ids_visibles)].drop_duplicates(subset=['producto_id', 'hito'])
+        puntos_db = sum([pesos.get(h, 0) for h in db_visibles['hito']])
         
-        # Calculamos sobre el total de productos visibles
-        total_puntos = puntos_db + puntos_memoria
-        return round(total_puntos / len(df_m), 2)
+        # 2. Obtenemos hitos en memoria (ROJOS) que NO estén ya en la DB
+        # Esto evita que sumemos dos veces el mismo hito
+        memoria_visibles = []
+        for c in st.session_state.cambios_pendientes:
+            if c['pid'] in ids_visibles:
+                # Solo sumamos si este hito NO existe ya en la base de datos para este producto
+                ya_en_db = not db_visibles[(db_visibles['producto_id'] == c['pid']) & (db_visibles['hito'] == c['hito'])].empty
+                if not ya_en_db:
+                    memoria_visibles.append(c)
+        
+        puntos_memoria = sum([pesos.get(c['hito'], 0) for c in memoria_visibles])
+        
+        # CÁLCULO FINAL: (Puntos totales) / (Cantidad de productos)
+        total_avance = (puntos_db + puntos_memoria) / num_productos
+        return round(total_avance, 2)
 
-    # El cálculo global usa 'prods_all' (todos) y el parcial usa 'df_f' (los filtrados)
+    # --- Así debe quedar tu archivo despues de pegar la función nueva ---
     p_tot = calc_avance(prods_all, segs)
     p_par = calc_avance(df_f, segs)
 
@@ -260,14 +274,16 @@ def mostrar(supervisor_id=None):
                     sincronizar_avances_estructural(p_cod)
                     
                     # --- AQUÍ VA EL CAMBIO ---
-                    status.update(label="✅ Avance guardado y protegido", state="complete")
+                    status.update(label="✅ ¡Avance guardado con éxito!", state="complete")
 
-                # Limpieza total para forzar el cambio de color de los checks (FUERA del with st.status)
+                # LIMPIEZA ABSOLUTA DE MEMORIA
                 st.session_state.cambios_pendientes = []
                 st.session_state.notas_pendientes = {}
-                st.cache_data.clear() # Esto limpia la memoria de Streamlit
-                st.toast("¡Datos sincronizados con éxito!")
-                st.rerun() # Esto obliga a la app a re-dibujar todo con los checks en gris
+                
+                # FORZAR A STREAMLIT A PEDIR DATOS NUEVOS
+                st.cache_data.clear() 
+                st.toast("Actualizando interfaz...")
+                st.rerun() # Al volver arriba, el Paso 1 leerá la DB y verá los hitos como 'en_db'
         except Exception as e:
             st.error(f"❌ Error crítico en la comunicación: {e}")
 
