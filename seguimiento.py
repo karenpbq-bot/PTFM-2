@@ -7,7 +7,7 @@ from base_datos import conectar, obtener_proyectos, obtener_productos_por_proyec
 MAPEO_HITOS = {
     "Diseñado": "🗺️", "Fabricado": "🪚", "Material en Obra": "🚛",
     "Material en Ubicación": "📍", "Instalación de Estructura": "📦", 
-    "Instalación de Puertas o Frentes": "🗄️", "Revisión y Observaciones": "🔍", "Entrega": "🤝"
+    "Instalación de Puertas o Frentes": "🗄️", "Revisión y Observaciones": "🔍", "Entrega": "👍"
 }
 HITOS_LIST = list(MAPEO_HITOS.keys())
 
