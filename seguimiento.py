@@ -171,17 +171,17 @@ def mostrar(supervisor_id=None):
         if df_m.empty: return 0.0
         
         ids_visibles = df_m['id'].tolist()
-        # 1. Puntos de lo que ya está en la Base de Datos
+        # A. Puntos de lo que YA está guardado
         segs_visibles = df_s[df_s['producto_id'].isin(ids_visibles)]
         puntos_db = sum([pesos.get(h, 0) for h in segs_visibles['hito']])
         
-        # 2. Puntos de lo que tienes marcado en ROJO (pendientes de guardar)
-        # Filtramos los cambios pendientes que pertenecen a los productos visibles
+        # B. Puntos de lo que el supervisor TIENE MARCADO pero aún no guarda
         cambios_visibles = [c for c in st.session_state.cambios_pendientes if c['pid'] in ids_visibles]
         puntos_memoria = sum([pesos.get(c['hito'], 0) for c in cambios_visibles])
         
-        # Total / Cantidad de productos
-        return round((puntos_db + puntos_memoria) / len(df_m), 2)
+        # Calculamos sobre el total de productos visibles
+        total_puntos = puntos_db + puntos_memoria
+        return round(total_puntos / len(df_m), 2)
 
     # El cálculo global usa 'prods_all' (todos) y el parcial usa 'df_f' (los filtrados)
     p_tot = calc_avance(prods_all, segs)
@@ -259,15 +259,15 @@ def mostrar(supervisor_id=None):
                     p_cod = df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo']
                     sincronizar_avances_estructural(p_cod)
                     
-                    status.update(label="✅ Avance guardado y protegido con éxito", state="complete")
+                    # --- AQUÍ VA EL CAMBIO ---
+                    status.update(label="✅ Avance guardado y protegido", state="complete")
 
-                # LIMPIEZA Y REFRESCO FORZADO
+                # Limpieza total para forzar el cambio de color de los checks (FUERA del with st.status)
                 st.session_state.cambios_pendientes = []
                 st.session_state.notas_pendientes = {}
-                st.cache_data.clear() # CRÍTICO: Limpia el caché para que al recargar lea los nuevos datos
-                st.rerun()
-            else:
-                st.info("No hay cambios pendientes por guardar.")
+                st.cache_data.clear() # Esto limpia la memoria de Streamlit
+                st.toast("¡Datos sincronizados con éxito!")
+                st.rerun() # Esto obliga a la app a re-dibujar todo con los checks en gris
         except Exception as e:
             st.error(f"❌ Error crítico en la comunicación: {e}")
 
@@ -330,23 +330,27 @@ def mostrar(supervisor_id=None):
                 cols[0].write(f"{p['ubicacion']} | {p['tipo']} | **{p['ml']} ML**")
                 
                 for i, h in enumerate(HITOS_LIST):
-                    # 1. Estado real en Base de Datos
+                    # 1. ¿Está guardado en la Base de Datos?
                     en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
                     
-                    # 2. Estado en memoria temporal
+                    # 2. ¿Está pendiente en memoria (marcado recientemente)?
                     idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) 
                                   if d["pid"] == p['id'] and d["hito"] == h), None)
                     
+                    # Valor visual del check
                     existe = en_db or (idx_mem is not None)
                     
-                    # Bloqueo: Si ya está en DB y no es jefe, deshabilitamos
+                    # ESTILO VISUAL: 
+                    # Si ya está en DB (en_db), el check se bloquea y se ve Gris.
+                    # Si solo está en memoria (idx_mem), el check se ve normal pero al guardar cambia.
                     bloqueado = (en_db and not es_jefe_m)
 
-                    # KEY ÚNICA: Sin rerun automático
-                    # Al estar dentro de un form, el checkbox NO hará que la app piense
-                    check_val = cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed")
+                    key_chx = f"c_{p['id']}_{h}"
                     
-                    # Guardamos la intención en una lista temporal si el valor cambió respecto a 'existe'
+                    # El checkbox ahora reacciona correctamente
+                    check_val = cols[i+1].checkbox("", key=key_chx, value=existe, disabled=bloqueado, label_visibility="collapsed")
+                    
+                    # Lógica de memoria incremental
                     if check_val and not existe:
                         if not any(d["pid"] == p['id'] and d["hito"] == h for d in st.session_state.cambios_pendientes):
                             st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
