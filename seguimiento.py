@@ -168,19 +168,24 @@ def mostrar(supervisor_id=None):
     if bus_c2: df_f = df_f[df_f['ubicacion'].str.contains(bus_c2, case=False) | df_f['tipo'].str.contains(bus_c2, case=False)]
 
     def calc_avance(df_m, df_s):
-        if df_m.empty or df_s.empty: return 0.0
+        if df_m.empty: return 0.0
         
         ids_visibles = df_m['id'].tolist()
-        # Filtramos solo los seguimientos de los productos que estamos viendo
+        # 1. Puntos de lo que ya está en la Base de Datos
         segs_visibles = df_s[df_s['producto_id'].isin(ids_visibles)]
+        puntos_db = sum([pesos.get(h, 0) for h in segs_visibles['hito']])
         
-        # Sumamos los pesos de cada hito encontrado
-        total_puntos = sum([pesos.get(h, 0) for h in segs_visibles['hito']])
+        # 2. Puntos de lo que tienes marcado en ROJO (pendientes de guardar)
+        # Filtramos los cambios pendientes que pertenecen a los productos visibles
+        cambios_visibles = [c for c in st.session_state.cambios_pendientes if c['pid'] in ids_visibles]
+        puntos_memoria = sum([pesos.get(c['hito'], 0) for c in cambios_visibles])
         
-        # El porcentaje es: (Suma de pesos) / (Cantidad de productos)
-        return round(total_puntos / len(df_m), 2)
+        # Total / Cantidad de productos
+        return round((puntos_db + puntos_memoria) / len(df_m), 2)
 
-    p_tot, p_par = calc_avance(prods_all, segs), calc_avance(df_f, segs)
+    # El cálculo global usa 'prods_all' (todos) y el parcial usa 'df_f' (los filtrados)
+    p_tot = calc_avance(prods_all, segs)
+    p_par = calc_avance(df_f, segs)
 
     # --- F. FILA DE ACCIONES (INTEGRACIÓN CORREGIDA) ---
     st.divider()
