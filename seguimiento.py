@@ -79,17 +79,22 @@ def mostrar(supervisor_id=None):
     with st.expander("⚙️ Configuración Avanzada y Herramientas"):
         t1, t2, t3, t4 = st.tabs(["⚖️ Ponderación", "🔍 Filtros", "📥 Importar", "📤 Exportación"])
         
-        # --- Definición de Pesos (Garantiza que el % no sea 0) ---
-        pesos_base = obtener_pesos_seguimiento() # Trae los pesos desde base_datos.py
-    
+        # 1. DEFINICIÓN GLOBAL DE PESOS (Fuera del Tab para que siempre existan)
+        pesos_base = obtener_pesos_seguimiento()
+        pesos = {} 
+        
+        # Llenamos el diccionario 'pesos' primero para que calc_avance siempre tenga datos
+        for h in HITOS_LIST:
+            pesos[h] = float(pesos_base.get(h, 12.5))
+
         with t1:
+            st.markdown("##### Ajustar pesos de avance")
             cols_w = st.columns(4)
-            # Creamos un diccionario para guardar lo que el usuario escriba, 
-            # pero si no escribe nada, usa el valor de pesos_base
-            pesos = {}
+            # Aquí permitimos que el usuario modifique los pesos si lo desea
             for i, h in enumerate(HITOS_LIST):
-                val_base = pesos_base.get(h, 12.5)
-                pesos[h] = cols_w[i % 4].number_input(f"{h} (%)", value=float(val_base), step=0.5, key=f"peso_{h}")
+                val_base = pesos[h]
+                # Actualizamos el diccionario con el valor del input
+                pesos[h] = cols_w[i % 4].number_input(f"{h} (%)", value=val_base, step=0.5, key=f"peso_{h}")
         
         with t2:
             f1, f2, f3 = st.columns(3)
@@ -276,14 +281,15 @@ def mostrar(supervisor_id=None):
                     # --- AQUÍ VA EL CAMBIO ---
                     status.update(label="✅ ¡Avance guardado con éxito!", state="complete")
 
-                # LIMPIEZA ABSOLUTA DE MEMORIA
-                st.session_state.cambios_pendientes = []
-                st.session_state.notas_pendientes = {}
+            # LIMPIEZA ABSOLUTA DE MEMORIA
+            st.session_state.cambios_pendientes = []
+            st.session_state.notas_pendientes = {}
                 
-                # FORZAR A STREAMLIT A PEDIR DATOS NUEVOS
-                st.cache_data.clear() 
-                st.toast("Actualizando interfaz...")
-                st.rerun() # Al volver arriba, el Paso 1 leerá la DB y verá los hitos como 'en_db'
+            # FORZAR A STREAMLIT A PEDIR DATOS NUEVOS
+            st.cache_data.clear() 
+            st.toast("Los cambios se registraron.")
+            st.rerun() # Al volver arriba, el Paso 1 leerá la DB y verá los hitos como 'en_db'
+            
         except Exception as e:
             st.error(f"❌ Error crítico en la comunicación: {e}")
 
@@ -338,46 +344,42 @@ def mostrar(supervisor_id=None):
         rol_local = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
         es_jefe_m = rol_local in ["admin", "gerente", "administrador"]
 
-        # IMPORTANTE: Usamos un st.form para agrupar todos los clics y evitar que la app "piense" con cada uno
-        # Le ponemos un nombre único al formulario para evitar conflictos
-        with st.form(key=f"form_matriz_{df_r.iloc[0]['id'] if not df_r.empty else 'vacia'}"):
-            for _, p in df_r.iterrows():
-                cols = st.columns([2.5] + [0.7]*8 + [1.5])
-                cols[0].write(f"{p['ubicacion']} | {p['tipo']} | **{p['ml']} ML**")
+        # SIN ST.FORM PARA QUE EL BOTÓN "GUARDAR AVANCES" TENGA ACCESO TOTAL
+        for _, p in df_r.iterrows():
+            cols = st.columns([2.5] + [0.7]*8 + [1.5])
+            cols[0].write(f"{p['ubicacion']} | {p['tipo']} | **{p['ml']} ML**")
+            
+            for i, h in enumerate(HITOS_LIST):
+                # 1. Estado en Base de Datos
+                en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
                 
-                for i, h in enumerate(HITOS_LIST):
-                    # 1. ¿Está guardado en la Base de Datos?
-                    en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
-                    
-                    # 2. ¿Está pendiente en memoria (marcado recientemente)?
-                    idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) 
-                                  if d["pid"] == p['id'] and d["hito"] == h), None)
-                    
-                    # Valor visual del check
-                    existe = en_db or (idx_mem is not None)
-                    
-                    # ESTILO VISUAL: 
-                    # Si ya está en DB (en_db), el check se bloquea y se ve Gris.
-                    # Si solo está en memoria (idx_mem), el check se ve normal pero al guardar cambia.
-                    bloqueado = (en_db and not es_jefe_m)
+                # 2. Estado en memoria temporal (Rojo)
+                idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) 
+                              if d["pid"] == p['id'] and d["hito"] == h), None)
+                
+                existe = en_db or (idx_mem is not None)
+                
+                # REGLA DE BLOQUEO: Si ya está en DB y no eres Jefe, se bloquea (Gris)
+                bloqueado = (en_db and not es_jefe_m)
 
-                    key_chx = f"c_{p['id']}_{h}"
-                    
-                    # El checkbox ahora reacciona correctamente
-                    check_val = cols[i+1].checkbox("", key=key_chx, value=existe, disabled=bloqueado, label_visibility="collapsed")
-                    
-                    # Lógica de memoria incremental
-                    if check_val and not existe:
-                        if not any(d["pid"] == p['id'] and d["hito"] == h for d in st.session_state.cambios_pendientes):
-                            st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
-                    elif not check_val and idx_mem is not None:
+                key_chx = f"chk_{p['id']}_{h}"
+
+                # Al quitar el formulario, el check es reactivo
+                if cols[i+1].checkbox("", key=key_chx, value=existe, disabled=bloqueado, label_visibility="collapsed"):
+                    if not existe:
+                        st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
+                        st.rerun() # <--- IMPORTANTE: Esto hace que el % de avance suba al instante
+                else:
+                    if idx_mem is not None:
                         st.session_state.cambios_pendientes.pop(idx_mem)
+                        st.rerun() # <--- IMPORTANTE: Esto hace que el % de avance baje al instante
 
-                # Notas (dentro del form también para que no refresque)
-                n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
-                n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
-                nueva = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}", label_visibility="collapsed")
-                if nueva != n_act: st.session_state.notas_pendientes[str(p['id'])] = nueva
+            # Notas vinculadas al estado global
+            n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
+            n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
+            nueva = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}", label_visibility="collapsed")
+            if nueva != n_act: 
+                st.session_state.notas_pendientes[str(p['id'])] = nueva
 
             # Botón de confirmación local para el formulario (es obligatorio en st.form)
             # Lo llamamos "Preparar estos cambios"
