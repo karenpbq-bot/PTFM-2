@@ -156,32 +156,41 @@ def mostrar(supervisor_id=None):
     st.markdown('</div>', unsafe_allow_html=True)
 
     def render_matriz(df_r):
-        # El formulario permite marcar todo y procesar en un solo 'Confirmar'
-        with st.form(key=f"form_grupo_{df_r.index[0]}"):
+        # El formulario actúa como amortiguador para marcar muchos checks sin recargar
+        with st.form(key=f"f_g_{df_r.index[0]}"):
+            # Diccionario temporal para capturar el estado de los checks en este instante
+            estados_form = {}
             for _, p in df_r.iterrows():
                 cols = st.columns([2.5] + [0.7]*8 + [1.5])
                 cols[0].write(f"<p style='font-size:11px;'>{p['ubicacion']} | {p['tipo']}</p>", unsafe_allow_html=True)
                 
                 for i, h in enumerate(HITOS_LIST):
                     en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
-                    idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) if d["pid"] == p['id'] and d["hito"] == h), None)
+                    en_mem = any(c['pid'] == p['id'] and c['hito'] == h for c in st.session_state.cambios_pendientes)
                     
-                    existe = en_db or (idx_mem is not None)
-                    bloqueado = (en_db and not es_jefe) # Gris si ya está en DB
-                    
-                    if cols[i+1].checkbox("", key=f"c_{p['id']}_{h}", value=existe, disabled=bloqueado, label_visibility="collapsed"):
-                        if not existe: st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
-                    elif idx_mem is not None:
-                        st.session_state.cambios_pendientes.pop(idx_mem)
-
-                # Notas
-                n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
-                n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
-                nueva = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}", label_visibility="collapsed")
-                if nueva != n_act: st.session_state.notas_pendientes[str(p['id'])] = nueva
-
+                    bloq = (en_db and not es_jefe)
+                    # El checkbox del form captura el valor visual (DB o Memoria)
+                    key_item = f"{p['id']}_{h}"
+                    estados_form[key_item] = cols[i+1].checkbox("", key=f"chk_{key_item}", value=(en_db or en_mem), disabled=bloq, label_visibility="collapsed")
+            
+            # BOTÓN CRÍTICO: Al presionarlo, pasamos los datos del "sobre" a la "memoria global"
             if st.form_submit_button("📎 Confirmar marcaciones de este grupo", use_container_width=True):
-                st.rerun()
+                for clave, marcado in estados_form.items():
+                    pid_f, hito_f = clave.split("_")
+                    pid_f = int(pid_f)
+                    
+                    # Verificamos si ya estaba en la lista de cambios para no duplicar
+                    ya_en_mem = any(c['pid'] == pid_f and c['hito'] == hito_f for c in st.session_state.cambios_pendientes)
+                    ya_en_db = not segs[(segs['producto_id'] == pid_f) & (segs['hito'] == hito_f)].empty
+                    
+                    if marcado and not ya_en_mem and not ya_en_db:
+                        # Si el usuario lo marcó y no existe en ningún lado, lo agregamos a la sesión global
+                        st.session_state.cambios_pendientes.append({"pid": pid_f, "hito": hito_f})
+                    elif not marcado and ya_en_mem:
+                        # Si el usuario lo desmarcó pero estaba en la lista roja, lo quitamos
+                        st.session_state.cambios_pendientes = [c for c in st.session_state.cambios_pendientes if not (c['pid'] == pid_f and c['hito'] == hito_f)]
+                
+                st.rerun() # Refresca para que el botón "Guardar Avances" vea los nuevos datos
 
     # --- EJECUCIÓN FINAL ---
     st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
