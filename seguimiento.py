@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import io
-from base_datos import conectar, obtener_proyectos, obtener_productos_por_proyecto, obtener_seguimiento
+from base_datos import conectar, obtener_proyectos, obtener_productos_por_proyecto, obtener_seguimiento, obtener_pesos_seguimiento
 
 # =========================================================
 # 1. CONFIGURACIÓN Y DICCIONARIOS MAESTROS
