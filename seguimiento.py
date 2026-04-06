@@ -145,19 +145,17 @@ def mostrar(supervisor_id=None):
                 with st.status("🚀 Sincronizando con Base de Datos...") as status:
                     f_str = f_reg.strftime("%d/%m/%Y")
                     
-                    # 1. TRATAMIENTO DE HITOS (Solo insertar/actualizar si es nuevo)
+                    # 1. TRATAMIENTO DE HITOS (Lógica de Resiliencia)
                     if lote_h:
-                        # Preparamos los datos básicos
-                        lote_limpio = [{"producto_id": int(c['pid']), "hito": str(c['hito']), "fecha": f_str} for c in lote_h]
-                        
+                        lote_base = [{"producto_id": int(c['pid']), "hito": str(c['hito']), "fecha": f_str} for c in lote_h]
                         try:
-                            # Intentamos con supervisor_id
-                            lote_sup = [dict(d, supervisor_id=supervisor_id) for d in lote_limpio]
+                            # Intento con supervisor_id
+                            lote_sup = [dict(d, supervisor_id=supervisor_id) for d in lote_base]
                             supabase.table("seguimiento").upsert(lote_sup, on_conflict="producto_id, hito").execute()
                         except Exception as e:
                             if "supervisor_id" in str(e):
-                                # Reintento de emergencia sin la columna problemática para asegurar el guardado
-                                supabase.table("seguimiento").upsert(lote_limpio, on_conflict="producto_id, hito").execute()
+                                # Reintento sin la columna que causa el error PGRST204
+                                supabase.table("seguimiento").upsert(lote_base, on_conflict="producto_id, hito").execute()
                             else: raise e
 
                     # 2. TRATAMIENTO DE NOTAS
@@ -169,19 +167,20 @@ def mostrar(supervisor_id=None):
                                 "observaciones": txt
                             }, on_conflict="producto_id, hito").execute()
                     
-                    # 3. SINCRONIZACIÓN ESTRUCTURAL
+                    # 3. SINCRONIZACIÓN Y REFRESCO
                     from base_datos import sincronizar_avances_estructural
                     sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
-                    status.update(label="✅ Avances registrados con éxito", state="complete")
+                    status.update(label="✅ Avances guardados correctamente", state="complete")
                 
-                # LIMPIEZA DE MEMORIA SOLO TRAS ÉXITO
+                # LIMPIEZA DEFINITIVA TRAS ÉXITO
                 st.session_state.cambios_pendientes = []
                 st.session_state.notas_pendientes = {}
-                st.session_state.ref_matriz += 1
-                st.cache_data.clear(); st.rerun()
+                st.session_state.ref_matriz += 1  # Esto fuerza a los checkboxes a pasar de Rojo a Gris
+                st.cache_data.clear()
+                st.rerun()
 
             except Exception as e:
-                st.error(f"❌ Error al guardar: {e}. Tus marcaciones rojas siguen en pantalla.")
+                st.error(f"❌ Error crítico: {e}. Tus cambios siguen en pantalla (rojo) para reintentar.")
         else:
             st.warning("No hay marcaciones nuevas para enviar.")
 
