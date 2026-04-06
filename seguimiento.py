@@ -322,29 +322,34 @@ def mostrar(supervisor_id=None):
             cols[0].write(f"{p['ubicacion']} | {p['tipo']} | **{p['ml']} ML**")
             
             for i, h in enumerate(HITOS_LIST):
+                # 1. ¿Está en la Base de Datos? (Esto define el color GRIS/Bloqueado)
                 en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
-                idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) if d["pid"] == p['id'] and d["hito"] == h), None)
+                
+                # 2. ¿Está marcado ahora pero no guardado? (Esto define el color ROJO)
+                idx_mem = next((idx for idx, d in enumerate(st.session_state.cambios_pendientes) 
+                              if d["pid"] == p['id'] and d["hito"] == h), None)
+                
                 existe = en_db or (idx_mem is not None)
                 
-                # Regla de bloqueo simple para mejorar velocidad
+                # REGLA DE BLOQUEO: Si ya está en DB y NO es administrador, se bloquea (Gris)
                 bloqueado = (en_db and not es_jefe_m)
 
-                key_chx = f"v_chk_{p['id']}_{h}_{'1' if existe else '0'}"
+                # Key estática para evitar que el check "parpadee" o se pierda
+                key_chx = f"chk_{p['id']}_{h}"
 
                 if cols[i+1].checkbox("", key=key_chx, value=existe, disabled=bloqueado, label_visibility="collapsed"):
                     if not existe:
-                        # Solo anotamos en la memoria temporal, NO guardamos en DB aún
-                        if not any(d["pid"] == p['id'] and d["hito"] == h for d in st.session_state.cambios_pendientes):
-                            st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
-                        # ELIMINAMOS st.rerun() para que puedas hacer clics rápidos
+                        st.session_state.cambios_pendientes.append({"pid": p['id'], "hito": h})
                 else:
-                    if existe:
-                        if idx_mem is not None:
-                            st.session_state.cambios_pendientes.pop(idx_mem)
-                        elif en_db and es_jefe_m:
-                            # Aquí borramos directo de DB porque el Admin ya dio la orden
-                            supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
-                            st.rerun()
+                    # Si desmarcamos algo que estaba en memoria (rojo), lo quitamos
+                    if idx_mem is not None:
+                        st.session_state.cambios_pendientes.pop(idx_mem)
+                        st.rerun()
+                    # Si un jefe desmarca algo que ya estaba en DB (gris), lo borramos
+                    elif en_db and es_jefe_m:
+                        supabase.table("seguimiento").delete().eq("producto_id", p['id']).eq("hito", h).execute()
+                        st.cache_data.clear()
+                        st.rerun()
 
             # Notas
             n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
