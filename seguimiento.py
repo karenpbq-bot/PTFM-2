@@ -147,9 +147,13 @@ def mostrar(supervisor_id=None):
     if c4.button("🔄 Refrescar", use_container_width=True):
         st.cache_data.clear(); st.rerun()
 
-    # --- H. MATRIZ INTELIGENTE ---
+    # --- H. MATRIZ INTELIGENTE (VERSIÓN CORREGIDA) ---
+    st.write("📋 **Matriz de Seguimiento:** (Doble clic para marcar/desmarcar)")
+    
+    # Columnas que NO se pueden editar
     cols_fijas = ['id', 'ubicacion', 'tipo', 'ctd', 'ml']
     
+    # El editor debe usar cambios_df como variable de salida
     cambios_df = st.data_editor(
         df_editor,
         column_config={
@@ -161,49 +165,77 @@ def mostrar(supervisor_id=None):
             "Notas": st.column_config.TextColumn("Notas", width="medium"),
             **{h: st.column_config.CheckboxColumn(h) for h in HITOS_LIST}
         },
-        disabled=cols_fijas, # Los hitos quedan libres para marcar
+        disabled=cols_fijas, # Liberamos todos los hitos
         hide_index=True,
         use_container_width=True,
-        key=f"ed_{id_p}_{st.session_state.ref_matriz}"
+        key=f"editor_final_{id_p}_{st.session_state.ref_matriz}" # Key ultra-segura
     )
 
-    # --- I. GUARDADO MASIVO ---
+    # --- I. PROCESAMIENTO DE GUARDADO (SOLUCIÓN FINAL) ---
     if st.button("💾 GUARDAR CAMBIOS EN NUBE", type="primary", use_container_width=True):
-        lote_ins, lote_del, lote_not = [], [], []
+        lote_ins = []
+        lote_del = []
+        lote_not = []
 
+        # Recorremos el DataFrame que sale del editor
         for idx in range(len(df_editor)):
+            # Usamos el ID real del producto
             pid = int(df_editor.iloc[idx]['id'])
+            
             for h in HITOS_LIST:
+                # Comparamos valor original (DB) con el nuevo (Editor)
                 v_orig = bool(df_editor.iloc[idx][h])
                 v_nuev = bool(cambios_df.iloc[idx][h])
 
+                # Si es nuevo y antes no estaba: AGREGAR
                 if v_nuev and not v_orig:
-                    lote_ins.append({"producto_id": pid, "hito": h, "fecha": f_reg.strftime("%d/%m/%Y")})
+                    lote_ins.append({
+                        "producto_id": pid, 
+                        "hito": h, 
+                        "fecha": f_reg.strftime("%d/%m/%Y")
+                    })
+                # Si estaba y se quitó: BORRAR (Solo Admin/Gerente)
                 elif not v_nuev and v_orig and es_jefe:
                     lote_del.append({"pid": pid, "hito": h})
             
-            # Comparación de Notas
-            n_orig, n_nuev = str(df_editor.iloc[idx]['Notas']), str(cambios_df.iloc[idx]['Notas'])
-            if n_nuev != n_orig: lote_not.append({"pid": pid, "txt": n_nuev})
+            # Procesar Notas
+            n_orig = str(df_editor.iloc[idx].get('Notas', ''))
+            n_nuev = str(cambios_df.iloc[idx].get('Notas', ''))
+            if n_nuev != n_orig:
+                lote_not.append({"pid": pid, "txt": n_nuev})
 
         if lote_ins or lote_del or lote_not:
             try:
-                with st.status("📡 Grabando...") as status:
+                with st.status("📡 Grabando en Supabase...") as status:
+                    # 1. Ejecutar Borrados
                     for d in lote_del:
                         supabase.table("seguimiento").delete().eq("producto_id", d['pid']).eq("hito", d['hito']).execute()
-                    if lote_ins:
-                        try:
-                            lote_f = [dict(x, supervisor_id=supervisor_id) for x in lote_ins]
-                            supabase.table("seguimiento").upsert(lote_f, on_conflict="producto_id, hito").execute()
-                        except:
-                            supabase.table("seguimiento").upsert(lote_ins, on_conflict="producto_id, hito").execute()
-                    for n in lote_not:
-                        supabase.table("seguimiento").upsert({"producto_id": n['pid'], "hito": HITOS_LIST[0], "observaciones": n['txt']}, on_conflict="producto_id, hito").execute()
                     
+                    # 2. Ejecutar Inserciones (Upsert Limpio)
+                    if lote_ins:
+                        # Enviamos solo lo que la tabla acepta sí o sí (sin supervisor_id)
+                        supabase.table("seguimiento").upsert(lote_ins, on_conflict="producto_id, hito").execute()
+                    
+                    # 3. Notas
+                    for n in lote_not:
+                        supabase.table("seguimiento").upsert({
+                            "producto_id": n['pid'], 
+                            "hito": HITOS_LIST[0], 
+                            "observaciones": n['txt']
+                        }, on_conflict="producto_id, hito").execute()
+                    
+                    # Sincronizar estructural
                     from base_datos import sincronizar_avances_estructural
                     sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
-                    status.update(label="✅ Éxito", state="complete")
-                st.cache_data.clear(); st.session_state.ref_matriz += 1; st.rerun()
-            except Exception as e: st.error(f"Fallo: {e}")
+                    
+                    status.update(label=f"✅ ¡Éxito! {len(lote_ins)} hitos guardados.", state="complete")
+                
+                # Limpiar caché y forzar recarga
+                st.cache_data.clear()
+                st.session_state.ref_matriz += 1
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"❌ ERROR AL GUARDAR: {e}")
         else:
-            st.info("No se detectaron cambios nuevos para guardar.")
+            st.warning("No detectamos cambios nuevos para guardar.")
