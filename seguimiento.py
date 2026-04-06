@@ -15,23 +15,30 @@ HITOS_LIST = list(MAPEO_HITOS.keys())
 def mostrar(supervisor_id=None):
     # --- A. ESTADOS DE SESIÓN (BUFFER DE ALTO RENDIMIENTO) ---
     if 'cambios_pendientes' not in st.session_state:
-        st.session_state.cambios_pendientes = [] # Checks ROJOS en memoria
+        st.session_state.cambios_pendientes = [] # Aquí viven los checks ROJOS
     if 'ref_matriz' not in st.session_state:
         st.session_state.ref_matriz = 0
+
+    st.markdown("""
+        <style>
+        .sticky-top { position: sticky; top: 0; background: white; z-index: 1000; padding: 10px 0; border-bottom: 3px solid #FF8C00; }
+        [data-testid="stMetricValue"] { color: #FF8C00 !important; font-weight: bold !important; font-size: 22px !important; }
+        </style>
+    """, unsafe_allow_html=True)
 
     supabase = conectar()
     rol_u = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
     es_jefe = rol_u in ["admin", "gerente", "administrador"]
 
-    # --- B. SELECCIÓN DE PROYECTO (CON FILTRO DE SEGURIDAD) ---
-    st.markdown("### 📋 Módulo de Seguimiento")
+    # --- B. SELECCIÓN DE PROYECTO (SEGURIDAD Y TÍTULO DINÁMICO) ---
+    nombre_p_act = st.session_state.get('p_nom_sel', "Ninguno")
+    st.markdown(f"### Seguimiento: <span style='color:#FF8C00;'>{nombre_p_act}</span>", unsafe_allow_html=True)
     
     with st.expander("🔍 Selección de Proyecto", expanded=not st.session_state.get('id_p_sel')):
         c1, c2 = st.columns([2, 1])
-        bus_p = c1.text_input("Filtrar proyecto:", key="bus_seg_VMASTER_FINAL")
+        bus_p = c1.text_input("Filtrar proyecto por nombre o código:", key="bus_seg_VMASTER")
         df_p_all = obtener_proyectos(bus_p)
         
-        # Seguridad: El Supervisor solo ve sus proyectos
         if not es_jefe and not df_p_all.empty:
             df_p_all = df_p_all[df_p_all['supervisor_id'] == supervisor_id]
 
@@ -59,25 +66,40 @@ def mostrar(supervisor_id=None):
     res_db = supabase.table("seguimiento").select("*").in_("producto_id", prods_all['id'].tolist()).execute()
     segs = pd.DataFrame(res_db.data) if res_db.data else pd.DataFrame(columns=['producto_id','hito','fecha','observaciones'])
     
-    # --- D. SECCIÓN DE CONFIGURACIÓN AVANZADA (RESTAURADA) ---
+    # --- D. CONFIGURACIÓN AVANZADA Y HERRAMIENTAS (RESTAURADA) ---
     pesos = obtener_pesos_seguimiento()
 
     with st.expander("⚙️ Herramientas y Gestión Masiva"):
-        t1, t2, t3, t4 = st.tabs(["⚖️ Ponderación", "🔍 Filtros", "📥 Importar", "📤 Exportación"])
+        t1, t2, t3, t4 = st.tabs(["⚖️ Ponderación", "🔍 Filtros Avanzados", "📥 Importar", "📤 Exportación"])
         with t1:
             cols_w = st.columns(4)
             for i, h in enumerate(HITOS_LIST):
                 pesos[h] = cols_w[i % 4].number_input(f"{h} (%)", value=float(pesos.get(h, 12.5)), key=f"pw_{h}")
         with t2:
-            f1, f2 = st.columns(2)
-            bus_u = f1.text_input("Ubicación (ej: 701)")
-            bus_t = f2.text_input("Tipo")
+            # RESTAURADOS LOS 3 FILTROS SOLICITADOS
+            f1, f2, f3 = st.columns(3)
+            agrupar_por = f1.selectbox("Agrupar por:", ["Sin grupo", "Ubicación", "Tipo"], key="f_agrup")
+            bus_u = f2.text_input("Filtrar Ubicación (ej: 701)", key="f_ubic")
+            bus_t = f3.text_input("Refinar por Tipo", key="f_tipo")
         with t3:
-            st.write("**Importación desde Excel**")
-            f_av = st.file_uploader("Subir .xlsx", type=["xlsx"], key="up_excel_seg")
+            st.write("**Importación masiva desde Excel**")
+            f_av = st.file_uploader("Subir archivo (.xlsx)", type=["xlsx"], key="up_excel_seg")
             if f_av and st.button("🚀 Iniciar Importación"):
-                # Lógica de importación ya validada en base_datos
-                pass
+                try:
+                    df_imp = pd.read_excel(f_av)
+                    lote_imp = []
+                    for _, r_ex in df_imp.iterrows():
+                        u, t = str(r_ex.get('ubicacion','')).strip(), str(r_ex.get('tipo','')).strip()
+                        match = prods_all[(prods_all['ubicacion'].astype(str).str.strip() == u) & (prods_all['tipo'].astype(str).str.strip() == t)]
+                        if not match.empty:
+                            pid = int(match.iloc[0]['id'])
+                            for h_nom in HITOS_LIST:
+                                if h_nom in r_ex and pd.notnull(r_ex[h_nom]) and str(r_ex[h_nom]).strip().upper() in ["X", "1", "SI"]:
+                                    lote_imp.append({"producto_id": pid, "hito": h_nom, "fecha": datetime.now().strftime("%d/%m/%Y"), "supervisor_id": supervisor_id})
+                    if lote_imp:
+                        supabase.table("seguimiento").upsert(lote_imp, on_conflict="producto_id, hito").execute()
+                        st.success("Importación completada."); st.cache_data.clear(); st.rerun()
+                except Exception as e: st.error(f"Error: {e}")
         with t4:
             df_exp = prods_all.copy()
             for h in HITOS_LIST: 
@@ -85,14 +107,14 @@ def mostrar(supervisor_id=None):
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df_exp.to_excel(writer, index=False)
-            st.download_button("📥 Descargar Reporte", data=output.getvalue(), file_name=f"Avance_{id_p}.xlsx", use_container_width=True)
+            st.download_button("📤 Descargar Reporte Completo", data=output.getvalue(), file_name=f"Reporte_Avance_{id_p}.xlsx", use_container_width=True)
 
-    # --- E. FILTRADO DE VISTA ---
+    # --- E. FILTRADO REAL DE LA MATRIZ ---
     df_f = prods_all.copy()
-    if 'bus_u' in locals() and bus_u: df_f = df_f[df_f['ubicacion'].astype(str).str.contains(bus_u, case=False)]
-    if 'bus_t' in locals() and bus_t: df_f = df_f[df_f['tipo'].astype(str).str.contains(bus_t, case=False)]
+    if bus_u: df_f = df_f[df_f['ubicacion'].astype(str).str.contains(bus_u, case=False)]
+    if bus_t: df_f = df_f[df_f['tipo'].astype(str).str.contains(bus_t, case=False)]
 
-    # --- F. CABECERA DE MATRIZ Y BOTONES (SIN RECARGAS AL MARCAR) ---
+    # --- F. CABECERA DE MATRIZ Y BOTONES ---
     st.divider()
     col_t, col_b1, col_b2, col_b3, col_b4 = st.columns([1.5, 1, 1, 1, 1])
     col_t.markdown("#### Matriz de Seguimiento")
@@ -102,10 +124,8 @@ def mostrar(supervisor_id=None):
     btn_clean = col_b3.button("🧹 Limpiar Marcación", use_container_width=True)
     btn_delete = col_b4.button("🗑️ Borrar Avances", use_container_width=True) if es_jefe else None
 
-    # --- G. PREPARACIÓN DE TABLA COMPACTA (LÓGICA ROJO/GRIS) ---
-    # Orden solicitado: codigo_etiqueta primero
+    # --- G. PREPARACIÓN DE MATRIZ COMPACTA (LÓGICA ROJO/GRIS) ---
     df_editor = df_f[['id', 'codigo_etiqueta', 'ubicacion', 'tipo', 'ml', 'ctd']].copy()
-    
     for h_nom in HITOS_LIST:
         simb = MAPEO_HITOS[h_nom]
         en_db = df_editor['id'].apply(lambda x: True if not segs[(segs['producto_id'] == x) & (segs['hito'] == h_nom)].empty else False)
@@ -116,7 +136,7 @@ def mostrar(supervisor_id=None):
         lambda x: segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])].empty else ""
     )
 
-    # --- H. DATA EDITOR (AISLADO PARA 160+ CLICS SIN LAG) ---
+    # --- H. DATA EDITOR (SIN "PENSADO" HASTA EL BOTÓN) ---
     cambios_df = st.data_editor(
         df_editor,
         column_config={
@@ -131,76 +151,58 @@ def mostrar(supervisor_id=None):
         },
         hide_index=True,
         use_container_width=True,
-        key=f"matriz_VMASTER_{st.session_state.ref_matriz}" # Key estática controlada
+        key=f"editor_VMASTER_{id_p}_{st.session_state.ref_matriz}"
     )
 
-    # --- I. PROCESAMIENTO DE BOTONES ---
-
-    # 1. GUARDAR MARCACIÓN (LOCAL)
+    # --- I. LÓGICA DE BOTONES (PROCESAMIENTO DIFERIDO) ---
     if btn_marcar:
-        nuevos_pendientes = []
+        nuevos_p = []
         for idx, row in cambios_df.iterrows():
             pid = int(row['id'])
             for h_nom in HITOS_LIST:
                 simb = MAPEO_HITOS[h_nom]
-                en_db = not segs[(segs['producto_id'] == pid) & (segs['hito'] == h_nom)].empty
-                if bool(row[simb]) and not en_db:
-                    nuevos_pendientes.append({"pid": pid, "hito": h_nom})
-        st.session_state.cambios_pendientes = nuevos_pendientes
+                v_db = not segs[(segs['producto_id'] == pid) & (segs['hito'] == h_nom)].empty
+                if bool(row[simb]) and not v_db:
+                    nuevos_p.append({"pid": pid, "hito": h_nom})
+        st.session_state.cambios_pendientes = nuevos_p
         st.rerun()
 
-    # 2. GUARDAR AVANCES (SUPABASE - UPSERT INTELIGENTE)
     if btn_db:
         if not st.session_state.cambios_pendientes:
-            st.warning("No hay marcaciones nuevas para guardar."); st.stop()
+            st.warning("No hay marcaciones nuevas."); st.stop()
         
-        lote_upsert = []
-        fecha_str = datetime.now().strftime("%d/%m/%Y")
+        lote = []
+        f_reg = datetime.now().strftime("%d/%m/%Y")
         for p in st.session_state.cambios_pendientes:
+            # Upsert Inteligente: Preservar observaciones
             match_db = segs[(segs['producto_id'] == p['pid']) & (segs['hito'] == p['hito'])]
-            obs_final = str(match_db['observaciones'].iloc[0]) if not match_db.empty else ""
-            if p['hito'] == HITOS_LIST[0]: # Solo el hito 0 guarda la nota del editor
-                obs_final = str(cambios_df[cambios_df['id'] == p['pid']]['Observaciones'].iloc[0])
+            obs_actual = str(match_db['observaciones'].iloc[0]) if not match_db.empty else ""
+            if p['hito'] == HITOS_LIST[0]:
+                obs_actual = str(cambios_df[cambios_df['id'] == p['pid']]['Observaciones'].iloc[0])
 
-            lote_upsert.append({
-                "producto_id": p['pid'], "hito": p['hito'], "fecha": fecha_str, 
-                "observaciones": obs_final, "supervisor_id": supervisor_id
-            })
+            lote.append({"producto_id": p['pid'], "hito": p['hito'], "fecha": f_reg, "observaciones": obs_actual, "supervisor_id": supervisor_id})
         
-        if lote_upsert:
+        if lote:
             try:
-                supabase.table("seguimiento").upsert(lote_upsert, on_conflict="producto_id, hito").execute()
-                # Motor de sincronización estructural
+                supabase.table("seguimiento").upsert(lote, on_conflict="producto_id, hito").execute()
                 from base_datos import sincronizar_avances_estructural
-                p_cod = st.session_state.p_nom_sel.split(']')[0][1:]
-                sincronizar_avances_estructural(p_cod)
-                
+                sincronizar_avances_estructural(st.session_state.p_nom_sel.split(']')[0][1:])
                 st.session_state.cambios_pendientes = []
-                st.cache_data.clear(); st.session_state.ref_matriz += 1
-                st.success("✅ Avances sincronizados.")
-                st.rerun()
-            except Exception as e: st.error(f"Error: {e}")
+                st.cache_data.clear(); st.session_state.ref_matriz += 1; st.rerun()
+            except Exception as e: st.error(f"Error al guardar: {e}")
 
-    # 3. LIMPIAR MARCACIÓN (Solo los rojos)
     if btn_clean:
-        st.session_state.cambios_pendientes = []
-        st.session_state.ref_matriz += 1; st.rerun()
+        st.session_state.cambios_pendientes = []; st.session_state.ref_matriz += 1; st.rerun()
 
-    # 4. BORRAR AVANCES (SOLO ADMIN)
     if btn_delete and es_jefe:
-        lote_del = []
         for idx, row in cambios_df.iterrows():
             pid = int(row['id'])
             for h_nom in HITOS_LIST:
-                simb = MAPEO_HITOS[h_nom]
-                if not row[simb] and not segs[(segs['producto_id'] == pid) & (segs['hito'] == h_nom)].empty:
-                    lote_del.append({"pid": pid, "hito": h_nom})
-        if lote_del:
-            for d in lote_del:
-                supabase.table("seguimiento").delete().eq("producto_id", d['pid']).eq("hito", d['hito']).execute()
-            st.cache_data.clear(); st.session_state.ref_matriz += 1; st.rerun()
+                if not row[MAPEO_HITOS[h_nom]] and not segs[(segs['producto_id'] == pid) & (segs['hito'] == h_nom)].empty:
+                    supabase.table("seguimiento").delete().eq("producto_id", pid).eq("hito", h_nom).execute()
+        st.cache_data.clear(); st.session_state.ref_matriz += 1; st.rerun()
 
-    # --- J. MÉTRICAS FINALES ---
+    # --- J. MÉTRICAS ---
     def calc_v(df_m, df_s, pend):
         if df_m.empty: return 0.0
         ids = df_m['id'].tolist()
