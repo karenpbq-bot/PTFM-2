@@ -173,34 +173,53 @@ def mostrar(supervisor_id=None):
     st.markdown('</div>', unsafe_allow_html=True)
 
     def render_matriz(df_r):
-        with st.form(key=f"form_g_{df_r.index[0]}"):
-            estados_temp = {}
+        # Generamos un ID de formulario único basado en los productos visibles
+        form_id = f"f_g_{df_r['id'].iloc[0]}_{len(df_r)}"
+        
+        with st.form(key=form_id):
+            # Diccionario para capturar TODOS los estados actuales de los 7 productos
+            dict_check_estados = {}
+            
             for _, p in df_r.iterrows():
                 cols = st.columns([2.5] + [0.7]*8 + [1.5])
                 cols[0].write(f"<p style='font-size:11px;'>{p['ubicacion']} | {p['tipo']}</p>", unsafe_allow_html=True)
+                
                 for i, h in enumerate(HITOS_LIST):
                     en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
                     en_mem = any(c['pid'] == p['id'] and c['hito'] == h for c in st.session_state.cambios_pendientes)
                     
                     bloq = (en_db and not es_jefe)
                     key_item = f"{p['id']}_{h}"
-                    # El checkbox visualiza lo que está en DB o lo que está en Memoria
-                    estados_temp[key_item] = cols[i+1].checkbox("", key=f"chk_{key_item}", value=(en_db or en_mem), disabled=bloq, label_visibility="collapsed")
-            
-            if st.form_submit_button("📎 Confirmar marcaciones de este grupo", use_container_width=True):
-                for clave, marcado in estados_temp.items():
-                    pid_f, hito_f = map(str, clave.split("_"))
-                    pid_f = int(pid_f)
                     
-                    # Verificamos estado actual
-                    ya_en_mem = any(c['pid'] == pid_f and c['hito'] == hito_f for c in st.session_state.cambios_pendientes)
+                    # El valor inicial del checkbox debe ser lo que ya está confirmado o en memoria
+                    valor_inicial = (en_db or en_mem)
+                    
+                    # Capturamos el estado en el diccionario usando la llave única del producto/hito
+                    dict_check_estados[key_item] = cols[i+1].checkbox(
+                        "", 
+                        key=f"chk_{key_item}", 
+                        value=valor_inicial, 
+                        disabled=bloq, 
+                        label_visibility="collapsed"
+                    )
+            
+            # Al presionar el botón de confirmar, procesamos las 49 casillas (7x7)
+            if st.form_submit_button("📎 Confirmar marcaciones de este grupo", use_container_width=True):
+                # Limpiamos solo los cambios pendientes de ESTE grupo específico para re-escribirlos
+                ids_grupo = df_r['id'].tolist()
+                st.session_state.cambios_pendientes = [c for c in st.session_state.cambios_pendientes if c['pid'] not in ids_grupo]
+                
+                for clave, marcado in dict_check_estados.items():
+                    pid_str, hito_f = clave.split("_", 1)
+                    pid_f = int(pid_str)
+                    
+                    # Solo agregamos a la lista de "rojos" si está marcado y NO está en la base de datos
                     ya_en_db = not segs[(segs['producto_id'] == pid_f) & (segs['hito'] == hito_f)].empty
                     
-                    if marcado and not ya_en_mem and not ya_en_db:
+                    if marcado and not ya_en_db:
                         st.session_state.cambios_pendientes.append({"pid": pid_f, "hito": hito_f})
-                    elif not marcado and ya_en_mem:
-                        st.session_state.cambios_pendientes = [c for c in st.session_state.cambios_pendientes if not (c['pid'] == pid_f and c['hito'] == hito_f)]
-                st.rerun() # Fuerza el cálculo de avance parcial al 95% inmediatamente
+                
+                st.rerun()
 
     st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
     if agrupar_por != "Sin grupo":
