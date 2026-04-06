@@ -121,7 +121,7 @@ def mostrar(supervisor_id=None):
 
     p_tot, p_par = calc_avance(prods_all, segs), calc_avance(df_f, segs)
 
-    # --- G. FILA DE ACCIONES ---
+    # --- G. FILA DE ACCIONES (CONTROL DE GUARDADO SEGURO) ---
     st.divider()
     rol_u = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
     es_jefe = rol_u in ["admin", "gerente", "administrador"]
@@ -133,49 +133,63 @@ def mostrar(supervisor_id=None):
     
     if cols_acc[3].button("🔄 Refrescar", use_container_width=True):
         st.session_state.cambios_pendientes = []
-        st.session_state.ref_matriz += 1 # <--- Esta línea es la clave
+        st.session_state.ref_matriz += 1
         st.cache_data.clear(); st.rerun()
 
-    if cols_acc[4].button("💾 Guardar Avances", type="primary", use_container_width=True):
+    if cols_acc[4].button("💾 GUARDAR AVANCES", type="primary", use_container_width=True):
         if st.session_state.cambios_pendientes or st.session_state.notas_pendientes:
-            lote_h, lote_n = list(st.session_state.cambios_pendientes), dict(st.session_state.notas_pendientes)
-            st.session_state.cambios_pendientes = []; st.session_state.notas_pendientes = {}
+            lote_h = list(st.session_state.cambios_pendientes)
+            lote_n = dict(st.session_state.notas_pendientes)
+            
             try:
-                with st.status("🚀 Guardando...") as status:
+                with st.status("🚀 Sincronizando con Base de Datos...") as status:
                     f_str = f_reg.strftime("%d/%m/%Y")
-                    # Preparamos lote base (seguro)
-                    lote_limpio = [{"producto_id": int(c['pid']), "hito": str(c['hito']), "fecha": f_str} for c in lote_h]
                     
-                    # Intento de guardado con manejo de error supervisor_id
-                    try:
-                        # Intentamos con supervisor_id
-                        lote_sup = [dict(d, supervisor_id=supervisor_id) for d in lote_limpio]
-                        supabase.table("seguimiento").upsert(lote_sup, on_conflict="producto_id, hito").execute()
-                    except Exception as e:
-                        if "supervisor_id" in str(e):
-                            # Si falla por la columna, guardamos solo lo esencial para no perder tus datos
-                            supabase.table("seguimiento").upsert(lote_limpio, on_conflict="producto_id, hito").execute()
-                        else: raise e
+                    # 1. TRATAMIENTO DE HITOS (Solo insertar/actualizar si es nuevo)
+                    if lote_h:
+                        # Preparamos los datos básicos
+                        lote_limpio = [{"producto_id": int(c['pid']), "hito": str(c['hito']), "fecha": f_str} for c in lote_h]
+                        
+                        try:
+                            # Intentamos con supervisor_id
+                            lote_sup = [dict(d, supervisor_id=supervisor_id) for d in lote_limpio]
+                            supabase.table("seguimiento").upsert(lote_sup, on_conflict="producto_id, hito").execute()
+                        except Exception as e:
+                            if "supervisor_id" in str(e):
+                                # Reintento de emergencia sin la columna problemática para asegurar el guardado
+                                supabase.table("seguimiento").upsert(lote_limpio, on_conflict="producto_id, hito").execute()
+                            else: raise e
 
+                    # 2. TRATAMIENTO DE NOTAS
                     if lote_n:
                         for pid, txt in lote_n.items():
-                            supabase.table("seguimiento").upsert({"producto_id": int(pid), "hito": HITOS_LIST[0], "observaciones": txt}, on_conflict="producto_id, hito").execute()
+                            supabase.table("seguimiento").upsert({
+                                "producto_id": int(pid), 
+                                "hito": HITOS_LIST[0], 
+                                "observaciones": txt
+                            }, on_conflict="producto_id, hito").execute()
                     
+                    # 3. SINCRONIZACIÓN ESTRUCTURAL
                     from base_datos import sincronizar_avances_estructural
                     sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
-                    status.update(label="✅ Éxito", state="complete")
+                    status.update(label="✅ Avances registrados con éxito", state="complete")
                 
-                # Sincronización visual forzada
+                # LIMPIEZA DE MEMORIA SOLO TRAS ÉXITO
+                st.session_state.cambios_pendientes = []
+                st.session_state.notas_pendientes = {}
                 st.session_state.ref_matriz += 1
                 st.cache_data.clear(); st.rerun()
-            except Exception as e: st.error(f"❌ Fallo: {e}")
+
+            except Exception as e:
+                st.error(f"❌ Error al guardar: {e}. Tus marcaciones rojas siguen en pantalla.")
+        else:
+            st.warning("No hay marcaciones nuevas para enviar.")
 
     if cols_acc[5].button("🚫 Limpiar Selección", use_container_width=True):
         st.session_state.cambios_pendientes = []; st.session_state.notas_pendientes = {}
-        st.session_state.ref_matriz += 1 # <--- Esta línea es la clave
-        st.rerun()
+        st.session_state.ref_matriz += 1; st.rerun()
 
-    # --- H. MATRIZ DINÁMICA ---
+    # --- H. MATRIZ DINÁMICA (LÓGICA DE PERMISOS Y ACUMULACIÓN) ---
     st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
     cols_h = st.columns([2.5] + [0.7]*8 + [1.5])
     cols_h[0].write("**Producto**")
@@ -189,25 +203,45 @@ def mostrar(supervisor_id=None):
             for _, p in df_r.iterrows():
                 cols = st.columns([2.5] + [0.7]*8 + [1.5])
                 cols[0].write(f"<p style='font-size:11px;'>{p['ubicacion']} | {p['tipo']}</p>", unsafe_allow_html=True)
+                
                 for i, h in enumerate(HITOS_LIST):
+                    # Verificamos estado en DB y en Memoria
                     en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
                     en_mem = any(c['pid'] == p['id'] and c['hito'] == h for c in st.session_state.cambios_pendientes)
-                    bloq = (en_db and not es_jefe)
+                    
+                    # REGLA DE NEGOCIO: Solo Admin/Gerente pueden desmarcar lo que ya está en DB
+                    bloqueado = (en_db and not es_jefe)
                     k = f"{p['id']}_{h}"
-                    res_form[k] = cols[i+1].checkbox("", key=f"c_{k}_{st.session_state.ref_matriz}", value=(en_db or en_mem), disabled=bloq)
+                    res_form[k] = cols[i+1].checkbox("", key=f"c_{k}_{st.session_state.ref_matriz}", value=(en_db or en_mem), disabled=bloqueado)
                 
+                # Notas
                 n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
                 n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
                 nueva_n = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}_{st.session_state.ref_matriz}", label_visibility="collapsed")
                 if nueva_n != n_act: st.session_state.notas_pendientes[str(p['id'])] = nueva_n
 
             if st.form_submit_button("📎 Confirmar marcaciones de este grupo", use_container_width=True):
-                ids_f = df_r['id'].tolist()
-                st.session_state.cambios_pendientes = [c for c in st.session_state.cambios_pendientes if c['pid'] not in ids_f]
-                for k_id, v in res_form.items():
-                    pid_f, hito_f = k_id.split("_", 1)
-                    if v and segs[(segs['producto_id'] == int(pid_f)) & (segs['hito'] == hito_f)].empty:
-                        st.session_state.cambios_pendientes.append({"pid": int(pid_f), "hito": hito_f})
+                for key_id, valor_check in res_form.items():
+                    pid_f, hito_f = key_id.split("_", 1)
+                    pid_f = int(pid_f)
+                    
+                    # 1. ¿Está en la Base de Datos?
+                    ya_en_db = not segs[(segs['producto_id'] == pid_f) & (segs['hito'] == hito_f)].empty
+                    # 2. ¿Está en la memoria temporal?
+                    idx_en_mem = next((i for i, c in enumerate(st.session_state.cambios_pendientes) if c['pid'] == pid_f and c['hito'] == hito_f), None)
+                    
+                    # Lógica de eliminación (Si es jefe y desmarca algo de la DB)
+                    if not valor_check and ya_en_db and es_jefe:
+                        supabase.table("seguimiento").delete().eq("producto_id", pid_f).eq("hito", hito_f).execute()
+                    
+                    # Lógica de adición a memoria (Si marca algo nuevo)
+                    if valor_check and not ya_en_db and idx_en_mem is None:
+                        st.session_state.cambios_pendientes.append({"pid": pid_f, "hito": hito_f})
+                    
+                    # Lógica de quitar de memoria (Si desmarca algo que aún no se ha guardado)
+                    elif not valor_check and idx_en_mem is not None:
+                        st.session_state.cambios_pendientes.pop(idx_en_mem)
+                
                 st.rerun()
 
     st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
