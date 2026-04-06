@@ -110,134 +110,101 @@ def mostrar(supervisor_id=None):
     if bus_c1: df_f = df_f[df_f['ubicacion'].str.contains(bus_c1, case=False) | df_f['tipo'].str.contains(bus_c1, case=False)]
     if bus_c2: df_f = df_f[df_f['ubicacion'].str.contains(bus_c2, case=False) | df_f['tipo'].str.contains(bus_c2, case=False)]
 
-    # --- F. CÁLCULO DE AVANCE ---
-    def calc_avance(df_m, df_s):
-        if df_m.empty: return 0.0
-        ids_v = df_m['id'].tolist()
-        db_v = df_s[df_s['producto_id'].isin(ids_v)].drop_duplicates(subset=['producto_id', 'hito'])
-        pts_db = sum([pesos.get(h, 0) for h in db_v['hito']])
-        pts_mem = sum([pesos.get(c['hito'], 0) for c in st.session_state.cambios_pendientes if c['pid'] in ids_v and db_v[(db_v['producto_id']==c['pid']) & (db_v['hito']==c['hito'])].empty])
-        return round((pts_db + pts_mem) / len(df_m), 2)
+    # --- F. PREPARACIÓN DE LA TABLA (MATRIZ) ---
+    # Creamos un DataFrame que servirá de base para el editor
+    df_editor = df_f.copy()
+    for h in HITOS_LIST:
+        # Marcamos como True si el hito existe en la base de datos (segs)
+        df_editor[h] = df_editor['id'].apply(
+            lambda x: True if not segs[(segs['producto_id'] == x) & (segs['hito'] == h)].empty else False
+        )
 
-    p_tot, p_par = calc_avance(prods_all, segs), calc_avance(df_f, segs)
-
-    # --- G. FILA DE ACCIONES ---
-    st.divider()
-    rol_u = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
-    es_jefe = rol_u in ["admin", "gerente", "administrador"]
-
-    cols_acc = st.columns([1.5, 0.7, 0.7, 0.8, 1, 1])
-    f_reg = cols_acc[0].date_input("Fecha Registro", datetime.now(), format="DD/MM/YYYY")
-    cols_acc[1].metric("Av. Parcial", f"{p_par}%")
-    cols_acc[2].metric("Av. Global", f"{p_tot}%")
+    # Columnas que no se deben editar (ID, Ubicación, Tipo)
+    cols_fijas = ['id', 'ubicacion', 'tipo', 'ctd', 'ml']
     
-    if cols_acc[3].button("🔄 Refrescar", use_container_width=True):
-        st.session_state.cambios_pendientes = []
-        st.session_state.ref_matriz += 1
+    # --- G. FILA DE ACCIONES Y MÉTRICAS ---
+    st.divider()
+    c1, c2, c3, c4 = st.columns([1.5, 1, 1, 1])
+    f_reg = c1.date_input("Fecha de Registro", datetime.now(), format="DD/MM/YYYY")
+    
+    # Cálculo de métricas sobre el estado actual de la DB
+    p_tot, p_par = calc_avance(prods_all, segs), calc_avance(df_f, segs)
+    c2.metric("Av. Parcial", f"{p_par}%")
+    c3.metric("Av. Global", f"{p_tot}%")
+
+    if c4.button("🔄 Refrescar Datos", use_container_width=True):
         st.cache_data.clear(); st.rerun()
 
-    if cols_acc[4].button("💾 GUARDAR AVANCES", type="primary", use_container_width=True):
-        if st.session_state.cambios_pendientes or st.session_state.get('borrados_pendientes'):
+    # --- H. EL EDITOR DE DATOS (LA MATRIZ INTELIGENTE) ---
+    st.write("📋 **Matriz de Seguimiento:** (Haz doble clic en las casillas para marcar/desmarcar)")
+    
+    # Configuramos el editor
+    cambios = st.data_editor(
+        df_editor,
+        column_config={
+            "id": None, # Ocultamos el ID
+            "ubicacion": st.column_config.TextColumn("Ubicación", disabled=True),
+            "tipo": st.column_config.TextColumn("Tipo", disabled=True),
+            "ctd": None, "ml": None, # Ocultamos datos técnicos si prefieres
+            **{h: st.column_config.CheckboxColumn(h) for h in HITOS_LIST}
+        },
+        disabled=False if es_jefe else cols_fijas + [h for h in HITOS_LIST if df_editor[h].any()],
+        hide_index=True,
+        use_container_width=True,
+        key="editor_seguimiento"
+    )
+
+    # --- I. PROCESAMIENTO DE GUARDADO ---
+    if st.button("💾 GUARDAR TODOS LOS CAMBIOS", type="primary", use_container_width=True):
+        # El data_editor nos dice exactamente qué celdas cambiaron
+        # Comparamos df_editor (original) con cambios (editado)
+        lote_insertar = []
+        lote_eliminar = []
+
+        for idx, row_editada in cambios.iterrows():
+            pid = int(row_editada['id'])
+            for h in HITOS_LIST:
+                valor_original = df_editor.loc[idx, h]
+                valor_nuevo = row_editada[h]
+
+                # Caso 1: Se marcó algo nuevo
+                if valor_nuevo and not valor_original:
+                    lote_insertar.append({
+                        "producto_id": pid, 
+                        "hito": h, 
+                        "fecha": f_reg.strftime("%d/%m/%Y")
+                    })
+                
+                # Caso 2: Se desmarcó algo (Solo si es jefe)
+                elif not valor_nuevo and valor_original and es_jefe:
+                    lote_eliminar.append({"pid": pid, "hito": h})
+
+        if lote_insertar or lote_eliminar:
             try:
                 with st.status("🚀 Sincronizando...") as status:
-                    f_str = f_reg.strftime("%d/%m/%Y")
+                    # Ejecutar eliminaciones
+                    for e in lote_eliminar:
+                        supabase.table("seguimiento").delete().eq("producto_id", e['pid']).eq("hito", e['hito']).execute()
                     
-                    # 1. ELIMINACIONES (Solo Admin/Gerente)
-                    if es_jefe and st.session_state.get('borrados_pendientes'):
-                        for b in st.session_state.borrados_pendientes:
-                            supabase.table("seguimiento").delete().eq("producto_id", b['pid']).eq("hito", b['hito']).execute()
-                        st.session_state.borrados_pendientes = []
-
-                    # 2. INSERCIONES/ACTUALIZACIONES
-                    if st.session_state.cambios_pendientes:
-                        lote = [{"producto_id": int(c['pid']), "hito": str(c['hito']), "fecha": f_str} for c in st.session_state.cambios_pendientes]
-                        # Intento robusto para evitar error PGRST204
+                    # Ejecutar inserciones masivas
+                    if lote_insertar:
+                        # Intento con supervisor_id
                         try:
-                            lote_sup = [dict(d, supervisor_id=supervisor_id) for d in lote]
-                            supabase.table("seguimiento").upsert(lote_sup, on_conflict="producto_id, hito").execute()
+                            lote_final = [dict(d, supervisor_id=supervisor_id) for d in lote_insertar]
+                            supabase.table("seguimiento").upsert(lote_final, on_conflict="producto_id, hito").execute()
                         except:
-                            supabase.table("seguimiento").upsert(lote, on_conflict="producto_id, hito").execute()
-
-                    # 3. NOTAS
-                    if st.session_state.notas_pendientes:
-                        for pid, txt in st.session_state.notas_pendientes.items():
-                            supabase.table("seguimiento").upsert({"producto_id": int(pid), "hito": HITOS_LIST[0], "observaciones": str(txt)}, on_conflict="producto_id, hito").execute()
+                            # Fallback si el esquema falla
+                            supabase.table("seguimiento").upsert(lote_insertar, on_conflict="producto_id, hito").execute()
                     
+                    # Sincronizar tablero global
                     from base_datos import sincronizar_avances_estructural
                     sincronizar_avances_estructural(df_p_all[df_p_all['id'] == id_p].iloc[0]['codigo'])
-                    status.update(label="✅ Éxito al guardar", state="complete")
+                    
+                    status.update(label="✅ Todo guardado correctamente", state="complete")
                 
-                st.session_state.cambios_pendientes = []
-                st.session_state.notas_pendientes = {}
-                st.session_state.ref_matriz += 1
-                st.cache_data.clear(); st.rerun()
-            except Exception as e:
-                st.error(f"❌ Error crítico: {e}")
-        else:
-            st.warning("No hay cambios para guardar.")
-
-    if cols_acc[5].button("🚫 Limpiar Selección", use_container_width=True):
-        st.session_state.cambios_pendientes = []
-        st.session_state.ref_matriz += 1; st.rerun()
-
-    # --- H. MATRIZ DINÁMICA ---
-    if 'borrados_pendientes' not in st.session_state: st.session_state.borrados_pendientes = []
-
-    st.markdown('<div class="sticky-top">', unsafe_allow_html=True)
-    cols_h = st.columns([2.5] + [0.7]*8 + [1.5])
-    cols_h[0].write("**Producto**")
-    for i, h in enumerate(HITOS_LIST): cols_h[i+1].write(MAPEO_HITOS[h])
-    cols_h[-1].write("**Notas**")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    def render_matriz(df_r):
-        with st.form(key=f"f_v_{df_r.index[0]}_{st.session_state.ref_matriz}"):
-            res_form = {}
-            for _, p in df_r.iterrows():
-                cols = st.columns([2.5] + [0.7]*8 + [1.5])
-                cols[0].write(f"<p style='font-size:11px;'>{p['ubicacion']} | {p['tipo']}</p>", unsafe_allow_html=True)
-                for i, h in enumerate(HITOS_LIST):
-                    en_db = not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == h)].empty
-                    en_mem = any(c['pid'] == p['id'] and c['hito'] == h for c in st.session_state.cambios_pendientes)
-                    en_borrado = any(b['pid'] == p['id'] and b['hito'] == h for b in st.session_state.borrados_pendientes)
-                    
-                    bloqueado = (en_db and not es_jefe)
-                    k = f"{p['id']}_{h}"
-                    # El valor del checkbox es True si está en DB (y no marcado para borrar) O si está en memoria roja
-                    val = (en_db and not en_borrado) or en_mem
-                    res_form[k] = cols[i+1].checkbox("", key=f"c_{k}_{st.session_state.ref_matriz}", value=val, disabled=bloqueado, label_visibility="collapsed")
-                
-                n_db = segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == p['id']) & (segs['hito'] == HITOS_LIST[0])].empty else ""
-                n_act = st.session_state.notas_pendientes.get(str(p['id']), n_db if pd.notnull(n_db) else "")
-                st.session_state.notas_pendientes[str(p['id'])] = cols[-1].text_input("N", value=n_act, key=f"nt_{p['id']}_{st.session_state.ref_matriz}", label_visibility="collapsed")
-
-            if st.form_submit_button("📎 Confirmar marcaciones de este grupo", use_container_width=True):
-                for key_id, valor_check in res_form.items():
-                    pid_f, hito_f = key_id.split("_", 1)
-                    pid_f = int(pid_f)
-                    ya_en_db = not segs[(segs['producto_id'] == pid_f) & (segs['hito'] == hito_f)].empty
-                    
-                    # 1. Lógica de Adición a Memoria Roja
-                    if valor_check and not ya_en_db:
-                        if not any(c['pid'] == pid_f and c['hito'] == hito_f for c in st.session_state.cambios_pendientes):
-                            st.session_state.cambios_pendientes.append({"pid": pid_f, "hito": hito_f})
-                        st.session_state.borrados_pendientes = [b for b in st.session_state.borrados_pendientes if not (b['pid'] == pid_f and b['hito'] == hito_f)]
-                    
-                    # 2. Lógica de Marcado para Borrar (Solo Admin/Gerente)
-                    elif not valor_check and ya_en_db and es_jefe:
-                        if not any(b['pid'] == pid_f and b['hito'] == hito_f for b in st.session_state.borrados_pendientes):
-                            st.session_state.borrados_pendientes.append({"pid": pid_f, "hito": hito_f})
-                        st.session_state.cambios_pendientes = [c for c in st.session_state.cambios_pendientes if not (c['pid'] == pid_f and c['hito'] == hito_f)]
-                    
-                    # 3. Quitar de Memoria Roja si se desmarca
-                    elif not valor_check and not ya_en_db:
-                        st.session_state.cambios_pendientes = [c for c in st.session_state.cambios_pendientes if not (c['pid'] == pid_f and c['hito'] == hito_f)]
+                st.cache_data.clear()
                 st.rerun()
-
-    st.markdown('<div class="scroll-area">', unsafe_allow_html=True)
-    if agrupar_por != "Sin grupo":
-        campo = "ubicacion" if agrupar_por == "Ubicación" else "tipo"
-        for n, g in df_f.groupby(campo):
-            st.markdown(f"**📂 {n}**"); render_matriz(g)
-    else: render_matriz(df_f)
-    st.markdown('</div>', unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"❌ Error al guardar: {e}")
+        else:
+            st.info("No se detectaron cambios nuevos para guardar.")
