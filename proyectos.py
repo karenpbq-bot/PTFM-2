@@ -21,15 +21,16 @@ def mostrar():
             par = c1.text_input("Partida")
             df_sups = obtener_supervisores()
             dict_sups = {r['nombre_real']: r['id'] for _, r in df_sups.iterrows()}
-            sup_nom = c1.selectbox("Responsable:", options=list(dict_sups.keys()))
+            sup_nom = c2.selectbox("Responsable:", options=list(dict_sups.keys()))
             
-            # NUEVO: Campo directo para declarar la cantidad total de tableros del proyecto
-            total_tableros_proy = c2.number_input("Número Total de Tableros:", min_value=1, value=10, step=1, help="Cantidad de tableros de melamina estimados para el proyecto")
+            # NUEVO: Campo directo e independiente para el número total de tableros del proyecto
+            total_tableros_proy = c3.number_input("Número Total de Tableros:", min_value=1, value=10, step=1)
             
-            f_ini = c1.date_input("Fecha Inicio Global", value=date.today())
-            f_fin = c2.date_input("Fecha Término Global", value=date.today() + timedelta(days=30))
+            # Configuración de fechas globales visibles en formato Día/Mes/Año (DD/MM/YYYY)
+            f_ini = c1.date_input("Fecha Inicio Global", value=date.today(), format="DD/MM/YYYY")
+            f_fin = c2.date_input("Fecha Término Global", value=date.today() + timedelta(days=30), format="DD/MM/YYYY")
             
-            # Inicialización de control de días para evitar errores
+            # Guardamos los días para los cálculos reactivos
             dias_fab_iniciales = max(1, round(((f_fin - f_ini).days) * 0.40))
             st.session_state.dias_fab_calculados = dias_fab_iniciales
 
