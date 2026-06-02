@@ -23,15 +23,15 @@ def mostrar():
             dict_sups = {r['nombre_real']: r['id'] for _, r in df_sups.iterrows()}
             sup_nom = c1.selectbox("Responsable:", options=list(dict_sups.keys()))
             
-            # Ajuste de Rendimiento de Melamina para el cálculo diario
-            rendimiento_tablero = c2.number_input("Rendimiento Promedio (ML por Tablero):", min_value=0.5, value=3.5, step=0.1, help="Metros lineales de piezas que rinde un tablero estándar")
+            # NUEVO: Campo directo para declarar la cantidad total de tableros del proyecto
+            total_tableros_proy = c2.number_input("Número Total de Tableros:", min_value=1, value=10, step=1, help="Cantidad de tableros de melamina estimados para el proyecto")
             
             f_ini = c1.date_input("Fecha Inicio Global", value=date.today())
             f_fin = c2.date_input("Fecha Término Global", value=date.today() + timedelta(days=30))
             
-            # --- CÁLCULO EN TIEMPO REAL DE TABLEROS ---
-            dias_fab_teoricos = max(1, round(((f_fin - f_ini).days) * 0.40)) # Estimación inicial usando el 40% default
-            st.session_state.dias_fab_calculados = dias_fab_teoricos
+            # Inicialización de control de días para evitar errores
+            dias_fab_iniciales = max(1, round(((f_fin - f_ini).days) * 0.40))
+            st.session_state.dias_fab_calculados = dias_fab_iniciales
 
         # 2. SECCIÓN PLEGABLE DE CRONOGRAMA (MODIFICADO: st.expander para optimización de espacio)
         with st.expander("⚖️ Configurar Distribución de Tiempos y Etapas", expanded=True):
