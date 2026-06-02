@@ -76,7 +76,7 @@ def mostrar():
                     st.error(f"La suma de porcentajes debe ser 100% (Actual: {sum(pcts.values())}%)")
                 else:
                     try:
-                        # Preparamos el diccionario con todas las fechas como TEXTO ISO
+                        # MODIFICADO: Ahora lee de 'cronograma_final' para respetar el traslape operativo
                         datos_nube = {
                             "codigo": codigo,
                             "proyecto_text": nombre,
@@ -87,16 +87,16 @@ def mostrar():
                             "supervisor_id": dict_sups[sup_nom],
                             "estatus": "Activo",
                             "avance": 0,
-                            "p_dis_i": cronograma_data[0]["Inicio"].isoformat(), 
-                            "p_dis_f": cronograma_data[0]["Fin"].isoformat(),
-                            "p_fab_i": cronograma_data[1]["Inicio"].isoformat(), 
-                            "p_fab_f": cronograma_data[1]["Fin"].isoformat(),
-                            "p_tra_i": cronograma_data[2]["Inicio"].isoformat(), 
-                            "p_tra_f": cronograma_data[2]["Fin"].isoformat(),
-                            "p_ins_i": cronograma_data[3]["Inicio"].isoformat(), 
-                            "p_ins_f": cronograma_data[3]["Fin"].isoformat(),
-                            "p_ent_i": cronograma_data[4]["Inicio"].isoformat(), 
-                            "p_ent_f": cronograma_data[4]["Fin"].isoformat()
+                            "p_dis_i": cronograma_final[0]["Inicio"].isoformat(), 
+                            "p_dis_f": cronograma_final[0]["Fin"].isoformat(),
+                            "p_fab_i": cronograma_final[1]["Inicio"].isoformat(), 
+                            "p_fab_f": cronograma_final[1]["Fin"].isoformat(),
+                            "p_tra_i": cronograma_final[2]["Inicio"].isoformat(), 
+                            "p_tra_f": cronograma_final[2]["Fin"].isoformat(),
+                            "p_ins_i": cronograma_final[3]["Inicio"].isoformat(), 
+                            "p_ins_f": cronograma_final[3]["Fin"].isoformat(),
+                            "p_ent_i": cronograma_final[4]["Inicio"].isoformat(), 
+                            "p_ent_f": cronograma_final[4]["Fin"].isoformat()
                         }
                         
                         # Ejecución del insert
@@ -119,7 +119,7 @@ def mostrar():
             # === SELECCIÓN PARA GESTIÓN Y ELIMINACIÓN ===
             st.divider()
             opciones_proy = df_p['proyecto_display'].tolist()
-            seleccionado = st.selectbox("🎯 Selecciona Proyecto para Eliminar:", ["-- Seleccionar --"] + opciones_proy)
+            seleccionado = st.selectbox("🎯 Selecciona Proyecto para Eliminar:", ["-- Seleccionar --"] + opciones_proy, key="sel_eliminar_proy")
 
             if seleccionado != "-- Seleccionar --":
                 # Extraemos el ID del proyecto seleccionado
@@ -145,7 +145,7 @@ def mostrar():
             # === INSERCIÓN AQUÍ: SELECCIÓN PARA MATRIZ ===
             st.divider()
             opciones_proy = df_p['proyecto_display'].tolist()
-            seleccionado = st.selectbox("🎯 Selecciona para gestionar Matriz de Productos:", ["-- Seleccionar --"] + opciones_proy)
+            seleccionado = st.selectbox("🎯 Selecciona para gestionar Matriz de Productos:", ["-- Seleccionar --"] + opciones_proy, key="sel_matriz_proy")
 
             if seleccionado != "-- Seleccionar --":
                 id_sel = df_p[df_p['proyecto_display'] == seleccionado]['id'].values[0]
