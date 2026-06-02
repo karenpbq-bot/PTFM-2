@@ -21,51 +21,165 @@ def mostrar():
             par = c1.text_input("Partida")
             df_sups = obtener_supervisores()
             dict_sups = {r['nombre_real']: r['id'] for _, r in df_sups.iterrows()}
-            sup_nom = c2.selectbox("Responsable:", options=list(dict_sups.keys()))
+            sup_nom = c1.selectbox("Responsable:", options=list(dict_sups.keys()))
+            
+            # Ajuste de Rendimiento de Melamina para el cálculo diario
+            rendimiento_tablero = c2.number_input("Rendimiento Promedio (ML por Tablero):", min_value=0.5, value=3.5, step=0.1, help="Metros lineales de piezas que rinde un tablero estándar")
             
             f_ini = c1.date_input("Fecha Inicio Global", value=date.today())
             f_fin = c2.date_input("Fecha Término Global", value=date.today() + timedelta(days=30))
+            
+            # --- CÁLCULO EN TIEMPO REAL DE TABLEROS ---
+            dias_fab_teoricos = max(1, round(((f_fin - f_ini).days) * 0.40)) # Estimación inicial usando el 40% default
+            st.session_state.dias_fab_calculados = dias_fab_teoricos
 
-        # 2. PONDERACIÓN DE ETAPAS
-        st.write("### ⚖️ Distribución de Tiempo por Etapa (%)")
-        etapas_nombres = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
-        defaults = [15, 40, 10, 25, 10]
-        pcts = {}
-        cols_pct = st.columns(5)
+        # 2. SECCIÓN PLEGABLE DE CRONOGRAMA (MODIFICADO: st.expander para optimización de espacio)
+        with st.expander("⚖️ Configurar Distribución de Tiempos y Etapas", expanded=True):
+            st.write("### Distribución de Tiempo por Etapa (%)")
+            etapas_nombres = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
+            defaults = [15, 40, 10, 25, 10]
+            pcts = {}
+            cols_pct = st.columns(5)
 
-        for i, et in enumerate(etapas_nombres):
-            pcts[et] = cols_pct[i].number_input(f"{et} %", 0, 100, defaults[i])
+            for i, et in enumerate(etapas_nombres):
+                pcts[et] = cols_pct[i].number_input(f"{et} %", 0, 100, defaults[i], key=f"pct_{et}")
 
-        # 3. LÓGICA DE CÁLCULO Y PREVISUALIZACIÓN
-        st.divider()
-        dias_totales = (f_fin - f_ini).days
+            st.divider()
+            dias_totales = (f_fin - f_ini).days
 
-        if dias_totales <= 0:
-            st.error("La fecha de término debe ser posterior a la de inicio.")
-        else:
-            cronograma_data = []
-            fecha_aux = f_ini
-            for et in etapas_nombres:
-                dias_etapa = round(dias_totales * (pcts[et] / 100))
-                f_f = fecha_aux + timedelta(days=max(0, dias_etapa - 1))
-                cronograma_data.append({
-                    "Etapa": et, 
-                    "Inicio": fecha_aux, 
-                    "Fin": f_f, 
-                    "Días": dias_etapa
-                })
-                fecha_aux = f_f + timedelta(days=1)
+            if dias_totales <= 0:
+                st.error("La fecha de término debe ser posterior a la de inicio.")
+                cronograma_final = None
+            else:
+                # --- LÓGICA DE CÁLCULO BASE POR PORCENTAJES ---
+                cronograma_base = []
+                fecha_aux = f_ini
+                for et in etapas_nombres:
+                    dias_etapa = round(dias_totales * (pcts[et] / 100))
+                    f_f = fecha_aux + timedelta(days=max(0, dias_etapa - 1))
+                    cronograma_base.append({
+                        "Etapa": et, 
+                        "Inicio": fecha_aux, 
+                        "Fin": f_f, 
+                        "Días": dias_etapa
+                    })
+                    fecha_aux = f_f + timedelta(days=1)
 
-            # RENDERIZADO DE PREVISUALIZACIÓN
-            df_previs = pd.DataFrame(cronograma_data)
-            # Formateamos solo para la tabla visual
-            df_visual = df_previs.copy()
-            df_visual["Inicio"] = df_visual["Inicio"].apply(lambda x: x.strftime("%d/%m/%Y"))
-            df_visual["Fin"] = df_visual["Fin"].apply(lambda x: x.strftime("%d/%m/%Y"))
+                # --- MODELADO DE TRASLAPE OPERATIVO EN FABRICACIÓN ---
+                st.write("### 🪚 Ajuste de Flexibilidad Operativa")
+                st.info("Nota: La fabricación puede extenderse en paralelo con el traslado, instalación y entrega del proyecto.")
+                
+                fecha_dis_i = cronograma_base[0]["Inicio"]
+                fecha_dis_f = cronograma_base[0]["Fin"]
+                fecha_fab_i = cronograma_base[1]["Inicio"]
+                fecha_fab_f_calculada = cronograma_base[1]["Fin"]
 
-            st.write("#### 🔍 Previsualización del Cronograma Planificado")
-            st.table(df_visual[["Etapa", "Inicio", "Fin", "Días"]])
+                # Selector interactivo para cambiar la fecha fin real de Fabricación
+                fecha_fab_f_real = st.date_input(
+                    "Fecha Fin Real de Fabricación (Modificable):", 
+                    value=fecha_fab_f_calculada,
+                    min_value=fecha_fab_i,
+                    max_value=f_fin
+                )
 
+                dias_fab_reales = (fecha_fab_f_real - fecha_fab_i).days + 1
+                st.session_state.dias_fab_calculados = max(1, dias_fab_reales)
+
+                # Reajustamos las etapas siguientes para que se traslapen proporcionalmente en el tiempo restante
+                cronograma_final = [
+                    {"Etapa": "Diseño", "Inicio": fecha_dis_i, "Fin": fecha_dis_f, "Días": cronograma_base[0]["Días"]},
+                    {"Etapa": "Fabricación", "Inicio": fecha_fab_i, "Fin": fecha_fab_f_real, "Días": dias_fab_reales}
+                ]
+
+                fecha_restante_inicio = fecha_dis_f + timedelta(days=1)
+                dias_restantes = (f_fin - fecha_restante_inicio).days
+                pct_restante_total = pcts["Traslado"] + pcts["Instalación"] + pcts["Entrega"]
+                
+                if dias_restantes > 0 and pct_restante_total > 0:
+                    f_aux_traslape = fecha_restante_inicio
+                    for et in ["Traslado", "Instalación", "Entrega"]:
+                        peso_proporcional = pcts[et] / pct_restante_total
+                        dias_et = round(dias_restantes * peso_proporcional)
+                        f_f_et = f_aux_traslape + timedelta(days=max(0, dias_et - 1))
+                        
+                        if f_f_et > f_fin or et == "Entrega":
+                            f_f_et = f_fin
+                        
+                        dias_reales_et = (f_f_et - f_aux_traslape).days + 1
+                        
+                        cronograma_final.append({
+                            "Etapa": et,
+                            "Inicio": f_aux_traslape,
+                            "Fin": f_f_et,
+                            "Días": max(1, dias_reales_et)
+                        })
+                        f_aux_traslape = f_f_et + timedelta(days=1)
+                else:
+                    for et in ["Traslado", "Instalación", "Entrega"]:
+                        cronograma_final.append({
+                            "Etapa": et, "Inicio": fecha_fab_i, "Fin": f_fin, "Días": (f_fin - fecha_fab_i).days + 1
+                        })
+
+                # Mapeado visual de la tabla
+                df_previs = pd.DataFrame(cronograma_final)
+                df_visual = df_previs.copy()
+                df_visual["Inicio"] = df_visual["Inicio"].apply(lambda x: x.strftime("%d/%m/%Y"))
+                df_visual["Fin"] = df_visual["Fin"].apply(lambda x: x.strftime("%d/%m/%Y"))
+
+                st.write("#### 🔍 Previsualización del Cronograma Planificado (Con Traslapes)")
+                st.table(df_visual[["Etapa", "Inicio", "Fin", "Días"]])
+
+            # 3. CARD INFORMATIVA Y BOTÓN DE REGISTRO
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Alerta operativa de exigencia de corte diaria antes de registrar
+        dias_disponibles_corte = st.session_state.get('dias_fab_calculados', 30)
+        st.metric(
+            label="⏱️ Ventana de Tiempo asignada a Fabricación:",
+            value=f"{dias_disponibles_corte} días útiles",
+            help="Días reales calculados entre el inicio y el fin de la etapa de Fabricación ajustada"
+        )
+        
+        if st.button("🚀 REGISTRAR PROYECTO NUEVO", type="primary"):
+            if not codigo or not nombre:
+                st.warning("El Código y Nombre son obligatorios.")
+            elif sum(pcts.values()) != 100:
+                st.error(f"La suma de porcentajes debe ser 100% (Actual: {sum(pcts.values())}%)")
+            elif 'cronograma_final' not in locals() or cronograma_final is None:
+                st.error("No se pudo estructurar el cronograma. Verifique las fechas globales.")
+            else:
+                try:
+                    # Sincronización perfecta: Lee directamente de 'cronograma_final' resguardando los traslapos
+                    datos_nube = {
+                        "codigo": codigo,
+                        "proyecto_text": nombre,
+                        "cliente": cliente,
+                        "partida": par,
+                        "f_ini": f_ini.isoformat(),
+                        "f_fin": f_fin.isoformat(),
+                        "supervisor_id": dict_sups[sup_nom],
+                        "estatus": "Activo",
+                        "avance": 0,
+                        "p_dis_i": cronograma_final[0]["Inicio"].isoformat(), 
+                        "p_dis_f": cronograma_final[0]["Fin"].isoformat(),
+                        "p_fab_i": cronograma_final[1]["Inicio"].isoformat(), 
+                        "p_fab_f": cronograma_final[1]["Fin"].isoformat(),
+                        "p_tra_i": cronograma_final[2]["Inicio"].isoformat(), 
+                        "p_tra_f": cronograma_final[2]["Fin"].isoformat(),
+                        "p_ins_i": cronograma_final[3]["Inicio"].isoformat(), 
+                        "p_ins_f": cronograma_final[3]["Fin"].isoformat(),
+                        "p_ent_i": cronograma_final[4]["Inicio"].isoformat(), 
+                        "p_ent_f": cronograma_final[4]["Fin"].isoformat()
+                    }
+                    
+                    # Inserción limpia en Supabase
+                    conectar().table("proyectos").insert(datos_nube).execute()
+                    st.success(f"✅ Proyecto {codigo} registrado con éxito.")
+                    st.balloons()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar en la base de datos: {e}")
+                    
             # Seccion 4 - UBICACIÓN: proyectos.py (Sección del botón de registro)
 
             # 4. BOTÓN DE REGISTRO
