@@ -33,7 +33,7 @@ def mostrar():
             dias_fab_iniciales = max(1, round(((f_fin - f_ini).days) * 0.40))
             st.session_state.dias_fab_calculados = dias_fab_iniciales
 
-        # 2. SECCIÓN PLEGABLE DE CRONOGRAMA (MODIFICADO: st.expander para optimización de espacio)
+        # 2. SECCIÓN PLEGABLE DE CRONOGRAMA (MODIFICADO: st.expander para ahorro de espacio)
         with st.expander("⚖️ Configurar Distribución de Tiempos y Etapas", expanded=True):
             st.write("### Distribución de Tiempo por Etapa (%)")
             etapas_nombres = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
@@ -51,7 +51,7 @@ def mostrar():
                 st.error("La fecha de término debe ser posterior a la de inicio.")
                 cronograma_final = None
             else:
-                # --- LÓGICA DE CÁLCULO BASE POR PORCENTAJES ---
+                # --- CÁLCULO BASE POR PORCENTAJES ---
                 cronograma_base = []
                 fecha_aux = f_ini
                 for et in etapas_nombres:
@@ -74,18 +74,19 @@ def mostrar():
                 fecha_fab_i = cronograma_base[1]["Inicio"]
                 fecha_fab_f_calculada = cronograma_base[1]["Fin"]
 
-                # Selector interactivo para cambiar la fecha fin real de Fabricación
+                # Selector interactivo con formato de fecha Día/Mes/Año
                 fecha_fab_f_real = st.date_input(
                     "Fecha Fin Real de Fabricación (Modificable):", 
                     value=fecha_fab_f_calculada,
                     min_value=fecha_fab_i,
-                    max_value=f_fin
+                    max_value=f_fin,
+                    format="DD/MM/YYYY"
                 )
 
                 dias_fab_reales = (fecha_fab_f_real - fecha_fab_i).days + 1
                 st.session_state.dias_fab_calculados = max(1, dias_fab_reales)
 
-                # Reajustamos las etapas siguientes para que se traslapen proporcionalmente en el tiempo restante
+                # Reajustamos las etapas operativas restantes para permitir el traslape proporcional
                 cronograma_final = [
                     {"Etapa": "Diseño", "Inicio": fecha_dis_i, "Fin": fecha_dis_f, "Días": cronograma_base[0]["Días"]},
                     {"Etapa": "Fabricación", "Inicio": fecha_fab_i, "Fin": fecha_fab_f_real, "Días": dias_fab_reales}
@@ -120,7 +121,7 @@ def mostrar():
                             "Etapa": et, "Inicio": fecha_fab_i, "Fin": f_fin, "Días": (f_fin - fecha_fab_i).days + 1
                         })
 
-                # Mapeado visual de la tabla
+                # Mapeado visual de la tabla con formato de fecha Día/Mes/Año exigido
                 df_previs = pd.DataFrame(cronograma_final)
                 df_visual = df_previs.copy()
                 df_visual["Inicio"] = df_visual["Inicio"].apply(lambda x: x.strftime("%d/%m/%Y"))
@@ -129,16 +130,26 @@ def mostrar():
                 st.write("#### 🔍 Previsualización del Cronograma Planificado (Con Traslapes)")
                 st.table(df_visual[["Etapa", "Inicio", "Fin", "Días"]])
 
-            # 3. CARD INFORMATIVA Y BOTÓN DE REGISTRO
+        # 3. CARD INFORMATIVA Y BOTÓN DE REGISTRO
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # Alerta operativa de exigencia de corte diaria antes de registrar
-        dias_disponibles_corte = st.session_state.get('dias_fab_calculados', 30)
-        st.metric(
-            label="⏱️ Ventana de Tiempo asignada a Fabricación:",
+        # Cálculo en tiempo real de la carga de corte diaria
+        dias_disponibles_corte = st.session_state.get('dias_fab_calculados', 12)
+        tableros_por_dia = total_tableros_proy / dias_disponibles_corte
+        
+        # Panel informativo de producción
+        col_m1, col_m2 = st.columns(2)
+        col_m1.metric(
+            label="📅 Ventana de Tiempo para Fabricación:",
             value=f"{dias_disponibles_corte} días útiles",
-            help="Días reales calculados entre el inicio y el fin de la etapa de Fabricación ajustada"
+            help="Días calculados para la etapa de corte y armado."
         )
+        col_m2.metric(
+            label="🪚 Ritmo de Corte Requerido:",
+            value=f"{tableros_por_dia:.2f} tableros / día",
+            help="Cantidad de tableros diarios que el taller debe cortar para cumplir con las fechas."
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
         
         if st.button("🚀 REGISTRAR PROYECTO NUEVO", type="primary"):
             if not codigo or not nombre:
@@ -146,15 +157,17 @@ def mostrar():
             elif sum(pcts.values()) != 100:
                 st.error(f"La suma de porcentajes debe ser 100% (Actual: {sum(pcts.values())}%)")
             elif 'cronograma_final' not in locals() or cronograma_final is None:
-                st.error("No se pudo estructurar el cronograma. Verifique las fechas globales.")
+                st.error("No se pudo procesar el cronograma. Verifique el rango de fechas globales.")
             else:
                 try:
-                    # Sincronización perfecta: Lee directamente de 'cronograma_final' resguardando los traslapos
+                    # Empaquetamos la Partida y los Tableros juntos en la columna 'partida' como texto estructurado
+                    partida_unificada = f"{par_base} ({total_tableros_proy} Tableros)" if par_base else f"General ({total_tableros_proy} Tableros)"
+                    
                     datos_nube = {
                         "codigo": codigo,
                         "proyecto_text": nombre,
                         "cliente": cliente,
-                        "partida": par,
+                        "partida": partida_unificada,
                         "f_ini": f_ini.isoformat(),
                         "f_fin": f_fin.isoformat(),
                         "supervisor_id": dict_sups[sup_nom],
@@ -172,9 +185,9 @@ def mostrar():
                         "p_ent_f": cronograma_final[4]["Fin"].isoformat()
                     }
                     
-                    # Inserción limpia en Supabase
+                    # Ejecución del insert
                     conectar().table("proyectos").insert(datos_nube).execute()
-                    st.success(f"✅ Proyecto {codigo} registrado con éxito.")
+                    st.success(f"✅ Proyecto {codigo} registrado con éxito con un ritmo de corte de {tableros_por_dia:.2f} tableros por día.")
                     st.balloons()
                     st.rerun()
                 except Exception as e:
