@@ -30,52 +30,48 @@ def mostrar():
             f_ini = c1.date_input("Fecha Inicio Global", value=date.today(), format="DD/MM/YYYY")
             f_fin = c2.date_input("Fecha Término Global", value=date.today() + timedelta(days=30), format="DD/MM/YYYY")
 
-        # 2. SECCIÓN PLEGABLE DE CRONOGRAMA LIBRE (Eliminados los % - Edición total y traslapes)
+        # 2. SECCIÓN PLEGABLE DE CRONOGRAMA LIBRE (Sincronización automatizada desde Fabricación y sin tabla redundante)
         with st.expander("📅 Configurar Fechas y Traslapes por Etapa", expanded=True):
             st.write("### Ajuste de Calendario por Actividad")
-            st.info("💡 Por defecto todas las etapas toman el rango global. Puedes editarlas libremente para permitir traslapes.")
+            st.info("💡 Por defecto, Diseño toma el inicio global. Fabricación, Traslado, Instalación y Entrega se alinean automáticamente al iniciar la producción.")
             
-            etapas_nombres = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
             fechas_etapas = {}
-            
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # Generamos dos columnas por cada etapa para permitir la edición independiente
-            for et in etapas_nombres:
+            # --- 1. ETAPA: DISEÑO (Mantiene inicio global por defecto)
+            st.markdown("**📍 Etapa de Diseño**")
+            col_ini_dis, col_fin_dis = st.columns(2)
+            ini_dis = col_ini_dis.date_input("Inicio Diseño", value=f_ini, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key="ini_Diseño")
+            fin_dis = col_fin_dis.date_input("Fin Diseño", value=f_fin, min_value=ini_dis, max_value=f_fin, format="DD/MM/YYYY", key="fin_Diseño")
+            fechas_etapas["Diseño"] = {"Inicio": ini_dis, "Fin": fin_dis, "Días": max(1, (fin_dis - ini_dis).days + 1)}
+            st.divider()
+
+            # --- 2. ETAPA: FABRICACIÓN (Punto de anclaje operativo)
+            st.markdown("**📍 Etapa de Fabricación**")
+            col_ini_fab, col_fin_fab = st.columns(2)
+            ini_fab = col_ini_fab.date_input("Inicio Fabricación", value=f_ini, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key="ini_Fabricación")
+            fin_fab = col_fin_fab.date_input("Fin Fabricación", value=f_fin, min_value=ini_fab, max_value=f_fin, format="DD/MM/YYYY", key="fin_Fabricación")
+            fechas_etapas["Fabricación"] = {"Inicio": ini_fab, "Fin": fin_fab, "Días": max(1, (fin_fab - ini_fab).days + 1)}
+            st.divider()
+
+            # --- 3. ETAPAS DEPENDIENTES (Ancladas automáticamente al inicio de Fabricación)
+            etapas_dependientes = ["Traslado", "Instalación", "Entrega"]
+            
+            for et in etapas_dependientes:
                 st.markdown(f"**📍 Etapa de {et}**")
                 col_ini, col_fin = st.columns(2)
                 
-                # Cada selector se inicializa por defecto con las fechas globales puestas arriba
-                ini_et = col_ini.date_input(f"Inicio {et}", value=f_ini, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key=f"ini_{et}")
+                # El valor por defecto se sincroniza dinámicamente con 'ini_fab'
+                ini_et = col_ini.date_input(f"Inicio {et}", value=ini_fab, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key=f"ini_{et}")
                 fin_et = col_fin.date_input(f"Fin {et}", value=f_fin, min_value=ini_et, max_value=f_fin, format="DD/MM/YYYY", key=f"fin_{et}")
                 
-                # Guardamos las fechas seleccionadas en un diccionario estructurado
                 fechas_etapas[et] = {
                     "Inicio": ini_et,
                     "Fin": fin_et,
                     "Días": max(1, (fin_et - ini_et).days + 1)
                 }
                 st.divider()
-
-            # Construimos la lista final para la previsualización y persistencia
-            cronograma_final = []
-            for et in etapas_nombres:
-                cronograma_final.append({
-                    "Etapa": et,
-                    "Inicio": fechas_etapas[et]["Inicio"],
-                    "Fin": fechas_etapas[et]["Fin"],
-                    "Días": fechas_etapas[et]["Días"]
-                })
-
-            # Renderizado visual de la tabla resumen en formato Día/Mes/Año
-            df_previs = pd.DataFrame(cronograma_final)
-            df_visual = df_previs.copy()
-            df_visual["Inicio"] = df_visual["Inicio"].apply(lambda x: x.strftime("%d/%m/%Y"))
-            df_visual["Fin"] = df_visual["Fin"].apply(lambda x: x.strftime("%d/%m/%Y"))
-
-            st.write("#### 🔍 Previsualización del Cronograma Personalizado (Con Traslapes)")
-            st.table(df_visual[["Etapa", "Inicio", "Fin", "Días"]])
-
+                
         # 3. CARD INFORMATIVA DE OPERACIONES Y BOTÓN DE REGISTRO
         st.markdown("<br>", unsafe_allow_html=True)
         
