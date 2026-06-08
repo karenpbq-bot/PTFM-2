@@ -8,9 +8,46 @@ def mostrar():
     
     tab1, tab2, tab3 = st.tabs(["🆕 Registrar Proyecto Nuevo", "📋 Listado y Búsqueda", "📦 Matriz de Productos"])
 
+    # =========================================================
+    # PESTAÑA 1: REGISTRAR PROYECTO NUEVO
+    # =========================================================
     with tab1:
         st.subheader("Configuración y Cronograma Planificado")
-        
+
+        # --- LÓGICA DE CONTROL DE ESTADOS DE FECHAS (CALLBACKS) ---
+        # Inicialización de fechas globales por defecto si no existen
+        if "f_ini_global" not in st.session_state:
+            st.session_state.f_ini_global = date.today()
+        if "f_fin_global" not in st.session_state:
+            st.session_state.f_fin_global = date.today() + timedelta(days=30)
+
+        # Inicialización de las fechas de las etapas enlazadas
+        etapas_lista = ["Diseño", "Fabricación", "Traslado", "Instalación", "Entrega"]
+        for et in etapas_lista:
+            if f"ini_{et}" not in st.session_state:
+                st.session_state[f"ini_{et}"] = st.session_state.f_ini_global
+            if f"fin_{et}" not in st.session_state:
+                st.session_state[f"fin_{et}"] = st.session_state.f_fin_global
+
+        # Callback 1: Si cambia la fecha de Inicio Global, todo el inicio de las etapas se sincroniza
+        def al_cambiar_inicio_global():
+            nuevo_ini = st.session_state.f_ini_global
+            for et in etapas_lista:
+                st.session_state[f"ini_{et}"] = nuevo_ini
+
+        # Callback 2: Si cambia la fecha de Término Global, todo el fin de las etapas se sincroniza
+        def al_cambiar_fin_global():
+            nuevo_fin = st.session_state.f_fin_global
+            for et in etapas_lista:
+                st.session_state[f"fin_{et}"] = nuevo_fin
+
+        # Callback 3: Si cambia el Inicio de Fabricación, se actualiza Traslado, Instalación y Entrega
+        def al_cambiar_inicio_fabricacion():
+            nuevo_ini_fab = st.session_state["ini_Fabricación"]
+            for et in ["Traslado", "Instalación", "Entrega"]:
+                st.session_state[f"ini_{et}"] = nuevo_ini_fab
+
+
         # 1. DATOS BÁSICOS
         with st.container(border=True):
             c1, c2, c3 = st.columns(3)
@@ -23,96 +60,102 @@ def mostrar():
             dict_sups = {r['nombre_real']: r['id'] for _, r in df_sups.iterrows()}
             sup_nom = c2.selectbox("Responsable:", options=list(dict_sups.keys()))
             
-            # Campo para declarar los tableros que consumirá el mobiliario
+            # Cantidad total de tableros del proyecto
             total_tableros_proy = c3.number_input("Número Total de Tableros:", min_value=1, value=10, step=1)
             
-            # Fechas globales del contrato
-            f_ini = c1.date_input("Fecha Inicio Global", value=date.today(), format="DD/MM/YYYY")
-            f_fin = c2.date_input("Fecha Término Global", value=date.today() + timedelta(days=30), format="DD/MM/YYYY")
+            # Fechas globales enlazadas a session_state con funciones de cambio reactivo
+            f_ini = c1.date_input(
+                "Fecha Inicio Global", 
+                key="f_ini_global", 
+                on_change=al_cambiar_inicio_global, 
+                format="DD/MM/YYYY"
+            )
+            f_fin = c2.date_input(
+                "Fecha Término Global", 
+                key="f_fin_global", 
+                on_change=al_cambiar_fin_global, 
+                format="DD/MM/YYYY"
+            )
 
-        # 2. SECCIÓN PLEGABLE DE CRONOGRAMA EN FORMATO MATRIZ (Visualización optimizada en 3 columnas)
+        # 2. SECCIÓN PLEGABLE DE CRONOGRAMA EN FORMATO MATRIZ (Reactividad absoluta)
         with st.expander("📅 Configurar Fechas y Traslapes por Etapa", expanded=True):
-            st.info("💡 Por defecto, Diseño toma el inicio global. Las etapas operativas se alinean automáticamente al iniciar la producción.")
+            st.info("💡 Las etapas operativas se sincronizan automáticamente en cascada según las fechas globales y de producción.")
             
             fechas_etapas = {}
-            st.markdown("<br>", unsafe_allow_html=True)
             
             # Encabezados de nuestra matriz compacta
             col_hdr_etapa, col_hdr_ini, col_hdr_fin = st.columns([2, 3, 3])
             col_hdr_etapa.markdown("**Etapa**")
             col_hdr_ini.markdown("**Fecha Inicio**")
             col_hdr_fin.markdown("**Fecha Fin**")
-            st.markdown("<hr style='margin: 0.5em 0px 1em 0px;'>", unsafe_allow_html=True) # Línea sutil de encabezado
+            st.markdown("<hr style='margin: 0.5em 0px 1em 0px;'>", unsafe_allow_html=True)
 
             # --- 1. FILA: DISEÑO ---
             c_et1, c_ini1, c_fin1 = st.columns([2, 3, 3])
             c_et1.markdown("<div style='padding-top: 0.5em;'><b>Diseño</b></div>", unsafe_allow_html=True)
-            ini_dis = c_ini1.date_input("Inicio Diseño", value=f_ini, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key="ini_Diseño", label_visibility="collapsed")
-            fin_dis = c_fin1.date_input("Fin Diseño", value=f_fin, min_value=ini_dis, max_value=f_fin, format="DD/MM/YYYY", key="fin_Diseño", label_visibility="collapsed")
+            ini_dis = c_ini1.date_input("Inicio Diseño", min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key="ini_Diseño", label_visibility="collapsed")
+            fin_dis = c_fin1.date_input("Fin Diseño", min_value=ini_dis, max_value=f_fin, format="DD/MM/YYYY", key="fin_Diseño", label_visibility="collapsed")
             fechas_etapas["Diseño"] = {"Inicio": ini_dis, "Fin": fin_dis, "Días": max(1, (fin_dis - ini_dis).days + 1)}
 
-            # --- 2. FILA: FABRICACIÓN ---
+            # --- 2. FILA: FABRICACIÓN (Posee callback para empujar las siguientes etapas)
             c_et2, c_ini2, c_fin2 = st.columns([2, 3, 3])
             c_et2.markdown("<div style='padding-top: 0.5em;'><b>Fabricación</b></div>", unsafe_allow_html=True)
-            ini_fab = c_ini2.date_input("Inicio Fabricación", value=f_ini, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key="ini_Fabricación", label_visibility="collapsed")
-            fin_fab = c_fin2.date_input("Fin Fabricación", value=f_fin, min_value=ini_fab, max_value=f_fin, format="DD/MM/YYYY", key="fin_Fabricación", label_visibility="collapsed")
+            ini_fab = c_ini2.date_input("Inicio Fabricación", min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key="ini_Fabricación", on_change=al_cambiar_inicio_fabricacion, label_visibility="collapsed")
+            fin_fab = c_fin2.date_input("Fin Fabricación", min_value=ini_fab, max_value=f_fin, format="DD/MM/YYYY", key="fin_Fabricación", label_visibility="collapsed")
             fechas_etapas["Fabricación"] = {"Inicio": ini_fab, "Fin": fin_fab, "Días": max(1, (fin_fab - ini_fab).days + 1)}
 
-            # --- 3. FILAS: TRASLADO, INSTALACIÓN Y ENTREGA (Sincronizadas con ini_fab)
+            # --- 3. FILAS: TRASLADO, INSTALACIÓN Y ENTREGA ---
             etapas_dependientes = ["Traslado", "Instalación", "Entrega"]
-            
             for et in etapas_dependientes:
                 c_et, c_ini, c_fin = st.columns([2, 3, 3])
                 c_et.markdown(f"<div style='padding-top: 0.5em;'><b>{et}</b></div>", unsafe_allow_html=True)
                 
-                # El valor por defecto 'value' se acopla en tiempo real al 'ini_fab' seleccionado arriba
-                ini_et = c_ini.date_input(f"Inicio {et}", value=ini_fab, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key=f"ini_{et}", label_visibility="collapsed")
-                fin_et = c_fin.date_input(f"Fin {et}", value=f_fin, min_value=ini_et, max_value=f_fin, format="DD/MM/YYYY", key=f"fin_{et}", label_visibility="collapsed")
+                ini_et = c_ini.date_input(f"Inicio {et}", min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key=f"ini_{et}", label_visibility="collapsed")
+                fin_et = c_fin.date_input(f"Fin {et}", min_value=ini_et, max_value=f_fin, format="DD/MM/YYYY", key=f"fin_{et}", label_visibility="collapsed")
                 
                 fechas_etapas[et] = {
                     "Inicio": ini_et,
                     "Fin": fin_et,
                     "Días": max(1, (fin_et - ini_et).days + 1)
                 }
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-                
+
+            # Guardamos los días de fabricación reales para las métricas
+            st.session_state.dias_fab_calculados = fechas_etapas["Fabricación"]["Días"]
+
         # 3. CARD INFORMATIVA DE OPERACIONES Y BOTÓN DE REGISTRO
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # --- CÁLCULO EN TIEMPO REAL BASADO EN LA FECHA EDITADA DE FABRICACIÓN ---
-        dias_fabricacion_reales = fechas_etapas["Fabricación"]["Días"]
+        dias_fabricacion_reales = st.session_state.dias_fab_calculados
         tableros_por_dia = total_tableros_proy / dias_fabricacion_reales
         
         col_m1, col_m2 = st.columns(2)
         col_m1.metric(
             label="📅 Plazo Real de Fabricación Configurado:",
             value=f"{dias_fabricacion_reales} días útiles",
-            help="Días calendario resultantes del rango asignado específicamente a la Fabricación."
+            help="Días calendario asignados a la Fabricación."
         )
         col_m2.metric(
             label="🪚 Exigencia de Corte en Taller:",
             value=f"{tableros_por_dia:.2f} tableros / día",
-            help="Carga diaria del área de optimización calculada según las fechas personalizadas de fabricación."
+            help="Carga diaria del área de optimización."
         )
         st.markdown("<br>", unsafe_allow_html=True)
         
         if st.button("🚀 REGISTRAR PROYECTO NUEVO", type="primary"):
             if not codigo or not nombre:
                 st.warning("El Código y Nombre son obligatorios.")
-            elif (f_fin - f_ini).days <= 0:
+            elif (st.session_state.f_fin_global - st.session_state.f_ini_global).days <= 0:
                 st.error("La fecha de término global debe ser posterior a la de inicio.")
             else:
                 try:
-                    # Estructura limpia alineada con las columnas validadas de Supabase
                     datos_nube = {
                         "codigo": codigo,
                         "proyecto_text": nombre,
                         "cliente": cliente,
                         "partida": par,
-                        "total_tableros": int(total_tableros_proy), # Persistencia en columna numérica nativa
-                        "f_ini": f_ini.isoformat(),
-                        "f_fin": f_fin.isoformat(),
+                        "total_tableros": int(total_tableros_proy),
+                        "f_ini": st.session_state.f_ini_global.isoformat(),
+                        "f_fin": st.session_state.f_fin_global.isoformat(),
                         "supervisor_id": dict_sups[sup_nom],
                         "estatus": "Activo",
                         "avance": 0,
@@ -128,7 +171,6 @@ def mostrar():
                         "p_ent_f": fechas_etapas["Entrega"]["Fin"].isoformat()
                     }
                     
-                    # Ejecución del insert en Supabase
                     conectar().table("proyectos").insert(datos_nube).execute()
                     st.success(f"✅ Proyecto {codigo} registrado con éxito en la base de datos.")
                     st.balloons()
