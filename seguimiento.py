@@ -74,7 +74,6 @@ def mostrar(supervisor_id=None):
         with t1:
             cols_w = st.columns(len(HITOS_LIST))
             for i, h in enumerate(HITOS_LIST):
-                # Redistribución equitativa por defecto a 33.3% al ser solo 3 hitos
                 pesos[h] = cols_w[i].number_input(f"{h} (%)", value=float(pesos.get(h, 33.33)), key=f"pw_{h}")
         with t2:
             f1, f2, f3 = st.columns(3)
@@ -138,13 +137,13 @@ def mostrar(supervisor_id=None):
         lambda x: segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])].empty else ""
     )
 
-    # --- H. DATA EDITOR (OCULTACIÓN COMPLETA DE CÓDIGO ID, ID Y CANTIDAD) ---
+    # --- H. DATA EDITOR ---
     cambios_df = st.data_editor(
         df_editor,
         column_config={
-            "id": None,              # Oculta la columna ID técnica de la base de datos
-            "ctd": None,             # Oculta la columna Cantidad de la vista
-            "codigo_etiqueta": None, # CORREGIDO: Oculta por completo la columna 'Código ID' solicitada
+            "id": None,              
+            "ctd": None,             
+            "codigo_etiqueta": None, 
             "ubicacion": st.column_config.TextColumn("Ubicación", disabled=True, width="small"),
             "tipo": st.column_config.TextColumn("Tipo", disabled=True, width="medium"),
             "ml": st.column_config.NumberColumn("ML", disabled=True, width="small"),
@@ -224,3 +223,7 @@ def mostrar(supervisor_id=None):
     m1, m2 = st.columns(2)
     m1.metric("Avance Vista Actual", f"{calc_v(df_f, segs, st.session_state.cambios_pendientes)}%")
     m2.metric("Avance Global Proyecto", f"{calc_v(prods_all, segs, st.session_state.cambios_pendientes)}%")
+
+    # --- K. AJUSTE DE MARGEN INFERIOR SOLICITADO ---
+    # Deja un colchón de espacio para que las métricas y botones no colisionen con los controles del celular
+    st.
