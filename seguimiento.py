@@ -64,11 +64,10 @@ def mostrar(supervisor_id=None):
     # --- C. CARGA DE DATOS ---
     id_p = st.session_state.id_p_sel
     prods_all = obtener_productos_por_proyecto(id_p)
-    # Filtrado en la consulta para solo traer los hitos visibles
     res_db = supabase.table("seguimiento").select("*").in_("producto_id", prods_all['id'].tolist()).in_("hito", HITOS_LIST).execute()
     segs = pd.DataFrame(res_db.data) if res_db.data else pd.DataFrame(columns=['producto_id','hito','fecha','observaciones'])
     
-    # --- D. CONFIGURACIÓN AVANZADA Y HERRAMIENTAS (RESTAURADA TOTALMENTE) ---
+    # --- D. CONFIGURACIÓN AVANZADA Y HERRAMIENTAS ---
     pesos = obtener_pesos_seguimiento()
 
     with st.expander("⚙️ Herramientas y Gestión Masiva"):
@@ -76,7 +75,6 @@ def mostrar(supervisor_id=None):
         with t1:
             cols_w = st.columns(len(HITOS_LIST))
             for i, h in enumerate(HITOS_LIST):
-                # Valor por defecto 25% para 4 hitos
                 pesos[h] = cols_w[i].number_input(f"{h} (%)", value=float(pesos.get(h, 25.0)), key=f"pw_{h}")
         with t2:
             f1, f2, f3 = st.columns(3)
@@ -129,7 +127,7 @@ def mostrar(supervisor_id=None):
     btn_delete = col_b4.button("🗑️ Borrar", use_container_width=True) if es_jefe else None
 
     # --- G. PREPARACIÓN DE MATRIZ COMPACTA ---
-    df_editor = df_f[['id', 'codigo_etiqueta', 'ubicacion', 'tipo', 'ctd']].copy()
+    df_editor = df_f[['id', 'codigo_etiqueta', 'ubicacion', 'tipo', 'ml', 'ctd']].copy()
     for h_nom in HITOS_LIST:
         simb = MAPEO_HITOS[h_nom]
         en_db = df_editor['id'].apply(lambda x: True if not segs[(segs['producto_id'] == x) & (segs['hito'] == h_nom)].empty else False)
@@ -140,15 +138,16 @@ def mostrar(supervisor_id=None):
         lambda x: segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])].empty else ""
     )
 
-    # --- H. DATA EDITOR ---
+    # --- H. DATA EDITOR (OCULTACIÓN SOLICITADA DE ID Y CANTIDAD) ---
     cambios_df = st.data_editor(
         df_editor,
         column_config={
-            "id": None,
-            "codigo_etiqueta": st.column_config.TextColumn("ID", disabled=True),
-            "ubicacion": st.column_config.TextColumn("Ubicación", disabled=True),
-            "tipo": st.column_config.TextColumn("Tipo", disabled=True),
-            "ctd": st.column_config.NumberColumn("Cant.", disabled=True),
+            "id": None,              # Oculta la columna interna ID de la base de datos
+            "ctd": None,             # MODIFICADO: Oculta la columna Cantidad para ahorrar espacio móvil
+            "codigo_etiqueta": st.column_config.TextColumn("Código ID", disabled=True, width="small"),
+            "ubicacion": st.column_config.TextColumn("Ubicación", disabled=True, width="small"),
+            "tipo": st.column_config.TextColumn("Tipo", disabled=True, width="medium"),
+            "ml": st.column_config.NumberColumn("ML", disabled=True, width="small"),
             "Observaciones": st.column_config.TextColumn("Observaciones", width="medium"),
             **{MAPEO_HITOS[h]: st.column_config.CheckboxColumn(MAPEO_HITOS[h]) for h in HITOS_LIST}
         },
@@ -189,7 +188,6 @@ def mostrar(supervisor_id=None):
                 with st.spinner("🚀 Ejecutando sincronización estructural..."):
                     supabase.table("seguimiento").upsert(lote, on_conflict="producto_id, hito").execute()
                     
-                    # LLAMADA SEGURA POR ID PARA ACTUALIZAR GRÁFICAS
                     from base_datos import sincronizar_avances_etapas
                     sincronizar_avances_etapas(id_p)
                     
@@ -211,7 +209,7 @@ def mostrar(supervisor_id=None):
             sincronizar_avances_etapas(id_p)
             st.cache_data.clear(); st.session_state.ref_matriz += 1; st.rerun()
 
-    # --- J. MÉTRICAS (CÁLCULO OPTIMIZADO) ---
+    # --- J. MÉTRICAS ---
     def calc_v(df_m, df_s, pend):
         if df_m.empty: return 0.0
         ids = df_m['id'].tolist()
