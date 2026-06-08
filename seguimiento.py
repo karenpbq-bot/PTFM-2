@@ -4,7 +4,7 @@ from datetime import datetime
 import io
 from base_datos import conectar, obtener_proyectos, obtener_productos_por_proyecto, obtener_seguimiento, obtener_pesos_seguimiento
 
-# 1. CONFIGURACIÓN VISUAL (HITOS REDUCIDOS AL MÍNIMO PARA CELULAR Y RENOMBRADOS)
+# 1. CONFIGURACIÓN VISUAL (HITOS REDUCIDOS Y RENOMBRADOS PARA VISTA MÓVIL)
 MAPEO_HITOS = {
     "Instalado": "🚪", 
     "Revisión y Observaciones": "🔍", 
@@ -110,7 +110,7 @@ def mostrar(supervisor_id=None):
                 df_exp.to_excel(writer, index=False)
             st.download_button("📤 Descargar Reporte", data=output.getvalue(), file_name=f"Reporte_Seguimiento_{id_p}.xlsx", use_container_width=True)
 
-    # --- E. FILTRADO ---
+    # --- E. FILTRADO REAL DE LA MATRIZ ---
     df_f = prods_all.copy()
     if bus_u: df_f = df_f[df_f['ubicacion'].astype(str).str.contains(bus_u, case=False)]
     if bus_t: df_f = df_f[df_f['tipo'].astype(str).str.contains(bus_t, case=False)]
@@ -137,13 +137,13 @@ def mostrar(supervisor_id=None):
         lambda x: segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])].empty else ""
     )
 
-    # --- H. DATA EDITOR ---
+    # --- H. DATA EDITOR (OCULTACIÓN ABSOLUTA DE ID, CÓDIGO ID Y CANTIDAD) ---
     cambios_df = st.data_editor(
         df_editor,
         column_config={
-            "id": None,              
-            "ctd": None,             
-            "codigo_etiqueta": None, 
+            "id": None,              # Oculta la columna ID interna de base de datos
+            "ctd": None,             # Oculta la columna Cantidad de la vista
+            "codigo_etiqueta": None, # Solucionado: Oculta la columna 'Código ID' por completo
             "ubicacion": st.column_config.TextColumn("Ubicación", disabled=True, width="small"),
             "tipo": st.column_config.TextColumn("Tipo", disabled=True, width="medium"),
             "ml": st.column_config.NumberColumn("ML", disabled=True, width="small"),
@@ -155,7 +155,7 @@ def mostrar(supervisor_id=None):
         key=f"editor_VMASTER_{id_p}_{st.session_state.ref_matriz}"
     )
 
-    # --- I. LÓGICA DE PROCESAMIENTO (MOTOR BLINDADO) ---
+    # --- I. LÓGICA DE PROCESAMIENTO (MOTOR BLINDADO DE ALTA VELOCIDAD) ---
     if btn_marcar:
         nuevos_p = []
         for idx, row in cambios_df.iterrows():
@@ -184,15 +184,16 @@ def mostrar(supervisor_id=None):
         
         if lote:
             try:
-                with st.spinner("🚀 Ejecutando sincronización estructural..."):
+                with st.spinner("🚀 Ejecutando sincronización estructural masiva..."):
                     supabase.table("seguimiento").upsert(lote, on_conflict="producto_id, hito").execute()
                     
+                    # Llamada indexada segura por ID numérico directo
                     from base_datos import sincronizar_avances_etapas
                     sincronizar_avances_etapas(id_p)
                     
                     st.session_state.cambios_pendientes = []
                     st.cache_data.clear(); st.session_state.ref_matriz += 1; st.rerun()
-            except Exception as e: st.error(f"Error al guardar: {e}")
+            except Exception as e: st.error(f"Error al guardar avances: {e}")
 
     if btn_clean:
         st.session_state.cambios_pendientes = []; st.session_state.ref_matriz += 1; st.rerun()
@@ -208,7 +209,7 @@ def mostrar(supervisor_id=None):
             sincronizar_avances_etapas(id_p)
             st.cache_data.clear(); st.session_state.ref_matriz += 1; st.rerun()
 
-    # --- J. MÉTRICAS ---
+    # --- J. CÁLCULO SEGURO DE MÉTRICAS EN MEMORIA ---
     def calc_v(df_m, df_s, pend):
         if df_m.empty: return 0.0
         ids = df_m['id'].tolist()
@@ -223,7 +224,3 @@ def mostrar(supervisor_id=None):
     m1, m2 = st.columns(2)
     m1.metric("Avance Vista Actual", f"{calc_v(df_f, segs, st.session_state.cambios_pendientes)}%")
     m2.metric("Avance Global Proyecto", f"{calc_v(prods_all, segs, st.session_state.cambios_pendientes)}%")
-
-    # --- K. AJUSTE DE MARGEN INFERIOR SOLICITADO ---
-    # Deja un colchón de espacio para que las métricas y botones no colisionen con los controles del celular
-    st.markdown("<div style='margin-bottom: 5rem;'></div>", unsafe_allow_html=True)
