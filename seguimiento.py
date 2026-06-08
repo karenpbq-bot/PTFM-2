@@ -4,10 +4,9 @@ from datetime import datetime
 import io
 from base_datos import conectar, obtener_proyectos, obtener_productos_por_proyecto, obtener_seguimiento, obtener_pesos_seguimiento
 
-# 1. CONFIGURACIÓN VISUAL (HITOS REDUCIDOS SEGÚN SOLICITUD PARA VISTA MÓVIL)
+# 1. CONFIGURACIÓN VISUAL (HITOS REDUCIDOS AL MÍNIMO PARA CELULAR Y RENOMBRADOS)
 MAPEO_HITOS = {
-    "Instalación de Estructura": "🪵", 
-    "Instalación de Puertas o Frentes": "🚪", 
+    "Instalado": "🚪", 
     "Revisión y Observaciones": "🔍", 
     "Entrega": "👍" 
 }
@@ -75,7 +74,8 @@ def mostrar(supervisor_id=None):
         with t1:
             cols_w = st.columns(len(HITOS_LIST))
             for i, h in enumerate(HITOS_LIST):
-                pesos[h] = cols_w[i].number_input(f"{h} (%)", value=float(pesos.get(h, 25.0)), key=f"pw_{h}")
+                # Redistribución equitativa por defecto a 33.3% al ser solo 3 hitos
+                pesos[h] = cols_w[i].number_input(f"{h} (%)", value=float(pesos.get(h, 33.33)), key=f"pw_{h}")
         with t2:
             f1, f2, f3 = st.columns(3)
             agrupar_por = f1.selectbox("Agrupar por:", ["Sin grupo", "Ubicación", "Tipo"], key="f_agrup")
@@ -138,13 +138,13 @@ def mostrar(supervisor_id=None):
         lambda x: segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])]['observaciones'].iloc[0] if not segs[(segs['producto_id'] == x) & (segs['hito'] == HITOS_LIST[0])].empty else ""
     )
 
-    # --- H. DATA EDITOR (OCULTACIÓN SOLICITADA DE ID Y CANTIDAD) ---
+    # --- H. DATA EDITOR (OCULTACIÓN COMPLETA DE CÓDIGO ID, ID Y CANTIDAD) ---
     cambios_df = st.data_editor(
         df_editor,
         column_config={
-            "id": None,              # Oculta la columna interna ID de la base de datos
-            "ctd": None,             # MODIFICADO: Oculta la columna Cantidad para ahorrar espacio móvil
-            "codigo_etiqueta": st.column_config.TextColumn("Código ID", disabled=True, width="small"),
+            "id": None,              # Oculta la columna ID técnica de la base de datos
+            "ctd": None,             # Oculta la columna Cantidad de la vista
+            "codigo_etiqueta": None, # CORREGIDO: Oculta por completo la columna 'Código ID' solicitada
             "ubicacion": st.column_config.TextColumn("Ubicación", disabled=True, width="small"),
             "tipo": st.column_config.TextColumn("Tipo", disabled=True, width="medium"),
             "ml": st.column_config.NumberColumn("ML", disabled=True, width="small"),
