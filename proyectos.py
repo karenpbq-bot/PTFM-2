@@ -30,47 +30,52 @@ def mostrar():
             f_ini = c1.date_input("Fecha Inicio Global", value=date.today(), format="DD/MM/YYYY")
             f_fin = c2.date_input("Fecha Término Global", value=date.today() + timedelta(days=30), format="DD/MM/YYYY")
 
-        # 2. SECCIÓN PLEGABLE DE CRONOGRAMA LIBRE (Sincronización automatizada desde Fabricación y sin tabla redundante)
+        # 2. SECCIÓN PLEGABLE DE CRONOGRAMA EN FORMATO MATRIZ (Visualización optimizada en 3 columnas)
         with st.expander("📅 Configurar Fechas y Traslapes por Etapa", expanded=True):
-            st.write("### Ajuste de Calendario por Actividad")
-            st.info("💡 Por defecto, Diseño toma el inicio global. Fabricación, Traslado, Instalación y Entrega se alinean automáticamente al iniciar la producción.")
+            st.info("💡 Por defecto, Diseño toma el inicio global. Las etapas operativas se alinean automáticamente al iniciar la producción.")
             
             fechas_etapas = {}
             st.markdown("<br>", unsafe_allow_html=True)
             
-            # --- 1. ETAPA: DISEÑO (Mantiene inicio global por defecto)
-            st.markdown("**📍 Etapa de Diseño**")
-            col_ini_dis, col_fin_dis = st.columns(2)
-            ini_dis = col_ini_dis.date_input("Inicio Diseño", value=f_ini, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key="ini_Diseño")
-            fin_dis = col_fin_dis.date_input("Fin Diseño", value=f_fin, min_value=ini_dis, max_value=f_fin, format="DD/MM/YYYY", key="fin_Diseño")
+            # Encabezados de nuestra matriz compacta
+            col_hdr_etapa, col_hdr_ini, col_hdr_fin = st.columns([2, 3, 3])
+            col_hdr_etapa.markdown("**Etapa**")
+            col_hdr_ini.markdown("**Fecha Inicio**")
+            col_hdr_fin.markdown("**Fecha Fin**")
+            st.markdown("<hr style='margin: 0.5em 0px 1em 0px;'>", unsafe_allow_html=True) # Línea sutil de encabezado
+
+            # --- 1. FILA: DISEÑO ---
+            c_et1, c_ini1, c_fin1 = st.columns([2, 3, 3])
+            c_et1.markdown("<div style='padding-top: 0.5em;'><b>Diseño</b></div>", unsafe_allow_html=True)
+            ini_dis = c_ini1.date_input("Inicio Diseño", value=f_ini, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key="ini_Diseño", label_visibility="collapsed")
+            fin_dis = c_fin1.date_input("Fin Diseño", value=f_fin, min_value=ini_dis, max_value=f_fin, format="DD/MM/YYYY", key="fin_Diseño", label_visibility="collapsed")
             fechas_etapas["Diseño"] = {"Inicio": ini_dis, "Fin": fin_dis, "Días": max(1, (fin_dis - ini_dis).days + 1)}
-            st.divider()
 
-            # --- 2. ETAPA: FABRICACIÓN (Punto de anclaje operativo)
-            st.markdown("**📍 Etapa de Fabricación**")
-            col_ini_fab, col_fin_fab = st.columns(2)
-            ini_fab = col_ini_fab.date_input("Inicio Fabricación", value=f_ini, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key="ini_Fabricación")
-            fin_fab = col_fin_fab.date_input("Fin Fabricación", value=f_fin, min_value=ini_fab, max_value=f_fin, format="DD/MM/YYYY", key="fin_Fabricación")
+            # --- 2. FILA: FABRICACIÓN ---
+            c_et2, c_ini2, c_fin2 = st.columns([2, 3, 3])
+            c_et2.markdown("<div style='padding-top: 0.5em;'><b>Fabricación</b></div>", unsafe_allow_html=True)
+            ini_fab = c_ini2.date_input("Inicio Fabricación", value=f_ini, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key="ini_Fabricación", label_visibility="collapsed")
+            fin_fab = c_fin2.date_input("Fin Fabricación", value=f_fin, min_value=ini_fab, max_value=f_fin, format="DD/MM/YYYY", key="fin_Fabricación", label_visibility="collapsed")
             fechas_etapas["Fabricación"] = {"Inicio": ini_fab, "Fin": fin_fab, "Días": max(1, (fin_fab - ini_fab).days + 1)}
-            st.divider()
 
-            # --- 3. ETAPAS DEPENDIENTES (Ancladas automáticamente al inicio de Fabricación)
+            # --- 3. FILAS: TRASLADO, INSTALACIÓN Y ENTREGA (Sincronizadas con ini_fab)
             etapas_dependientes = ["Traslado", "Instalación", "Entrega"]
             
             for et in etapas_dependientes:
-                st.markdown(f"**📍 Etapa de {et}**")
-                col_ini, col_fin = st.columns(2)
+                c_et, c_ini, c_fin = st.columns([2, 3, 3])
+                c_et.markdown(f"<div style='padding-top: 0.5em;'><b>{et}</b></div>", unsafe_allow_html=True)
                 
-                # El valor por defecto se sincroniza dinámicamente con 'ini_fab'
-                ini_et = col_ini.date_input(f"Inicio {et}", value=ini_fab, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key=f"ini_{et}")
-                fin_et = col_fin.date_input(f"Fin {et}", value=f_fin, min_value=ini_et, max_value=f_fin, format="DD/MM/YYYY", key=f"fin_{et}")
+                # El valor por defecto 'value' se acopla en tiempo real al 'ini_fab' seleccionado arriba
+                ini_et = c_ini.date_input(f"Inicio {et}", value=ini_fab, min_value=f_ini, max_value=f_fin, format="DD/MM/YYYY", key=f"ini_{et}", label_visibility="collapsed")
+                fin_et = c_fin.date_input(f"Fin {et}", value=f_fin, min_value=ini_et, max_value=f_fin, format="DD/MM/YYYY", key=f"fin_{et}", label_visibility="collapsed")
                 
                 fechas_etapas[et] = {
                     "Inicio": ini_et,
                     "Fin": fin_et,
                     "Días": max(1, (fin_et - ini_et).days + 1)
                 }
-                st.divider()
+            
+            st.markdown("<br>", unsafe_allow_html=True)
                 
         # 3. CARD INFORMATIVA DE OPERACIONES Y BOTÓN DE REGISTRO
         st.markdown("<br>", unsafe_allow_html=True)
