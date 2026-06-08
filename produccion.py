@@ -5,7 +5,7 @@ from base_datos import conectar
 
 def mostrar():
     st.title("🪚 Producción Proyectada de Tableros")
-    st.write("Este módulo consolida la demanda diaria de materia prima cruzando el cronograma de fabricación de todos los proyectos activos.")
+    st.write("Consolidado de demanda de materia prima según el cronograma de fabricación de los proyectos activos.")
 
     try:
         # 1. Recuperar los proyectos con estatus Activo directamente de Supabase
@@ -32,11 +32,9 @@ def mostrar():
 
         # 4. Establecer las fechas límites de las columnas según la vista elegida
         if vista == "📅 Vista Semanal":
-            # Sincronizamos para arrancar siempre desde el lunes de la semana seleccionada
             inicio_rango = fecha_ref - timedelta(days=fecha_ref.weekday())
             num_dias = 7
         elif vista == "📅 Vista Mensual":
-            # Arranca desde el primer día del mes de la fecha de referencia
             inicio_rango = date(fecha_ref.year, fecha_ref.month, 1)
             if fecha_ref.month == 12:
                 sig_mes = date(fecha_ref.year + 1, 1, 1)
@@ -44,14 +42,13 @@ def mostrar():
                 sig_mes = date(fecha_ref.year, fecha_ref.month + 1, 1)
             num_dias = (sig_mes - inicio_rango).days
         else:
-            # Vista Trimestral: 90 días a partir del primer día del mes actual
             inicio_rango = date(fecha_ref.year, fecha_ref.month, 1)
             num_dias = 90
 
         # Lista ordenada de días que conformarán las columnas dinámicas de la matriz
         lista_dias = [inicio_rango + timedelta(days=x) for x in range(num_dias)]
 
-        # 5. Construcción del vector de filas de la matriz
+        # 5. Construcción del vector de filas (Columnas optimizadas: Solo Proyecto y Total Tableros)
         filas_matriz = []
         
         for _, fila in df_proy.iterrows():
@@ -67,18 +64,15 @@ def mostrar():
                 dias_fab = 0
                 tab_por_dia = 0.0
 
-            # Estructura descriptiva inicial de las columnas fijas
+            # Estructura compacta solicitada
             registro = {
-                "Código": fila["codigo"],
                 "Proyecto": fila["proyecto_text"],
-                "Cliente": fila["cliente"] if fila["cliente"] else "N/A",
-                "Total Tableros": tot_tab,
-                "Tableros / Día": round(tab_por_dia, 2)
+                "Total Tableros": tot_tab
             }
             
             # Distribución de la demanda diaria en las celdas temporales
             for d in lista_dias:
-                nombre_col = d.strftime("%d/%m")  # Formato corto DD/MM para visualización óptima
+                nombre_col = d.strftime("%d/%m")  # Formato corto DD/MM
                 if f_i and f_f and f_i <= d <= f_f:
                     registro[nombre_col] = round(tab_por_dia, 2)
                 else:
@@ -86,16 +80,13 @@ def mostrar():
                     
             filas_matriz.append(registro)
 
-        # Convertimos la estructura armada en un DataFrame listo para visualización
+        # Convertimos la estructura armada en un DataFrame
         df_matriz_final = pd.DataFrame(filas_matriz)
 
-        # 6. Agregar fila de Resumen "TOTAL DIARIO" al final de la matriz
+        # 6. Agregar fila de Resumen "TOTAL DIARIO" al final manteniendo el nuevo orden
         fila_total = {
-            "Código": "🔥 TOTAL DIARIO",
-            "Proyecto": "Consolidado Taller",
-            "Cliente": "",
-            "Total Tableros": df_matriz_final["Total Tableros"].sum(),
-            "Tableros / Día": round(df_matriz_final["Tableros / Día"].sum(), 2)
+            "Proyecto": "🔥 TOTAL DIARIO",
+            "Total Tableros": df_matriz_final["Total Tableros"].sum()
         }
         
         for d in lista_dias:
@@ -104,12 +95,9 @@ def mostrar():
             
         df_matriz_final = pd.concat([df_matriz_final, pd.DataFrame([fila_total])], ignore_index=True)
 
-        # 7. Renderizado profesional con scroll horizontal nativo
+        # 7. Renderizado en pantalla sin índice
         st.markdown("<br>", unsafe_allow_html=True)
         st.subheader("📋 Calendario de Asignación y Demanda de Cortes")
-        st.write("Las columnas representan los días de la jornada. Los valores representan la cantidad de tableros completos a procesar por proyecto.")
-        
-        # st.dataframe permite scroll fluido y fijación visual del índice sin colapsar el navegador
         st.dataframe(df_matriz_final, use_container_width=True, hide_index=True)
 
     except Exception as e:
