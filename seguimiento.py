@@ -226,4 +226,4 @@ def mostrar(supervisor_id=None):
 
     # --- K. AJUSTE DE MARGEN INFERIOR SOLICITADO ---
     # Deja un colchón de espacio para que las métricas y botones no colisionen con los controles del celular
-    st.
+    st.markdown("<div style='margin-bottom: 5rem;'></div>", unsafe_allow_html=True)
