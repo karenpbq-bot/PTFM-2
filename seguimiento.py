@@ -6,7 +6,7 @@ from base_datos import conectar, obtener_proyectos, obtener_productos_por_proyec
 
 # 1. CONFIGURACIÓN VISUAL (HITOS REDUCIDOS Y RENOMBRADOS PARA VISTA MÓVIL)
 MAPEO_HITOS = {
-    "Instalado": "🚪", 
+    "Instalado": "🛠️", 
     "Revisión y Observaciones": "🔍", 
     "Entrega": "👍" 
 }
