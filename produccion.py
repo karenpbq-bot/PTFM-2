@@ -4,11 +4,11 @@ from datetime import datetime, timedelta, date
 from base_datos import conectar
 
 def mostrar():
-    st.title("🪚 Producción Proyectada de Tableros")
-    st.write("Consolidado de demanda de materia prima según el cronograma de fabricación de los proyectos activos.")
+    # 1. Ajuste de margen superior sutil para dar aire respecto al menú
+    st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
 
     try:
-        # 1. Recuperar los proyectos con estatus Activo directamente de Supabase
+        # Recuperar los proyectos con estatus Activo directamente de Supabase
         supabase = conectar()
         res = supabase.table("proyectos").select("*").eq("estatus", "Activo").execute()
         
@@ -18,23 +18,34 @@ def mostrar():
 
         df_proy = pd.DataFrame(res.data)
         
-        # 2. Conversión segura de tipos de datos de fechas y números
+        # Conversión segura de tipos de datos de fechas y números
         df_proy["p_fab_i"] = pd.to_datetime(df_proy["p_fab_i"], errors='coerce').dt.date
         df_proy["p_fab_f"] = pd.to_datetime(df_proy["p_fab_f"], errors='coerce').dt.date
         df_proy["total_tableros"] = pd.to_numeric(df_proy["total_tableros"], errors='coerce').fillna(0).astype(int)
 
-        # 3. Selectores de control de la cuadrícula temporal
-        st.markdown("---")
-        c1, c2 = st.columns([2, 3])
+        # =========================================================
+        # CABECERA COMPACTA EN UNA SOLA FILA HORIZONTAL
+        # =========================================================
+        c_titulo, c_fecha, c_vista = st.columns([3, 2, 4])
         
-        fecha_ref = c1.date_input("Seleccionar Fecha de Referencia:", value=date.today(), format="DD/MM/YYYY")
-        vista = c2.radio("Granularidad del Calendario:", ["📅 Vista Semanal", "📅 Vista Mensual", "📅 Vista Trimestral"], horizontal=True)
+        # Título con tipografía más pequeña alineado a los controles
+        c_titulo.markdown("<h3 style='margin: 0px; padding-top: 0.3em;'>🪚 Producción Proyectada</h3>", unsafe_allow_html=True)
+        
+        # Selector de fecha integrado
+        fecha_ref = c_fecha.date_input("Fecha Referencia:", value=date.today(), format="DD/MM/YYYY", label_visibility="collapsed")
+        
+        # Selector de granularidad horizontal integrado
+        vista = c_vista.radio("Vista:", ["📅 Semanal", "📅 Mensual", "📅 Trimestral"], horizontal=True, label_visibility="collapsed")
+        
+        st.markdown("<hr style='margin: 0.5rem 0px 1rem 0px;'>", unsafe_allow_html=True)
 
-        # 4. Establecer las fechas límites de las columnas según la vista elegida
-        if vista == "📅 Vista Semanal":
+        # =========================================================
+        # MOTOR DE GENERACIÓN DE COLUMNAS CALENDARIO
+        # =========================================================
+        if "Semanal" in vista:
             inicio_rango = fecha_ref - timedelta(days=fecha_ref.weekday())
             num_dias = 7
-        elif vista == "📅 Vista Mensual":
+        elif "Mensual" in vista:
             inicio_rango = date(fecha_ref.year, fecha_ref.month, 1)
             if fecha_ref.month == 12:
                 sig_mes = date(fecha_ref.year + 1, 1, 1)
@@ -45,18 +56,15 @@ def mostrar():
             inicio_rango = date(fecha_ref.year, fecha_ref.month, 1)
             num_dias = 90
 
-        # Lista ordenada de días que conformarán las columnas dinámicas de la matriz
         lista_dias = [inicio_rango + timedelta(days=x) for x in range(num_dias)]
 
-        # 5. Construcción del vector de filas (Columnas optimizadas: Solo Proyecto y Total Tableros)
+        # Construcción del vector de filas de proyectos activos
         filas_matriz = []
-        
         for _, fila in df_proy.iterrows():
             f_i = fila["p_fab_i"]
             f_f = fila["p_fab_f"]
             tot_tab = fila["total_tableros"]
             
-            # Validación matemática de plazos configurados
             if f_i and f_f and (f_f - f_i).days >= 0:
                 dias_fab = (f_f - f_i).days + 1
                 tab_por_dia = tot_tab / dias_fab
@@ -64,15 +72,13 @@ def mostrar():
                 dias_fab = 0
                 tab_por_dia = 0.0
 
-            # Estructura compacta solicitada
             registro = {
                 "Proyecto": fila["proyecto_text"],
                 "Total Tableros": tot_tab
             }
             
-            # Distribución de la demanda diaria en las celdas temporales
             for d in lista_dias:
-                nombre_col = d.strftime("%d/%m")  # Formato corto DD/MM
+                nombre_col = d.strftime("%d/%m")
                 if f_i and f_f and f_i <= d <= f_f:
                     registro[nombre_col] = round(tab_por_dia, 2)
                 else:
@@ -80,24 +86,24 @@ def mostrar():
                     
             filas_matriz.append(registro)
 
-        # Convertimos la estructura armada en un DataFrame
-        df_matriz_final = pd.DataFrame(filas_matriz)
+        df_proyectos_activos = pd.DataFrame(filas_matriz)
 
-        # 6. Agregar fila de Resumen "TOTAL DIARIO" al final manteniendo el nuevo orden
+        # =========================================================
+        # CONSOLIDACIÓN HORIZONTAL (FILA DE TOTALES ARRIBA)
+        # =========================================================
         fila_total = {
             "Proyecto": "🔥 TOTAL DIARIO",
-            "Total Tableros": df_matriz_final["Total Tableros"].sum()
+            "Total Tableros": df_proyectos_activos["Total Tableros"].sum()
         }
         
         for d in lista_dias:
             nombre_col = d.strftime("%d/%m")
-            fila_total[nombre_col] = round(df_matriz_final[nombre_col].sum(), 2)
+            fila_total[nombre_col] = round(df_proyectos_activos[nombre_col].sum(), 2)
             
-        df_matriz_final = pd.concat([df_matriz_final, pd.DataFrame([fila_total])], ignore_index=True)
+        # El total consolidado se inyecta estrictamente al tope de la visualización (Fila 1)
+        df_matriz_final = pd.concat([pd.DataFrame([fila_total]), df_proyectos_activos], ignore_index=True)
 
-        # 7. Renderizado en pantalla sin índice
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("📋 Calendario de Asignación y Demanda de Cortes")
+        # Renderizado limpio y directo de la cuadrícula
         st.dataframe(df_matriz_final, use_container_width=True, hide_index=True)
 
     except Exception as e:
