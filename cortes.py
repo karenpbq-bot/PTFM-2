@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date
 
-@st.cache_data(ttl=300)  # Caché optimizado a 5 minutos
+@st.cache_data(ttl=60)  # Reducido a 1 minuto para pruebas ágiles en tiempo real
 def cargar_datos_sheets():
-    """Conecta con Google Sheets y limpia de forma segura filas individuales."""
+    """Conecta con Google Sheets, remueve filas decorativas vacías y normaliza cabeceras."""
     try:
         url_base = "https://docs.google.com/spreadsheets/d/1mscx8TPy-JzafQfW2s7Cz7S0uYgClriW/export?format=csv"
         
@@ -18,48 +18,66 @@ def cargar_datos_sheets():
         nombre_pestaña = meses_nombres[mes_actual]
         url_dinamica = f"{url_base}&sheet={nombre_pestaña}"
         
-        # Leemos la estructura saltando la cabecera decorativa
-        df = pd.read_csv(url_dinamica, skiprows=2)
+        # Leemos el CSV completo desde el inicio para no perder la fila de cabecera real
+        df = pd.read_csv(url_dinamica)
         
-        # Limpieza profunda de espacios y saltos de línea en los títulos de columnas
-        df.columns = df.columns.str.replace(r'\s+', ' ', regex=True).str.strip()
+        # Eliminamos filas completamente vacías que genera Google Sheets en la parte superior
+        df = df.dropna(how='all')
         
+        # Limpieza profunda de los nombres de columnas: quitamos saltos de línea (\n), retornos (\r) y espacios extras
+        df.columns = df.columns.str.replace(r'[\r\n]+', ' ', regex=True).str.replace(r'\s+', ' ', regex=True).str.strip()
+        
+        # Si la primera fila contiene los nombres reales por un desfase de lectura, la promovemos
+        if "Fecha de Corte / Canteo" not in df.columns:
+            # Buscamos la fila que contenga el identificador de columnas
+            for i, fila in df.iterrows():
+                valores_fila = fila.astype(str).str.replace(r'[\r\n]+', ' ', regex=True).str.strip().values
+                if "Fecha de Corte / Canteo" in valores_fila or "Maquina" in valores_fila:
+                    df.columns = valores_fila
+                    df = df.iloc[i+1:].reset_index(drop=True)
+                    break
+
+        # Re-normalizamos los nombres de las columnas tras cualquier ajuste de fila
+        df.columns = df.columns.str.replace(r'[\r\n]+', ' ', regex=True).str.replace(r'\s+', ' ', regex=True).str.strip()
+        
+        # Mapeo unificado estricto
         df = df.rename(columns={
             "Fecha de Corte / Canteo": "Fecha_Corte",
             "Cantidad (Unid / ml)": "Cantidad",
             "Maquina": "Maquina"
         })
         
-        # Filtrar solo filas donde al menos tengamos los datos indispensables
+        # Filtrado de seguridad: Requerimos obligatoriamente estas tres columnas
+        if "Fecha_Corte" not in df.columns or "Maquina" not in df.columns or "Cantidad" not in df.columns:
+            st.error("⚠️ Estructura incompatible. Columnas detectadas: " + str(list(df.columns)))
+            return pd.DataFrame()
+            
+        # Limpieza de filas secundarias inactivas
         df = df.dropna(subset=["Fecha_Corte", "Maquina"])
         
-        # Normalización estricta de la máquina para evitar fallos por minúsculas o espacios
         df["Maquina"] = df["Maquina"].astype(str).str.strip().str.upper()
         df["Cantidad"] = pd.to_numeric(df["Cantidad"], errors='coerce').fillna(0)
         
-        # Función ultra-tolerante para no perder filas por errores sintácticos de celda
-        def limpiar_fecha(val):
+        # Procesamiento tolerante de fechas fila por fila
+        def procesar_fecha(val):
             if pd.isna(val):
                 return None
             s = str(val).strip().replace('?', '')
-            for formato in ('%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d'):
+            for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d'):
                 try:
-                    return pd.to_datetime(s, format=formato).date()
+                    return pd.to_datetime(s, format=fmt).date()
                 except:
                     continue
-            # Intento final flexible si no coincide con los formatos estándar
             try:
                 return pd.to_datetime(s, errors='coerce').date()
             except:
                 return None
 
-        df["Fecha_Corte"] = df["Fecha_Corte"].apply(limpiar_fecha)
-        
-        # Descartamos únicamente las filas donde la fecha fue totalmente ilegible
+        df["Fecha_Corte"] = df["Fecha_Corte"].apply(procesar_fecha)
         return df.dropna(subset=["Fecha_Corte"])
         
     except Exception as e:
-        st.error(f"Error al procesar datos de la hoja de cálculo: {e}")
+        st.error(f"Error analítico en el procesamiento del taller: {e}")
         return pd.DataFrame()
 
 def mostrar():
@@ -67,20 +85,18 @@ def mostrar():
     
     df_raw = cargar_datos_sheets()
     if df_raw.empty:
-        st.info("📂 Esperando sincronización de registros válidos desde el Sheets...")
+        st.info("📂 Esperando sincronización de registros estructurados desde Google Drive...")
         return
 
-    # --- ENCABEZADO DE MÓDULO ---
     st.markdown("<h3 style='margin: 0px; padding: 0px;'>📊 Rendimiento de Taller</h3>", unsafe_allow_html=True)
     st.markdown("<hr style='margin: 0.3rem 0px 0.8rem 0px;'>", unsafe_allow_html=True)
 
-    # Identificamos el rango real de fechas que existen en el archivo para no buscar días vacíos
+    # Agrupamos las fechas reales únicas existentes para el gráfico
     fechas_reales = sorted(df_raw["Fecha_Corte"].unique())
     if not fechas_reales:
         st.info("No se encontraron registros de fechas procesables para este mes.")
         return
 
-    # Creamos sub-pestañas institucionales
     tab_corte, tab_canteo = st.tabs(["🪚 Procesamiento de Corte (S / E)", "🪵 Procesamiento de Canteo (C)"])
 
     # =========================================================
@@ -90,7 +106,6 @@ def mostrar():
         data_corte = []
         total_s, total_e = 0.0, 0.0
         
-        # Iteramos únicamente sobre los días reales que tienen datos anotados
         for d in fechas_reales:
             df_dia = df_raw[df_raw["Fecha_Corte"] == d]
             
@@ -111,7 +126,6 @@ def mostrar():
         st.markdown("<h4 style='margin: 0px; padding-bottom: 0.5rem;'>📈 Tableros Cortados por Día</h4>", unsafe_allow_html=True)
         st.line_chart(df_grafico_corte, use_container_width=True, color=["#D32F2F", "#1976D2"])
 
-        # --- METRICAS DE EFICIENCIA ---
         st.markdown("##### 📋 Resumen Acumulado del Mes")
         c_kpi1, c_kpi2 = st.columns(2)
         dias_activos = len(fechas_reales)
