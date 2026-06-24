@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date
+import plotly.express as px
+from datetime import datetime, timedelta, date
 
-@st.cache_data(ttl=60)  # Reducido a 1 minuto para pruebas ágiles en tiempo real
+@st.cache_data(ttl=300)  # Caché de seguridad de 5 minutos
 def cargar_datos_sheets():
     """Conecta con Google Sheets, remueve filas decorativas vacías y normaliza cabeceras."""
     try:
@@ -18,18 +19,13 @@ def cargar_datos_sheets():
         nombre_pestaña = meses_nombres[mes_actual]
         url_dinamica = f"{url_base}&sheet={nombre_pestaña}"
         
-        # Leemos el CSV completo desde el inicio para no perder la fila de cabecera real
         df = pd.read_csv(url_dinamica)
-        
-        # Eliminamos filas completamente vacías que genera Google Sheets en la parte superior
         df = df.dropna(how='all')
         
-        # Limpieza profunda de los nombres de columnas: quitamos saltos de línea (\n), retornos (\r) y espacios extras
+        # Limpieza de nombres de columnas
         df.columns = df.columns.str.replace(r'[\r\n]+', ' ', regex=True).str.replace(r'\s+', ' ', regex=True).str.strip()
         
-        # Si la primera fila contiene los nombres reales por un desfase de lectura, la promovemos
         if "Fecha de Corte / Canteo" not in df.columns:
-            # Buscamos la fila que contenga el identificador de columnas
             for i, fila in df.iterrows():
                 valores_fila = fila.astype(str).str.replace(r'[\r\n]+', ' ', regex=True).str.strip().values
                 if "Fecha de Corte / Canteo" in valores_fila or "Maquina" in valores_fila:
@@ -37,28 +33,21 @@ def cargar_datos_sheets():
                     df = df.iloc[i+1:].reset_index(drop=True)
                     break
 
-        # Re-normalizamos los nombres de las columnas tras cualquier ajuste de fila
         df.columns = df.columns.str.replace(r'[\r\n]+', ' ', regex=True).str.replace(r'\s+', ' ', regex=True).str.strip()
         
-        # Mapeo unificado estricto
         df = df.rename(columns={
             "Fecha de Corte / Canteo": "Fecha_Corte",
             "Cantidad (Unid / ml)": "Cantidad",
             "Maquina": "Maquina"
         })
         
-        # Filtrado de seguridad: Requerimos obligatoriamente estas tres columnas
         if "Fecha_Corte" not in df.columns or "Maquina" not in df.columns or "Cantidad" not in df.columns:
-            st.error("⚠️ Estructura incompatible. Columnas detectadas: " + str(list(df.columns)))
             return pd.DataFrame()
             
-        # Limpieza de filas secundarias inactivas
         df = df.dropna(subset=["Fecha_Corte", "Maquina"])
-        
         df["Maquina"] = df["Maquina"].astype(str).str.strip().str.upper()
         df["Cantidad"] = pd.to_numeric(df["Cantidad"], errors='coerce').fillna(0)
         
-        # Procesamiento tolerante de fechas fila por fila
         def procesar_fecha(val):
             if pd.isna(val):
                 return None
@@ -83,19 +72,33 @@ def cargar_datos_sheets():
 def mostrar():
     st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
     
+    # --- FILA DE CONTROLES SUPERIORES ---
+    c_titulo, c_fecha, c_vista, c_sync = st.columns([3.5, 2.5, 4.5, 1.5])
+    
+    c_titulo.markdown("<h3 style='margin: 0px; padding: 0px; line-height: 1.2;'>📊 Rendimiento</h3>", unsafe_allow_html=True)
+    
+    fecha_anclaje = c_fecha.date_input("Fecha Fin:", value=date.today(), format="DD/MM/YYYY", label_visibility="collapsed")
+    vista = c_vista.radio("🔍 Rango:", ["📅 Mensual (30 días)", "📅 Trimestral (90 días)"], horizontal=True, label_visibility="collapsed")
+    
+    # BOTÓN DE ACTUALIZACIÓN FORZADA
+    if c_sync.button("🔄 Actualizar", use_container_width=True, type="primary", help="Limpia la caché y descarga los datos nuevos de Google Sheets inmediatamente."):
+        st.cache_data.clear()
+        st.success("¡Datos actualizados desde Google Drive!")
+        st.rerun()
+        
+    st.markdown("<hr style='margin: 0.3rem 0px 0.8rem 0px;'>", unsafe_allow_html=True)
+    
     df_raw = cargar_datos_sheets()
     if df_raw.empty:
         st.info("📂 Esperando sincronización de registros estructurados desde Google Drive...")
         return
 
-    st.markdown("<h3 style='margin: 0px; padding: 0px;'>📊 Rendimiento de Taller</h3>", unsafe_allow_html=True)
-    st.markdown("<hr style='margin: 0.3rem 0px 0.8rem 0px;'>", unsafe_allow_html=True)
-
-    # Agrupamos las fechas reales únicas existentes para el gráfico
-    fechas_reales = sorted(df_raw["Fecha_Corte"].unique())
-    if not fechas_reales:
-        st.info("No se encontraron registros de fechas procesables para este mes.")
-        return
+    # --- MOTOR TEMPORAL RETROSPECTIVO ---
+    dias_atras = 30 if "Mensual" in vista else 90
+    fecha_inicio = fecha_anclaje - timedelta(days=dias_atras)
+    rango_dias = [fecha_inicio + timedelta(days=x) for x in range(dias_atras + 1)]
+    
+    df_filtrado = df_raw[(df_raw["Fecha_Corte"] >= fecha_inicio) & (df_raw["Fecha_Corte"] <= fecha_anclaje)]
 
     tab_corte, tab_canteo = st.tabs(["🪚 Procesamiento de Corte (S / E)", "🪵 Procesamiento de Canteo (C)"])
 
@@ -106,34 +109,46 @@ def mostrar():
         data_corte = []
         total_s, total_e = 0.0, 0.0
         
-        for d in fechas_reales:
-            df_dia = df_raw[df_raw["Fecha_Corte"] == d]
-            
+        for d in rango_dias:
+            df_dia = df_filtrado[df_filtrado["Fecha_Corte"] == d]
             cortes_s = df_dia[df_dia["Maquina"] == "S"]["Cantidad"].sum()
             cortes_e = df_dia[df_dia["Maquina"] == "E"]["Cantidad"].sum()
             
             total_s += cortes_s
             total_e += cortes_e
             
-            data_corte.append({
-                "Día": d.strftime("%d/%m"),
-                "Seccionadora S": round(cortes_s, 2),
-                "Escuadradora E": round(cortes_e, 2)
-            })
+            if cortes_s > 0 or cortes_e > 0:
+                data_corte.append({"Día": d.strftime("%d/%m"), "Máquina": "Seccionadora S", "Cantidad": round(cortes_s, 2)})
+                data_corte.append({"Día": d.strftime("%d/%m"), "Máquina": "Escuadradora E", "Cantidad": round(cortes_e, 2)})
 
-        df_grafico_corte = pd.DataFrame(data_corte).set_index("Día")
+        if data_corte:
+            df_plotly_corte = pd.DataFrame(data_corte)
+            fig_corte = px.line(
+                df_plotly_corte, 
+                x="Día", 
+                y="Cantidad", 
+                color="Máquina",
+                text="Cantidad",
+                color_discrete_map={"Seccionadora S": "#D32F2F", "Escuadradora E": "#1976D2"}
+            )
+            fig_corte.update_traces(textposition="top center", marker=dict(size=6), mode="lines+markers+text")
+            fig_corte.update_layout(
+                xaxis_title=None, yaxis_title="Cantidad de Tableros",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified"
+            )
+            st.plotly_chart(fig_corte, use_container_width=True)
+        else:
+            st.info("📂 No se detectaron registros de corte (S/E) en este rango.")
 
-        st.markdown("<h4 style='margin: 0px; padding-bottom: 0.5rem;'>📈 Tableros Cortados por Día</h4>", unsafe_allow_html=True)
-        st.line_chart(df_grafico_corte, use_container_width=True, color=["#D32F2F", "#1976D2"])
-
-        st.markdown("##### 📋 Resumen Acumulado del Mes")
+        st.markdown("##### 📋 Resumen del Período")
         c_kpi1, c_kpi2 = st.columns(2)
-        dias_activos = len(fechas_reales)
+        dias_activos = len(df_filtrado["Fecha_Corte"].unique()) if not df_filtrado.empty else 1
         
         with c_kpi1:
-            st.metric(label="🪚 Total Seccionadora S", value=f"{int(total_s)} Tableros", delta=f"{round(total_s/dias_activos, 1)} prom/día")
+            st.metric(label="🪚 Total Seccionadora S", value=f"{int(total_s)} Tableros", delta=f"{round(total_s/dias_activos, 1)} prom/día activo")
         with c_kpi2:
-            st.metric(label="🪵 Total Escuadradora E", value=f"{int(total_e)} Tableros", delta=f"{round(total_e/dias_activos, 1)} prom/día")
+            st.metric(label="🪵 Total Escuadradora E", value=f"{int(total_e)} Tableros", delta=f"{round(total_e/dias_activos, 1)} prom/día activo")
 
     # =========================================================
     # VISTA 2: CANTEADO (MÁQUINA C)
@@ -142,22 +157,26 @@ def mostrar():
         data_canteo = []
         total_c = 0.0
         
-        for d in fechas_reales:
-            df_dia = df_raw[df_raw["Fecha_Corte"] == d]
+        for d in rango_dias:
+            df_dia = df_filtrado[df_filtrado["Fecha_Corte"] == d]
             canteo_c = df_dia[df_dia["Maquina"] == "C"]["Cantidad"].sum()
             total_c += canteo_c
             
-            data_canteo.append({
-                "Día": d.strftime("%d/%m"),
-                "Canteadora C": round(canteo_c, 2)
-            })
+            if canteo_c > 0:
+                data_canteo.append({"Día": d.strftime("%d/%m"), "Cantidad": round(canteo_c, 2)})
 
-        df_grafico_canteo = pd.DataFrame(data_canteo).set_index("Día")
+        if data_canteo:
+            df_plotly_canteo = pd.DataFrame(data_canteo)
+            fig_canteo = px.line(
+                df_plotly_canteo, x="Día", y="Cantidad", text="Cantidad", color_discrete_sequence=["#2E7D32"]
+            )
+            fig_canteo.update_traces(textposition="top center", marker=dict(size=6), mode="lines+markers+text")
+            fig_canteo.update_layout(xaxis_title=None, yaxis_title="Metros Lineales (ml)", margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified")
+            st.plotly_chart(fig_canteo, use_container_width=True)
+        else:
+            st.info("📂 No se detectaron registros de canteado (C) en este rango.")
 
-        st.markdown("<h4 style='margin: 0px; padding-bottom: 0.5rem;'>📈 Avanzado de Canteado Diario</h4>", unsafe_allow_html=True)
-        st.line_chart(df_grafico_canteo, use_container_width=True, color=["#2E7D32"])
-
-        st.markdown("##### 📋 Resumen Acumulado del Mes")
+        st.markdown("##### 📋 Resumen del Período")
         c_kpi3 = st.columns(1)[0]
         with c_kpi3:
-            st.metric(label="⚙️ Total Canteadora C", value=f"{round(total_c, 1)} Unid / ml", delta=f"{round(total_c/dias_activos, 1)} prom/día")
+            st.metric(label="⚙️ Total Canteadora C", value=f"{round(total_c, 1)} Unid / ml", delta=f"{round(total_c/dias_activos, 1)} prom/día activo")
