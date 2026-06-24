@@ -146,8 +146,8 @@ def mostrar():
                     pass
                 return ''
 
-            # Aplicamos el estilo condicional estrictamente a las columnas de los días
-            df_matriz_estilada = df_matriz_interactiva.style.applymap(resaltar_sobrecarga, subset=columns_fecha)
+            # Aplicamos el estilo condicional estrictamente a las columnas de los días utilizando .map() para Pandas 2.x
+            df_matriz_estilada = df_matriz_interactiva.style.map(resaltar_sobrecarga, subset=columns_fecha)
 
             # Renderizado de la matriz interactiva unificada
             cambios_matriz_df = st.data_editor(
