@@ -2,15 +2,25 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, date
 
-@st.cache_data(ttl=600)  # Caché de 10 minutos para optimizar la velocidad de carga
+@st.cache_data(ttl=600)
 def cargar_datos_sheets():
-    """Conecta con Google Sheets y limpia la estructura de filas del taller."""
+    """Conecta dinámicamente con la pestaña del mes actual sin depender de st.secrets."""
     try:
-        url = st.secrets["URL_GOOGLE_SHEETS"]
-        # Leemos el archivo saltándonos las primeras filas de cabecera decorativa
-        df = pd.read_csv(url, skiprows=2)
+        # Colocamos la URL base directa en el código de forma segura
+        url_base = "https://docs.google.com/spreadsheets/d/1mscx8TPy-JzafQfW2s7Cz7S0uYgClriW/export?format=csv"
         
-        # Renombramos columnas clave para asegurar compatibilidad matemática
+        meses_nombres = {
+            1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 
+            5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto", 
+            9: "Setiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+        }
+        
+        mes_actual = datetime.now().month
+        nombre_pestaña = meses_nombres[mes_actual]
+        url_dinamica = f"{url_base}&sheet={nombre_pestaña}"
+        
+        df = pd.read_csv(url_dinamica, skiprows=2)
+        
         df.columns = df.columns.str.strip()
         df = df.rename(columns={
             "Fecha de \nCorte / Canteo": "Fecha_Corte",
@@ -18,7 +28,6 @@ def cargar_datos_sheets():
             "Maquina": "Maquina"
         })
         
-        # Limpieza estricta de filas vacías y conversión de tipos
         df = df.dropna(subset=["Fecha_Corte", "Maquina", "Cantidad"])
         df["Fecha_Corte"] = pd.to_datetime(df["Fecha_Corte"], errors='coerce').dt.date
         df["Cantidad"] = pd.to_numeric(df["Cantidad"], errors='coerce').fillna(0)
@@ -26,7 +35,7 @@ def cargar_datos_sheets():
         
         return df.dropna(subset=["Fecha_Corte"])
     except Exception as e:
-        st.error(f"Error al conectar con Google Drive: {e}")
+        st.error(f"Error al sincronizar la pestaña del mes activo: {e}")
         return pd.DataFrame()
 
 def mostrar():
