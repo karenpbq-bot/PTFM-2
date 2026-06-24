@@ -7,7 +7,7 @@ from datetime import timedelta, datetime, date
 import plotly.express as px
 from base_datos import *
 import os  # <-- Importante para manejar rutas de archivos
-import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion 
+import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes 
 
 # --- Lógica para localizar el logo ---
 # Esto debe estar ANTES de st.set_page_config
@@ -93,7 +93,7 @@ with st.sidebar:
     st.caption(f"Rol: {rol_usuario}")
     
     # Definición limpia de opciones del menú
-    opciones = ["Proyectos", "Producción Proyectada", "Seguimiento", "Gantt", "Incidencias", "Usuarios"]
+    opciones = ["Proyectos", "Producción Proyectada", "Rendimiento de Corte", "Seguimiento", "Gantt", "Incidencias", "Usuarios"]
     menu = st.radio("MENÚ PRINCIPAL", opciones)
     
     st.write("---")
@@ -112,7 +112,10 @@ if menu == "Proyectos":
 
 elif menu == "Producción Proyectada":
     produccion.mostrar()
-    
+
+elif menu == "Rendimiento de Corte":
+    cortes.mostrar()
+
 elif menu == "Seguimiento": 
     seguimiento.mostrar(supervisor_id=id_usuario if rol_usuario == "Supervisor" else None)
 
