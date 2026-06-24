@@ -31,40 +31,21 @@ def mostrar():
             # Cargar set de feriados registrados en formato texto DD/MM/YYYY
             feriados_set = obtener_feriados_lista()
 
-            # --- CONFIGURACIÓN DE CONTROLES TEMPORALES CON BUSCADOR DE PERÍODO ---
-            st.write("<br>", unsafe_allow_html=True)
-            c_titulo, c_periodo, c_fecha, c_vista = st.columns([3, 2.5, 2, 3.5])
+            # --- CONFIGURACIÓN DE CONTROLES TEMPORALES COMPACTOS (UNA SOLA FILA HORIZONTAL) ---
+            c_titulo, c_fecha, c_vista = st.columns([3.5, 3, 5.5])
             
-            c_titulo.markdown("<h3 style='margin: 0px; padding-top: 0.3em;'>🪚 Producción Proyectada</h3>", unsafe_allow_html=True)
+            # Título compacto con margen cero para evitar espacio muerto superior
+            c_titulo.markdown("<h3 style='margin: 0px; padding: 0px; line-height: 1.2;'>🪚 Producción Proyectada</h3>", unsafe_allow_html=True)
             
-            hoy = date.today()
-            meses_dict = {
-                "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4, "Mayo": 5, "Junio": 6,
-                "Julio": 7, "Agosto": 8, "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
-            }
+            # Selector de fecha y vista alineados a la altura del título (Etiquetas ocultas para ahorrar espacio)
+            fecha_inicio_vista = c_fecha.date_input("Item Inicio:", value=date.today(), format="DD/MM/YYYY", label_visibility="collapsed")
+            vista = c_vista.radio("🔍 Vista:", ["📅 Mensual (30 días)", "📅 Trimestral (90 días)"], horizontal=True, label_visibility="collapsed")
             
-            mes_sel = c_periodo.selectbox("📆 Período (Mes):", options=list(meses_dict.keys()), index=hoy.month - 1, label_visibility="collapsed")
-            anio_sel = c_periodo.selectbox("📆 Período (Año):", options=[hoy.year - 1, hoy.year, hoy.year + 1], index=1, label_visibility="collapsed")
-            
-            fecha_periodo_base = date(anio_sel, meses_dict[mes_sel], 1)
-            fecha_ref = c_fecha.date_input("Fecha Referencia:", value=fecha_periodo_base, format="DD/MM/YYYY", label_visibility="collapsed")
-            vista = c_vista.radio("Vista:", ["📅 Semanal", "📅 Mensual", "📅 Trimestral"], horizontal=True, label_visibility="collapsed")
-            st.markdown("<hr style='margin: 0.5rem 0px 1rem 0px;'>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin: 0.3rem 0px 0.8rem 0px;'>", unsafe_allow_html=True)
 
-            # --- MOTOR DE GENERACIÓN DE COLUMNAS (LUNES A SÁBADO) ---
-            if "Semanal" in vista:
-                inicio_rango = fecha_ref - timedelta(days=fecha_ref.weekday())
-                num_dias_busqueda = 7
-            elif "Mensual" in vista:
-                inicio_rango = date(fecha_ref.year, fecha_ref.month, 1)
-                if fecha_ref.month == 12:
-                    sig_mes = date(fecha_ref.year + 1, 1, 1)
-                else:
-                    sig_mes = date(fecha_ref.year, fecha_ref.month + 1, 1)
-                num_dias_busqueda = (sig_mes - inicio_rango).days
-            else:
-                inicio_rango = date(fecha_ref.year, fecha_ref.month, 1)
-                num_dias_busqueda = 90
+            # --- MOTOR DE GENERACIÓN DE COLUMNAS CONTINUAS (LUNES A SÁBADO) ---
+            inicio_rango = fecha_inicio_vista
+            num_dias_busqueda = 30 if "Mensual" in vista else 90
 
             lista_dias = []
             for x in range(num_dias_busqueda):
