@@ -93,6 +93,10 @@ def mostrar():
 
             df_editor_base = pd.DataFrame(filas_editor_base)
 
+            # Guardamos df_editor_base y lista_dias en el estado de sesión para compartirlos de forma segura con la pestaña del gráfico
+            st.session_state["df_editor_base_cache"] = df_editor_base
+            st.session_state["lista_dias_cache"] = lista_dias
+
             # Cálculo de la Fila de Totales Diarios en el Tope Superior
             totales_diarios = {col: round(df_editor_base[col].sum(), 2) for col in columns_fecha}
             fila_total = {
@@ -139,23 +143,77 @@ def mostrar():
                 key="data_editor_produccion_horizontal_final"
             )
 
+            # --- PROCESAMIENTO DE GUARDADO Y EFECTO CASCADA EN SUPABASE (CORREGIDO: Ubicación Nativa) ---
+            if st.button("💾 Guardar Cambios de Fechas y Tableros", type="primary"):
+                try:
+                    with st.spinner("Actualizando parámetros operativos y recalculando frentes..."):
+                        df_proyectos_editados = cambios_matriz_df[cambios_matriz_df['id'] > 0]
+                        
+                        for idx, row in df_proyectos_editados.iterrows():
+                            id_proyecto = int(row['id'])
+                            nuevo_ini_fab = row['Fecha Inicio']
+                            nuevo_fin_fab = row['Fecha Fin']
+                            nuevos_tableros = int(row['Tableros Totales'])
+                            
+                            if nuevo_ini_fab > nuevo_fin_fab:
+                                st.error(f"❌ Error en proyecto {row['Proyecto']}: La fecha de inicio no puede ser posterior a la de fin.")
+                                st.stop()
+                            
+                            datos_orig = df_proy[df_proy['id'] == id_proyecto].iloc[0]
+                            old_ini_fab = datos_orig['p_fab_i']
+                            
+                            delta_dias = (nuevo_ini_fab - old_ini_fab).days if old_ini_fab else 0
+                            
+                            def desplazar_fecha(campo_fecha):
+                                if datos_orig.get(campo_fecha):
+                                    fecha_orig = pd.to_datetime(datos_orig[campo_fecha]).date()
+                                    return (fecha_orig + timedelta(days=delta_dias)).isoformat()
+                                return None
+
+                            datos_actualizados = {
+                                "p_fab_i": nuevo_ini_fab.isoformat(),
+                                "p_fab_f": nuevo_fin_fab.isoformat(),
+                                "total_tableros": nuevos_tableros,
+                                "p_tra_i": desplazar_fecha('p_tra_i'),
+                                "p_tra_f": desplazar_fecha('p_tra_f'),
+                                "p_ins_i": desplazar_fecha('p_ins_i'),
+                                "p_ins_f": desplazar_fecha('p_ins_f'),
+                                "p_ent_i": desplazar_fecha('p_ent_i'),
+                                "p_ent_f": desplazar_fecha('p_ent_f'),
+                                "f_ini": nuevo_ini_fab.isoformat()
+                            }
+                            
+                            supabase.table("proyectos").update(datos_actualizados).eq("id", id_proyecto).execute()
+                            
+                            from base_datos import sincronizar_avances_estructural
+                            sincronizar_avances_estructural(datos_orig['codigo'])
+
+                    st.success("✅ Parámetros de producción actualizados con éxito.")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar los datos en Supabase: {e}")
+
         except Exception as e:
             st.error(f"Error crítico en el renderizado de la matriz: {e}")
 
     # =========================================================
-    # PESTAÑA NUEVA: VISTA GRÁFICA DE LA CURVA DE FABRICACIÓN
+    # PESTAÑA 2: VISTA GRÁFICA DE LA CURVA DE FABRICACIÓN (CORREGIDO: Fuera del bloque anterior)
     # =========================================================
     with tab_grafico:
         try:
-            if 'df_editor_base' in locals() and not df_editor_base.empty:
+            df_editor_base_cache = st.session_state.get("df_editor_base_cache", None)
+            lista_dias_cache = st.session_state.get("lista_dias_cache", None)
+
+            if df_editor_base_cache is not None and not df_editor_base_cache.empty:
                 st.markdown("<h4 style='margin: 0px; padding-bottom: 0.5rem;'>📈 Curva de Carga Diaria (Tableros)</h4>", unsafe_allow_html=True)
                 
                 fechas_grafico = []
                 totales_grafico = []
                 
-                for d in lista_dias:
+                for d in lista_dias_cache:
                     nombre_col = d.strftime("%d/%m")
-                    total_dia = df_editor_base[nombre_col].sum() if nombre_col in df_editor_base.columns else 0.0
+                    total_dia = df_editor_base_cache[nombre_col].sum() if nombre_col in df_editor_base_cache.columns else 0.0
                     fechas_grafico.append(nombre_col)
                     totales_grafico.append(round(total_dia, 2))
                 
@@ -180,65 +238,8 @@ def mostrar():
         except Exception as e:
             st.error(f"No se pudo renderizar la curva gráfica: {e}")
 
-            # --- PROCESAMIENTO DE GUARDADO Y EFECTO CASCADA EN SUPABASE ---
-            if st.button("💾 Guardar Cambios de Fechas y Tableros", type="primary"):
-                try:
-                    with st.spinner("Actualizando parámetros operativos y recalculando frentes..."):
-                        # Filtrar la fila de totales (id=0) para procesar únicamente los proyectos reales
-                        df_proyectos_editados = cambios_matriz_df[cambios_matriz_df['id'] > 0]
-                        
-                        for idx, row in df_proyectos_editados.iterrows():
-                            id_proyecto = int(row['id'])
-                            nuevo_ini_fab = row['Fecha Inicio']
-                            nuevo_fin_fab = row['Fecha Fin']
-                            nuevos_tableros = int(row['Tableros Totales'])
-                            
-                            if nuevo_ini_fab > nuevo_fin_fab:
-                                st.error(f"❌ Error en proyecto {row['Proyecto']}: La fecha de inicio no puede ser posterior a la de fin.")
-                                st.stop()
-                            
-                            datos_orig = df_proy[df_proy['id'] == id_proyecto].iloc[0]
-                            old_ini_fab = datos_orig['p_fab_i']
-                            
-                            # Cálculo del desfase de días para aplicar el efecto dominó en cascada
-                            delta_dias = (nuevo_ini_fab - old_ini_fab).days if old_ini_fab else 0
-                            
-                            def desplazar_fecha(campo_fecha):
-                                if datos_orig.get(campo_fecha):
-                                    fecha_orig = pd.to_datetime(datos_orig[campo_fecha]).date()
-                                    return (fecha_orig + timedelta(days=delta_dias)).isoformat()
-                                return None
-
-                            datos_actualizados = {
-                                "p_fab_i": nuevo_ini_fab.isoformat(),
-                                "p_fab_f": nuevo_fin_fab.isoformat(),
-                                "total_tableros": nuevos_tableros,
-                                "p_tra_i": desplazar_fecha('p_tra_i'),
-                                "p_tra_f": desplazar_fecha('p_tra_f'),
-                                "p_ins_i": desplazar_fecha('p_ins_i'),
-                                "p_ins_f": desplazar_fecha('p_ins_f'),
-                                "p_ent_i": desplazar_fecha('p_ent_i'),
-                                "p_ent_f": desplazar_fecha('p_ent_f'),
-                                "f_ini": nuevo_ini_fab.isoformat()
-                            }
-                            
-                            supabase.table("proyectos").update(datos_actualizados).eq("id", id_proyecto).execute()
-                            
-                            # Sincronizar el Gantt real
-                            from base_datos import sincronizar_avances_estructural
-                            sincronizar_avances_estructural(datos_orig['codigo'])
-
-                    st.success("✅ Parámetros de producción actualizados con éxito.")
-                    st.cache_data.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al guardar los datos en Supabase: {e}")
-
-        except Exception as e:
-            st.error(f"Error crítico en el renderizado de la matriz: {e}")
-
     # =========================================================
-    # PESTAÑA 2: CALENDARIO DE FERIADOS (TEXTO DD/MM/YYYY)
+    # PESTAÑA 3: CALENDARIO DE FERIADOS (TEXTO DD/MM/YYYY)
     # =========================================================
     with tab_feriados:
         st.subheader("📅 Registro de Feriados Anuales")
