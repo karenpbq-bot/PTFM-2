@@ -8,6 +8,9 @@ import plotly.express as px
 from base_datos import *
 import os  # <-- Importante para manejar rutas de archivos
 import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes 
+# --- MARCADOR DE SINCRONIZACIÓN OPERATIVA ---
+# REESTRUCTURACIÓN DE MÓDULO: 3 PESTAÑAS INDEPENDIENTES DE MÁQUINAS (S / E / C)
+# ACTUALIZACIÓN EN CADENA PARA REFLEJAR CAMBIOS DE FORMA INMEDIATA.
 
 # --- Lógica para localizar el logo ---
 # Esto debe estar ANTES de st.set_page_config
