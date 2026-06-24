@@ -31,10 +31,23 @@ def mostrar():
             # Cargar set de feriados registrados en formato texto DD/MM/YYYY
             feriados_set = obtener_feriados_lista()
 
-            # --- CONFIGURACIÓN DE CONTROLES TEMPORALES DE LA VISTA ---
-            c_titulo, c_fecha, c_vista = st.columns([3, 2, 4])
+            # --- CONFIGURACIÓN DE CONTROLES TEMPORALES CON BUSCADOR DE PERÍODO ---
+            st.write("<br>", unsafe_allow_html=True)
+            c_titulo, c_periodo, c_fecha, c_vista = st.columns([3, 2.5, 2, 3.5])
+            
             c_titulo.markdown("<h3 style='margin: 0px; padding-top: 0.3em;'>🪚 Producción Proyectada</h3>", unsafe_allow_html=True)
-            fecha_ref = c_fecha.date_input("Fecha Referencia:", value=date.today(), format="DD/MM/YYYY", label_visibility="collapsed")
+            
+            hoy = date.today()
+            meses_dict = {
+                "Enero": 1, "Febrero": 2, "Marzo": 3, "Abril": 4, "Mayo": 5, "Junio": 6,
+                "Julio": 7, "Agosto": 8, "Septiembre": 9, "Octubre": 10, "Noviembre": 11, "Diciembre": 12
+            }
+            
+            mes_sel = c_periodo.selectbox("📆 Período (Mes):", options=list(meses_dict.keys()), index=hoy.month - 1, label_visibility="collapsed")
+            anio_sel = c_periodo.selectbox("📆 Período (Año):", options=[hoy.year - 1, hoy.year, hoy.year + 1], index=1, label_visibility="collapsed")
+            
+            fecha_periodo_base = date(anio_sel, meses_dict[mes_sel], 1)
+            fecha_ref = c_fecha.date_input("Fecha Referencia:", value=fecha_periodo_base, format="DD/MM/YYYY", label_visibility="collapsed")
             vista = c_vista.radio("Vista:", ["📅 Semanal", "📅 Mensual", "📅 Trimestral"], horizontal=True, label_visibility="collapsed")
             st.markdown("<hr style='margin: 0.5rem 0px 1rem 0px;'>", unsafe_allow_html=True)
 
