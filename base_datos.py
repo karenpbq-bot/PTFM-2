@@ -308,3 +308,34 @@ def eliminar_usuario_bd(id_usuario):
 def actualizar_usuario_bd(id_usuario, datos):
     supabase = conectar()
     return supabase.table("usuarios").update(datos).eq("id", id_usuario).execute()
+
+# =========================================================
+# GESTIÓN DE CALENDARIO LABORAL (NUEVO)
+# =========================================================
+
+def obtener_feriados_lista():
+    """Recupera un conjunto de objetos datetime.date con los feriados en formato DD/MM/YYYY desde TEXT."""
+    try:
+        supabase = conectar()
+        res = supabase.table("feriados").select("fecha").execute()
+        if res.data:
+            # Convierte las cadenas de texto 'DD/MM/YYYY' directamente a objetos date de Python
+            return {datetime.strptime(f['fecha'], '%d/%m/%Y').date() for f in res.data}
+        return set()
+    except Exception as e:
+        print(f"Error al obtener feriados: {e}")
+        return set()
+
+def calcular_dias_utiles_taller(f_inicio, f_fin, feriados_set):
+    """Calcula cuántos días hábiles de taller (Lun-Vie) existen en un rango, excluyendo feriados."""
+    if not f_inicio or not f_fin or f_inicio > f_fin:
+        return 0
+    
+    dias_utiles = 0
+    curr = f_inicio
+    while curr <= f_fin:
+        # 0=Lunes, 1=Martes, 2=Miércoles, 3=Jueves, 4=Viernes (Menor a 5 excluye Sábados y Domingos)
+        if curr.weekday() < 5 and curr not in feriados_set:
+            dias_utiles += 1
+        curr += timedelta(days=1)
+    return dias_utiles
