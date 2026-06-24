@@ -7,7 +7,7 @@ def mostrar():
     # Margen superior para separación ergonómica del menú principal
     st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
 
-    tab_matriz, tab_feriados = st.tabs(["🪚 Matriz de Carga de Producción", "📅 Calendario de Feriados"])
+    tab_matriz, tab_grafico, tab_feriados = st.tabs(["🪚 Matriz de Carga de Producción", "📈 Gráfico de Carga", "📅 Calendario de Feriados"])
 
     # =========================================================
     # PESTAÑA 1: MATRIZ DE CARGA HORIZONTAL INTEGRADA (EDITABLE)
@@ -138,6 +138,47 @@ def mostrar():
                 use_container_width=True,
                 key="data_editor_produccion_horizontal_final"
             )
+
+        except Exception as e:
+            st.error(f"Error crítico en el renderizado de la matriz: {e}")
+
+    # =========================================================
+    # PESTAÑA NUEVA: VISTA GRÁFICA DE LA CURVA DE FABRICACIÓN
+    # =========================================================
+    with tab_grafico:
+        try:
+            if 'df_editor_base' in locals() and not df_editor_base.empty:
+                st.markdown("<h4 style='margin: 0px; padding-bottom: 0.5rem;'>📈 Curva de Carga Diaria (Tableros)</h4>", unsafe_allow_html=True)
+                
+                fechas_grafico = []
+                totales_grafico = []
+                
+                for d in lista_dias:
+                    nombre_col = d.strftime("%d/%m")
+                    total_dia = df_editor_base[nombre_col].sum() if nombre_col in df_editor_base.columns else 0.0
+                    fechas_grafico.append(nombre_col)
+                    totales_grafico.append(round(total_dia, 2))
+                
+                df_curva = pd.DataFrame({
+                    "Día": fechas_grafico,
+                    "Tableros a Cortar": totales_grafico
+                }).set_index("Día")
+                
+                st.line_chart(df_curva, use_container_width=True, color="#D32F2F")
+                
+                c_inf1, c_inf2 = st.columns(2)
+                with c_inf1:
+                    st.info("💡 **Interpretación:** Los descensos que tocan el nivel 0 representan los domingos y feriados sin procesamiento de material.")
+                with c_inf2:
+                    if any(t >= 45.0 for t in totales_grafico):
+                        st.warning("⚠️ **Alerta de Capacidad:** Se detectan picos que igualan o superan el umbral crítico de 45 tableros diarios. Se recomienda revisar la matriz para reprogramar fechas.")
+                    else:
+                        st.success("✅ **Flujo Optimizado:** La carga proyectada se mantiene balanceada dentro de las capacidades operativas.")
+            else:
+                st.info("📂 No hay datos de producción activos en este período para generar la gráfica.")
+                
+        except Exception as e:
+            st.error(f"No se pudo renderizar la curva gráfica: {e}")
 
             # --- PROCESAMIENTO DE GUARDADO Y EFECTO CASCADA EN SUPABASE ---
             if st.button("💾 Guardar Cambios de Fechas y Tableros", type="primary"):
