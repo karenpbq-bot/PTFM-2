@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from datetime import datetime, timedelta, date
 from base_datos import conectar, obtener_feriados_lista, calcular_dias_utiles_taller
 
