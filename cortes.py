@@ -100,93 +100,103 @@ def mostrar():
     
     df_filtrado = df_raw[(df_raw["Fecha_Corte"] >= fecha_inicio) & (df_raw["Fecha_Corte"] <= fecha_anclaje)]
 
-    tab_corte, tab_canteo = st.tabs(["🪚 Procesamiento de Corte (S / E)", "🪵 Procesamiento de Canteo (C)"])
+    # Normalización preventiva de datos de la columna Material
+    if not df_filtrado.empty and "Material" in df_filtrado.columns:
+        df_filtrado["Material"] = df_filtrado["Material"].astype(str).str.strip()
+
+    # --- DEFINICIÓN DE LAS 3 PESTAÑAS PRINCIPALES DEL SISTEMA ---
+    tab_seccionadora, tab_escuadradora, tab_canteo = st.tabs([
+        "🪚 Cortes Seccionadora S", 
+        "📐 Cortes Escuadradora E", 
+        "⚙️ Procesamiento de Canteo C"
+    ])
 
     # =========================================================
-    # VISTA 1: CORTE (MÁQUINAS S Y E) - 4 RECTAS: TABLEROS Y RETAZOS
+    # PESTAÑA 1: CORTES SECCIONADORA S
     # =========================================================
-    with tab_corte:
-        data_corte = []
-        total_s, total_e = 0.0, 0.0
+    with tab_seccionadora:
+        data_sprint = []
+        total_s = 0.0
         
-        # Primero nos aseguramos de normalizar la columna Material a strings limpios
-        if not df_filtrado.empty and "Material" in df_filtrado.columns:
-            df_filtrado["Material"] = df_filtrado["Material"].astype(str).str.strip()
-
         for d in rango_dias:
             df_dia = df_filtrado[df_filtrado["Fecha_Corte"] == d]
+            nombre_col = d.strftime("%d/%m")
             
-            # Filtrado por Máquina S (Seccionadora)
             df_s = df_dia[df_dia["Maquina"] == "S"]
             tab_s = df_s[df_s["Material"] == "Tablero"]["Cantidad"].sum()
             ret_s = df_s[df_s["Material"] == "Retazo"]["Cantidad"].sum()
+            total_s += (tab_s + ret_s)
             
-            # Filtrado por Máquina E (Escuadradora)
+            if tab_s > 0:
+                data_sprint.append({"Día": nombre_col, "Cantidad": round(tab_s, 2), "Componente": "🪚 Tableros Sprint"})
+            if ret_s > 0:
+                data_sprint.append({"Día": nombre_col, "Cantidad": round(ret_s, 2), "Componente": "♻️ Retazos Sprint"})
+
+        if data_sprint:
+            df_plotly_s = pd.DataFrame(data_sprint)
+            fig_s = px.line(
+                df_plotly_s, x="Día", y="Cantidad", color="Componente", text="Cantidad",
+                color_discrete_map={"🪚 Tableros Sprint": "#D32F2F", "♻️ Retazos Sprint": "#EF9A9A"}
+            )
+            fig_s.update_traces(textposition="top center", marker=dict(size=5), mode="lines+markers+text")
+            fig_s.update_layout(
+                xaxis_title=None, yaxis_title="Cantidad (Unidades / ml)",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=10, r=10, t=15, b=10), hovermode="x unified"
+            )
+            st.plotly_chart(fig_s, use_container_width=True)
+        else:
+            st.info("📂 No se detectó carga activa para Seccionadora S en este rango.")
+
+        st.markdown("##### 📋 Resumen Seccionadora S")
+        dias_activos_s = len(df_filtrado[df_filtrado["Maquina"] == "S"]["Fecha_Corte"].unique()) if not df_filtrado.empty else 1
+        dias_activos_s = max(dias_activos_s, 1)
+        st.metric(label="Total Procesado Sprint", value=f"{int(total_s)} Unidades", delta=f"{round(total_s/dias_activos_s, 1)} prom/día activo")
+
+    # =========================================================
+    # PESTAÑA 2: CORTES ESCUADRADORA E
+    # =========================================================
+    with tab_escuadradora:
+        data_tectra = []
+        total_e = 0.0
+        
+        for d in rango_dias:
+            df_dia = df_filtrado[df_filtrado["Fecha_Corte"] == d]
+            nombre_col = d.strftime("%d/%m")
+            
             df_e = df_dia[df_dia["Maquina"] == "E"]
             tab_e = df_e[df_e["Material"] == "Tablero"]["Cantidad"].sum()
             ret_e = df_e[df_e["Material"] == "Retazo"]["Cantidad"].sum()
-            
-            # Mantener la suma total para los KPIs inferiores del resumen
-            total_s += (tab_s + ret_s)
             total_e += (tab_e + ret_e)
             
-            # Inyección independiente para conformar las 4 rectas continuas (Solo si el valor aporta carga)
-            nombre_col = d.strftime("%d/%m")
-            if tab_s > 0:
-                data_corte.append({"Día": nombre_col, "Cantidad": round(tab_s, 2), "Línea Operativa": "🪚 Tableros Seccionadora S"})
-            if ret_s > 0:
-                data_corte.append({"Día": nombre_col, "Cantidad": round(ret_s, 2), "Línea Operativa": "♻️ Retazos Seccionadora S"})
             if tab_e > 0:
-                data_corte.append({"Día": nombre_col, "Cantidad": round(tab_e, 2), "Línea Operativa": "🪚 Tableros Escuadradora E"})
+                data_tectra.append({"Día": nombre_col, "Cantidad": round(tab_e, 2), "Componente": "🪚 Tableros Tectra"})
             if ret_e > 0:
-                data_corte.append({"Día": nombre_col, "Cantidad": round(ret_e, 2), "Línea Operativa": "♻️ Retazos Escuadradora E"})
+                data_tectra.append({"Día": nombre_col, "Cantidad": round(ret_e, 2), "Componente": "♻️ Retazos Tectra"})
 
-        if data_corte:
-            df_plotly_corte = pd.DataFrame(data_corte)
-            
-            # Construcción gráfica multifactorial mapeada por la serie Línea Operativa
-            fig_corte = px.line(
-                df_plotly_corte, 
-                x="Día", 
-                y="Cantidad", 
-                color="Línea Operativa",
-                text="Cantidad",
-                color_discrete_map={
-                    "🪚 Tableros Seccionadora S": "#D32F2F",  # Rojo oscuro
-                    "♻️ Retazos Seccionadora S": "#EF9A9A",   # Rojo claro
-                    "🪚 Tableros Escuadradora E": "#1976D2",  # Azul oscuro
-                    "♻️ Retazos Escuadradora E": "#90CAF9"   # Azul claro
-                }
+        if data_tectra:
+            df_plotly_e = pd.DataFrame(data_tectra)
+            fig_e = px.line(
+                df_plotly_e, x="Día", y="Cantidad", color="Componente", text="Cantidad",
+                color_discrete_map={"🪚 Tableros Tectra": "#1976D2", "♻️ Retazos Tectra": "#90CAF9"}
             )
-            
-            fig_corte.update_traces(
-                textposition="top center", 
-                marker=dict(size=5, symbol="circle"), 
-                mode="lines+markers+text"
-            )
-            
-            fig_corte.update_layout(
-                xaxis_title=None, 
-                yaxis_title="Cantidad de Tableros / Unidades",
+            fig_e.update_traces(textposition="top center", marker=dict(size=5), mode="lines+markers+text")
+            fig_e.update_layout(
+                xaxis_title=None, yaxis_title="Cantidad (Unidades / ml)",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                margin=dict(l=10, r=10, t=15, b=10), 
-                hovermode="x unified"
+                margin=dict(l=10, r=10, t=15, b=10), hovermode="x unified"
             )
-            st.plotly_chart(fig_corte, use_container_width=True)
+            st.plotly_chart(fig_e, use_container_width=True)
         else:
-            st.info("📂 No se detectaron registros de tableros o retazos en este rango.")
+            st.info("📂 No se detectó carga activa para Escuadradora E en este rango.")
 
-        st.markdown("##### 📋 Resumen del Período")
-        c_kpi1, c_kpi2 = st.columns(2)
-        dias_activos = len(df_filtrado["Fecha_Corte"].unique()) if not df_filtrado.empty else 1
-        
-        with c_kpi1:
-            st.metric(label="🪚 Total Seccionadora S", value=f"{int(total_s)} Tableros", delta=f"{round(total_s/dias_activos, 1)} prom/día activo")
-        with c_kpi2:
-            st.metric(label="🪵 Total Escuadradora E", value=f"{int(total_e)} Tableros", delta=f"{round(total_e/dias_activos, 1)} prom/día activo")
+        st.markdown("##### 📋 Resumen Escuadradora E")
+        dias_activos_e = len(df_filtrado[df_filtrado["Maquina"] == "E"]["Fecha_Corte"].unique()) if not df_filtrado.empty else 1
+        dias_activos_e = max(dias_activos_e, 1)
+        st.metric(label="Total Procesado Tectra", value=f"{int(total_e)} Unidades", delta=f"{round(total_e/dias_activos_e, 1)} prom/día activo")
 
     # =========================================================
-    # VISTA 2: CANTEADO (MÁQUINA C)
+    # PESTAÑA 3: PROCESAMIENTO DE CANTEO C
     # =========================================================
     with tab_canteo:
         data_canteo = []
@@ -194,11 +204,13 @@ def mostrar():
         
         for d in rango_dias:
             df_dia = df_filtrado[df_filtrado["Fecha_Corte"] == d]
+            nombre_col = d.strftime("%d/%m")
+            
             canteo_c = df_dia[df_dia["Maquina"] == "C"]["Cantidad"].sum()
             total_c += canteo_c
             
             if canteo_c > 0:
-                data_canteo.append({"Día": d.strftime("%d/%m"), "Cantidad": round(canteo_c, 2)})
+                data_canteo.append({"Día": nombre_col, "Cantidad": round(canteo_c, 2)})
 
         if data_canteo:
             df_plotly_canteo = pd.DataFrame(data_canteo)
@@ -206,12 +218,15 @@ def mostrar():
                 df_plotly_canteo, x="Día", y="Cantidad", text="Cantidad", color_discrete_sequence=["#2E7D32"]
             )
             fig_canteo.update_traces(textposition="top center", marker=dict(size=6), mode="lines+markers+text")
-            fig_canteo.update_layout(xaxis_title=None, yaxis_title="Metros Lineales (ml)", margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified")
+            fig_canteo.update_layout(
+                xaxis_title=None, yaxis_title="Metros Lineales (ml)", 
+                margin=dict(l=10, r=10, t=15, b=10), hovermode="x unified"
+            )
             st.plotly_chart(fig_canteo, use_container_width=True)
         else:
             st.info("📂 No se detectaron registros de canteado (C) en este rango.")
 
-        st.markdown("##### 📋 Resumen del Período")
-        c_kpi3 = st.columns(1)[0]
-        with c_kpi3:
-            st.metric(label="⚙️ Total Canteadora C", value=f"{round(total_c, 1)} Unid / ml", delta=f"{round(total_c/dias_activos, 1)} prom/día activo")
+        st.markdown("##### 📋 Resumen Canteadora C")
+        dias_activos_c = len(df_filtrado[df_filtrado["Maquina"] == "C"]["Fecha_Corte"].unique()) if not df_filtrado.empty else 1
+        dias_activos_c = max(dias_activos_c, 1)
+        st.metric(label="Total Mapeado Canteo", value=f"{round(total_c, 1)} ml", delta=f"{round(total_c/dias_activos_c, 1)} prom/día activo")
