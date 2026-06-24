@@ -103,43 +103,78 @@ def mostrar():
     tab_corte, tab_canteo = st.tabs(["🪚 Procesamiento de Corte (S / E)", "🪵 Procesamiento de Canteo (C)"])
 
     # =========================================================
-    # VISTA 1: CORTE (MÁQUINAS S Y E)
+    # VISTA 1: CORTE (MÁQUINAS S Y E) - 4 RECTAS: TABLEROS Y RETAZOS
     # =========================================================
     with tab_corte:
         data_corte = []
         total_s, total_e = 0.0, 0.0
         
+        # Primero nos aseguramos de normalizar la columna Material a strings limpios
+        if not df_filtrado.empty and "Material" in df_filtrado.columns:
+            df_filtrado["Material"] = df_filtrado["Material"].astype(str).str.strip()
+
         for d in rango_dias:
             df_dia = df_filtrado[df_filtrado["Fecha_Corte"] == d]
-            cortes_s = df_dia[df_dia["Maquina"] == "S"]["Cantidad"].sum()
-            cortes_e = df_dia[df_dia["Maquina"] == "E"]["Cantidad"].sum()
             
-            total_s += cortes_s
-            total_e += cortes_e
+            # Filtrado por Máquina S (Seccionadora)
+            df_s = df_dia[df_dia["Maquina"] == "S"]
+            tab_s = df_s[df_s["Material"] == "Tablero"]["Cantidad"].sum()
+            ret_s = df_s[df_s["Material"] == "Retazo"]["Cantidad"].sum()
             
-            if cortes_s > 0 or cortes_e > 0:
-                data_corte.append({"Día": d.strftime("%d/%m"), "Máquina": "Seccionadora S", "Cantidad": round(cortes_s, 2)})
-                data_corte.append({"Día": d.strftime("%d/%m"), "Máquina": "Escuadradora E", "Cantidad": round(cortes_e, 2)})
+            # Filtrado por Máquina E (Escuadradora)
+            df_e = df_dia[df_dia["Maquina"] == "E"]
+            tab_e = df_e[df_e["Material"] == "Tablero"]["Cantidad"].sum()
+            ret_e = df_e[df_e["Material"] == "Retazo"]["Cantidad"].sum()
+            
+            # Mantener la suma total para los KPIs inferiores del resumen
+            total_s += (tab_s + ret_s)
+            total_e += (tab_e + ret_e)
+            
+            # Inyección independiente para conformar las 4 rectas continuas (Solo si el valor aporta carga)
+            nombre_col = d.strftime("%d/%m")
+            if tab_s > 0:
+                data_corte.append({"Día": nombre_col, "Cantidad": round(tab_s, 2), "Línea Operativa": "🪚 Tableros Seccionadora S"})
+            if ret_s > 0:
+                data_corte.append({"Día": nombre_col, "Cantidad": round(ret_s, 2), "Línea Operativa": "♻️ Retazos Seccionadora S"})
+            if tab_e > 0:
+                data_corte.append({"Día": nombre_col, "Cantidad": round(tab_e, 2), "Línea Operativa": "🪚 Tableros Escuadradora E"})
+            if ret_e > 0:
+                data_corte.append({"Día": nombre_col, "Cantidad": round(ret_e, 2), "Línea Operativa": "♻️ Retazos Escuadradora E"})
 
         if data_corte:
             df_plotly_corte = pd.DataFrame(data_corte)
+            
+            # Construcción gráfica multifactorial mapeada por la serie Línea Operativa
             fig_corte = px.line(
                 df_plotly_corte, 
                 x="Día", 
                 y="Cantidad", 
-                color="Máquina",
+                color="Línea Operativa",
                 text="Cantidad",
-                color_discrete_map={"Seccionadora S": "#D32F2F", "Escuadradora E": "#1976D2"}
+                color_discrete_map={
+                    "🪚 Tableros Seccionadora S": "#D32F2F",  # Rojo oscuro
+                    "♻️ Retazos Seccionadora S": "#EF9A9A",   # Rojo claro
+                    "🪚 Tableros Escuadradora E": "#1976D2",  # Azul oscuro
+                    "♻️ Retazos Escuadradora E": "#90CAF9"   # Azul claro
+                }
             )
-            fig_corte.update_traces(textposition="top center", marker=dict(size=6), mode="lines+markers+text")
+            
+            fig_corte.update_traces(
+                textposition="top center", 
+                marker=dict(size=5, symbol="circle"), 
+                mode="lines+markers+text"
+            )
+            
             fig_corte.update_layout(
-                xaxis_title=None, yaxis_title="Cantidad de Tableros",
+                xaxis_title=None, 
+                yaxis_title="Cantidad de Tableros / Unidades",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified"
+                margin=dict(l=10, r=10, t=15, b=10), 
+                hovermode="x unified"
             )
             st.plotly_chart(fig_corte, use_container_width=True)
         else:
-            st.info("📂 No se detectaron registros de corte (S/E) en este rango.")
+            st.info("📂 No se detectaron registros de tableros o retazos en este rango.")
 
         st.markdown("##### 📋 Resumen del Período")
         c_kpi1, c_kpi2 = st.columns(2)
