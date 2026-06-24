@@ -197,8 +197,8 @@ def mostrar():
         except Exception as e:
             st.error(f"Error crítico en el renderizado de la matriz: {e}")
 
-    # =========================================================
-    # PESTAÑA 2: VISTA GRÁFICA DE LA CURVA DE FABRICACIÓN (CORREGIDO: Fuera del bloque anterior)
+   # =========================================================
+    # PESTAÑA 2: VISTA GRÁFICA DE LA CURVA DE FABRICACIÓN (MIGRADO A PLOTLY)
     # =========================================================
     with tab_grafico:
         try:
@@ -206,7 +206,7 @@ def mostrar():
             lista_dias_cache = st.session_state.get("lista_dias_cache", None)
 
             if df_editor_base_cache is not None and not df_editor_base_cache.empty:
-                st.markdown("<h4 style='margin: 0px; padding-bottom: 0.5rem;'>📈 Curva de Carga Diaria (Tableros)</h4>", unsafe_allow_html=True)
+                st.markdown("<h4 style='margin: 0px; padding-bottom: 0.5rem;'>📈 Curva de Carga Diaria (Tableros Proyectados)</h4>", unsafe_allow_html=True)
                 
                 fechas_grafico = []
                 totales_grafico = []
@@ -220,9 +220,33 @@ def mostrar():
                 df_curva = pd.DataFrame({
                     "Día": fechas_grafico,
                     "Tableros a Cortar": totales_grafico
-                }).set_index("Día")
+                })
                 
-                st.line_chart(df_curva, use_container_width=True, color="#D32F2F")
+                # --- NUEVA RENDERIZACIÓN CON PLOTLY PARA INYECTAR LAS ETIQUETAS DIARIAS ---
+                fig_curva = px.line(
+                    df_curva,
+                    x="Día",
+                    y="Tableros a Cortar",
+                    text="Tableros a Cortar",  # Inyecta dinámicamente las etiquetas numéricas en cada punto
+                    color_discrete_sequence=["#D32F2F"]
+                )
+                
+                # Configuración estética de las etiquetas en los nodos de la curva
+                fig_curva.update_traces(
+                    textposition="top center", 
+                    marker=dict(size=6, symbol="circle"), 
+                    mode="lines+markers+text"
+                )
+                
+                fig_curva.update_layout(
+                    xaxis_title=None,
+                    yaxis_title="Cantidad de Tableros",
+                    margin=dict(l=10, r=10, t=15, b=10),
+                    hovermode="x unified"
+                )
+                
+                # Despliegue del gráfico Plotly adaptado al contenedor de Streamlit
+                st.plotly_chart(fig_curva, use_container_width=True)
                 
                 c_inf1, c_inf2 = st.columns(2)
                 with c_inf1:
