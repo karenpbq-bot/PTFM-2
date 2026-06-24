@@ -197,22 +197,32 @@ def mostrar():
         except Exception as e:
             st.error(f"Error crítico en el renderizado de la matriz: {e}")
 
-   # =========================================================
+    # =========================================================
     # PESTAÑA 2: VISTA GRÁFICA DE LA CURVA DE FABRICACIÓN (MIGRADO A PLOTLY)
     # =========================================================
     with tab_grafico:
         try:
             df_editor_base_cache = st.session_state.get("df_editor_base_cache", None)
-            lista_dias_cache = st.session_state.get("lista_dias_cache", None)
 
             if df_editor_base_cache is not None and not df_editor_base_cache.empty:
                 st.markdown("<h4 style='margin: 0px; padding-bottom: 0.5rem;'>📈 Curva de Carga Diaria (Tableros Proyectados)</h4>", unsafe_allow_html=True)
                 
+                # Generación analítica independiente del rango temporal seleccionado
+                inicio_rango_grafico = fecha_inicio_vista
+                num_dias_grafico = 30 if "Mensual" in vista else 90
+
+                lista_dias_grafico = []
+                for x in range(num_dias_grafico):
+                    d = inicio_rango_grafico + timedelta(days=x)
+                    if d.weekday() < 6: # Excluye domingos de manera estricta
+                        lista_dias_grafico.append(d)
+
                 fechas_grafico = []
                 totales_grafico = []
                 
-                for d in lista_dias_cache:
+                for d in lista_dias_grafico:
                     nombre_col = d.strftime("%d/%m")
+                    # Suma el volumen del día si existe en las columnas del dataframe operativo
                     total_dia = df_editor_base_cache[nombre_col].sum() if nombre_col in df_editor_base_cache.columns else 0.0
                     fechas_grafico.append(nombre_col)
                     totales_grafico.append(round(total_dia, 2))
