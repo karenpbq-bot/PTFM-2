@@ -60,10 +60,19 @@ def mostrar():
 
     # 3. CONSTRUCCIÓN DE LA MATRIZ DE TABLEROS
     if not df_filtrado.empty:
-        # A. Normalización de Tipologías de Mueble
+        # A. Normalización de Tipologías de Mueble (Lógica de Mapeo Flexible)
         if "Tipo" in df_filtrado.columns:
-            df_filtrado["Mueble_Clase"] = df_filtrado["Tipo"].astype(str).str.strip().str.capitalize()
-            df_filtrado.loc[~df_filtrado["Mueble_Clase"].isin(["Cocina", "Closet", "Baño"]), "Mueble_Clase"] = "Otros"
+            # Convertimos a mayúsculas temporales para evaluar subcadenas sin fallas por tildes o tipos de letra
+            tipo_upper = df_filtrado["Tipo"].astype(str).str.upper().str.strip()
+            
+            # Inicializamos la columna con la categoría por defecto
+            df_filtrado["Mueble_Clase"] = "Otros"
+            
+            # Aplicamos reglas jerárquicas basadas en tus requerimientos de taller
+            df_filtrado.loc[tipo_upper.str.contains("CLOSET|W Y CLOSET|VESTIDOR", na=False), "Mueble_Clase"] = "Closet"
+            df_filtrado.loc[tipo_upper.str.contains("COCINA", na=False), "Mueble_Clase"] = "Cocina"
+            df_filtrado.loc[tipo_upper.str.contains("BAÑO", na=False), "Mueble_Clase"] = "Baño"
+            df_filtrado.loc[tipo_upper.str.contains("LAVANDERIA|LAVANDERÍA", na=False), "Mueble_Clase"] = "Lavanderia"
         else:
             df_filtrado["Mueble_Clase"] = "Otros"
 
@@ -108,9 +117,23 @@ def mostrar():
                 matriz_consumo[col] = 0.0
         matriz_consumo = matriz_consumo[columnas_diseno]
 
-        # Estructura rígida de 4 filas requerida (Usa la variable sin tilde)
-        filas_diseno = ["Cocina", "Closet", "Baño", "Otros"]
+        # Validación estructural rígida de las 5 filas del reporte de ingeniería
+        filas_diseno = ["Cocina", "Closet", "Baño", "Lavanderia", "Otros"]
         matriz_consumo = matriz_consumo.reindex(filas_diseno, fill_value=0.0)
+
+        # Inserción de la fila de totales generales
+        matriz_totales = matriz_consumo.copy()
+        matriz_totales.loc["🔥 TOTAL REQUERIDO"] = matriz_totales.sum()
+
+        # Formateo visual numérico profesional
+        matriz_vista = matriz_totales.map(lambda x: f"{round(x, 2):,.2f} Unid" if x > 0 else "0.00 Unid")
+
+        st.markdown("#### 🧱 Matriz de Consumo de Tableros por Tipología de Mueble")
+        st.dataframe(matriz_vista, use_container_width=True)
+
+        # 4. MAPEO DE UBICACIONES Y FRENTES ATENDIDOS
+        st.markdown("#### 📍 Mapeo de Ubicaciones y Frentes Atendidos")
+        iconos_muebles = {"Cocina": "🍳", "Closet": "🛏️", "Baño": "🚿", "Lavanderia": "🧺", "Otros": "📦"}
 
         # Inserción de fila de totales generales
         matriz_totales = matriz_consumo.copy()
@@ -131,10 +154,12 @@ def mostrar():
             ico = iconos_muebles.get(clase, "▪️")
             
             if not df_mueble.empty and "Ubicación" in df_mueble.columns:
-                # Quitamos nulos y espacios en blanco de los pisos
+                # 1. Convertimos de forma segura toda la columna a string limpiando decimales flotantes (.0)
                 df_mueble["Ubicación"] = df_mueble["Ubicación"].astype(str).str.replace(".0", "", regex=False).str.strip()
                 pisos = df_mueble["Ubicación"].unique()
-                pisos_validos = [p for p in pisos if p != "" and p.lower() != "nan"]
+                
+                # 2. Filtro seguro convirtiendo cada elemento a string antes de aplicar .lower()
+                pisos_validos = [p for p in pisos if str(p) != "" and str(p).lower() != "nan"]
                 
                 if pisos_validos:
                     string_pisos = ", ".join(sorted(pisos_validos))
