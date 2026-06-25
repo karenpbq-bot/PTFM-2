@@ -7,7 +7,7 @@ from datetime import timedelta, datetime, date
 import plotly.express as px
 from base_datos import *
 import os  # <-- Importante para manejar rutas de archivos
-import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes 
+import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes, tableros_req 
 # --- MARCADOR DE SINCRONIZACIÓN OPERATIVA ---
 # REESTRUCTURACIÓN DE MÓDULO: 3 PESTAÑAS INDEPENDIENTES DE MÁQUINAS (S / E / C)
 # ACTUALIZACIÓN EN CADENA PARA REFLEJAR CAMBIOS DE FORMA INMEDIATA.
@@ -118,6 +118,9 @@ elif menu == "Producción Proyectada":
 
 elif menu == "Rendimiento de Corte":
     cortes.mostrar()
+
+elif menu == "Avance por Proyecto":
+    tableros_req.mostrar()  # <--- Apunta ahora al archivo tableros_req.py
 
 elif menu == "Seguimiento": 
     seguimiento.mostrar(supervisor_id=id_usuario if rol_usuario == "Supervisor" else None)
