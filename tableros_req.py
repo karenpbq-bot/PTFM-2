@@ -99,9 +99,9 @@ def mostrar():
                 matriz_consumo[col] = 0.0
         matriz_consumo = matriz_consumo[columnas_diseno]
 
-        # Validación estructural rígida de las 4 filas del reporte de ingeniería
+        # Estructura rígida de 4 filas requerida (Usa la variable sin tilde)
         filas_diseno = ["Cocina", "Closet", "Baño", "Otros"]
-        matriz_consumo = matriz_consumo.reindex(filas_diseño, fill_value=0.0)
+        matriz_consumo = matriz_consumo.reindex(filas_diseno, fill_value=0.0)
 
         # Inserción de fila de totales generales
         matriz_totales = matriz_consumo.copy()
