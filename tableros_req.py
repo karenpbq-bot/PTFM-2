@@ -6,15 +6,21 @@ def mostrar():
     st.markdown("### 📂 Control de Avances Operativos por Proyecto")
     st.write("Análisis del avance en base al número de tableros requeridos y procesados por frente de trabajo.")
 
-    # 1. ENLACE DIRECTO CON EL SHEET DE GOOGLE DRIVE (En vivo)
-    # ID extraído del enlace oficial provisto por el usuario
-    SPREADSHEET_ID = "1ATuNF0Js31QZCo3g3wDUfP3O2PzFjNjW"
-    GID = "60453366"
-    url_csv = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv&gid={GID}"
+    # 1. ENLACE DIRECTO CON EL EXCEL ALOJADO EN GOOGLE DRIVE (En vivo)
+    # ID extraído del enlace oficial provisto para el archivo .xlsx
+    FILE_ID = "1ATuNF0Js31QZCo3g3wDUfP3O2PzFjNjW"
+    url_excel = f"https://docs.google.com/spreadsheets/d/{FILE_ID}/export?format=xlsx"
 
     try:
-        df = pd.read_csv(url_csv)
+        # Leemos el archivo binario de Excel directamente de la nube especificando la pestaña 'Sheet1'
+        df = pd.read_excel(url_excel, sheet_name="Sheet1")
     except Exception as e:
+        # Respaldo si hay problemas de conectividad de red temporal
+        try:
+            df = pd.read_csv("Cortes holzher- OP Gildo 29052026.xlsx - Sheet1.csv")
+        except:
+            st.error(f"❌ Error de enlace: {e}. No se pudo conectar con Google Drive ni se encontró el archivo de respaldo local.")
+            st.stop()
         # Respaldo si hay problemas de conectividad de red temporal
         try:
             df = pd.read_csv("Cortes holzher- OP Gildo 29052026.xlsx - Sheet1.csv")
