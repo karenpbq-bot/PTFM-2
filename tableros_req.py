@@ -67,15 +67,24 @@ def mostrar():
         else:
             df_filtrado["Mueble_Clase"] = "Otros"
 
-        # B. Segmentación de Familias de Materiales
+        # B. Segmentación de Familias de Materiales (Lógica Corregida sin Marcas)
         def clasificar_material(material_nombre):
+            # Convertimos a mayúsculas y limpiamos espacios para un escaneo infalible
             mat_str = str(material_nombre).upper().strip()
-            if "DUROLAC" in mat_str or "FOLIO" in mat_str:
-                return "Folio (Durolac)"
+            
+            # 1. Regla para Folio (Evaluación estricta por tipo de material)
+            if "FOLIO" in mat_str:
+                return "Folio"
+            
+            # 2. Regla para Tapa
             elif "TAPA" in mat_str:
                 return "Tapa"
+            
+            # 3. Regla para Melamina Blanco (Ahora capturará correctamente 'Blanco - DUROLAC')
             elif "BLANCO" in mat_str:
                 return "Melamina Blanco"
+            
+            # 4. Regla para Melamina de Color (Por descarte: cualquier otra combinación o marca)
             else:
                 return "Melamina de Color"
 
