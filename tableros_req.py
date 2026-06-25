@@ -109,7 +109,7 @@ def mostrar():
 
         # 4. MAPEO DE UBICACIONES Y FRENTES ATENDIDOS
         st.markdown("#### 📍 Mapeo de Ubicaciones y Frentes Atendidos")
-        iconos_muebles = {"Cocina": "🍳", "Closet": "🛏️", "Baño": "🚿", "Lavanderia": "🧺", "Otros": "📦"}
+        iconos_muebles = {"Cocina": "🍳", "Closet": "🛏️", "Baño": "🚿", "Lavanderia": "🧺", "Otro": "📦"}
         
         for clase in filas_diseno:
             df_mueble = df_filtrado[df_filtrado["Mueble_Clase"] == clase]
