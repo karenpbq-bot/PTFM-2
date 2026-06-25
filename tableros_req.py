@@ -109,7 +109,7 @@ def mostrar():
 
         # 4. MAPEO DE UBICACIONES Y FRENTES ATENDIDOS
         st.markdown("#### 📍 Mapeo de Ubicaciones y Frentes Atendidos")
-        iconos_muebles = {"Cocina": "🍳", "Closet": "🛏️", "Baño": "🚿", "Lavanderia": "🧺", "Otro": "📦"}
+        iconos_muebles = {"Cocina": "🍳", "Closet": "🛏️", "Baño": "🚿", "Lavanderia": "🧺", "Otros": "📦"}
         
         for clase in filas_diseno:
             df_mueble = df_filtrado[df_filtrado["Mueble_Clase"] == clase]
@@ -127,7 +127,17 @@ def mostrar():
                 
                 if pisos_validos:
                     string_pisos = ", ".join(sorted(pisos_validos))
-                    st.info(f"**{ico} {clase}s Procesados** -> Ubicaciones consideradas: `{string_pisos}`")
+                    # Ajuste de concordancia gramatical para evitar el "Otross"
+                nombre_mostrado = "Otros" if clase == "Otros" else f"{clase}s"
+
+                if pisos_validos:
+                    string_pisos = ", ".join(sorted(pisos_validos))
+                    st.info(f"**{ico} {nombre_mostrado} Procesados** -> Ubicaciones consideradas: `{string_pisos}`")
+                else:
+                    st.write(f"{ico} {nombre_mostrado}: Sin ubicaciones asignadas aún.")
+            else:
+                nombre_mostrado = "Otros" if clase == "Otros" else f"{clase}s"
+                st.write(f"{ico} {nombre_mostrado}: Sin registros de manufactura en este rango.")
                 else:
                     st.write(f"{ico} {clase}s: Sin ubicaciones asignadas aún.")
             else:
