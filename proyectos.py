@@ -14,7 +14,7 @@ def mostrar():
 
     st.markdown('<p class="report-title">📁 Centro de Control y Gestión de Proyectos</p>', unsafe_allow_html=True)
     
-    # REINGENIERÍA: Listado es ahora la pestaña número 1 (la primera en visualizarse)
+    # REINGENIERÍA: Listado es la primera pestaña en visualizarse
     tab_listado, tab_registro, tab_matriz = st.tabs(["📋 Listado, Búsqueda y Edición", "🆕 Registrar Proyecto Nuevo", "📦 Matriz de Productos"])
 
     # Carga inicial de supervisores para mapeo de nombres de responsables
@@ -59,19 +59,24 @@ def mostrar():
             # Clonamos el DataFrame para el control del editor interactivo
             df_editor = df_p.copy()
             df_editor['responsable'] = df_editor['responsable'].astype(str)
+            
+            # SOLUCIÓN AL TYPEERROR: Escalamos el avance a rango 0.0 - 1.0 para compatibilidad estricta con ProgressColumn
+            df_editor['avance'] = df_editor['avance'].fillna(0.0) / 100.0
+            # Forzar límites físicos de seguridad por si el cálculo de obra excede el rango estándar
+            df_editor['avance'] = df_editor['avance'].clip(0.0, 1.0)
 
-            # RENDERIZADO SANEADO DE LA MATRIZ CON EDICIÓN EXCLUSIVA DE ESTADO
+            # RENDERIZADO DE LA MATRIZ CON EDICIÓN EXCLUSIVA DE ESTADO
             cambios_tabla = st.data_editor(
                 df_editor[['id', 'codigo', 'proyecto_text', 'partida', 'responsable', 'total_tableros', 'estado', 'avance']],
                 column_config={
-                    "id": None, # Oculta la columna de ID interno
+                    "id": None, # Oculta la columna de ID interno del backend
                     "codigo": st.column_config.TextColumn("Código", disabled=True),
                     "proyecto_text": st.column_config.TextColumn("Proyecto", disabled=True),
                     "partida": st.column_config.TextColumn("Partida", disabled=True),
                     "responsable": st.column_config.TextColumn("Responsable", disabled=True),
                     "total_tableros": st.column_config.NumberColumn("Nro Tableros", format="%d", disabled=True),
-                    # SOLUCIÓN AL ERROR: Se corrige format a "%.2f" (Streamlit añade la barra y la escala nativamente)
-                    "avance": st.column_config.ProgressColumn("Avance Real", format="%.2f", min_value=0.0, max_value=100.0, disabled=True),
+                    # Configuración optimizada nativa de Streamlit para evitar desbordamientos
+                    "avance": st.column_config.ProgressColumn("Avance Real", min_value=0.0, max_value=1.0, format="%.2f", disabled=True),
                     # El Estado es la única columna editable directamente en la celda de la matriz
                     "estado": st.column_config.SelectboxColumn("Estado", options=lista_estados, required=True, disabled=False)
                 },
@@ -103,11 +108,11 @@ def mostrar():
             seleccionado = st.selectbox("🎯 Seleccione un proyecto para editar sus datos generales o eliminarlo:", ["-- Seleccionar para Gestionar --"] + opciones_proy)
 
             if seleccionado != "-- Seleccionar para Gestionar --":
-                fila_proy = df_p[df_p['proyecto_display'] == seleccionado].iloc[0]
+                fila_proy = df_p[df_p['id'] == df_p[df_p['proyecto_display'] == seleccionado]['id'].values[0]].iloc[0]
                 id_sel = int(fila_proy['id'])
                 st.session_state.id_p_sel = id_sel 
 
-                # Formulario reactivo para cambiar absolutamente todos los datos (A excepción del estado que se maneja arriba)
+                # Formulario reactivo para cambiar los datos generales del proyecto
                 with st.form("form_edicion_integral_proyecto"):
                     st.markdown(f"### 🛠️ Sección de Edición: **{fila_proy['proyecto_text']}**")
                     st.caption("Nota: El estado se edita de forma directa interactuando sobre su celda en la 'Matriz de Proyectos' de arriba.")
