@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, date
 from base_datos import crear_proyecto, obtener_proyectos, eliminar_proyecto_completo, obtener_supervisores, conectar
 
 def mostrar():
-    # Estilos CSS profesionales para mejorar la visualización de la interfaz
+    # Estilos CSS profesionales para la interfaz del Centro de Control
     st.markdown("""
         <style>
         .report-title { font-size: 28px; font-weight: bold; color: #1E3A8A; margin-bottom: 0.5rem; }
@@ -14,7 +14,7 @@ def mostrar():
 
     st.markdown('<p class="report-title">📁 Centro de Control y Gestión de Proyectos</p>', unsafe_allow_html=True)
     
-    # REINGENIERÍA: Listado es la primera pestaña en visualizarse
+    # REINGENIERÍA: Listado es ahora la pestaña número 1 (la primera en visualizarse)
     tab_listado, tab_registro, tab_matriz = st.tabs(["📋 Listado, Búsqueda y Edición", "🆕 Registrar Proyecto Nuevo", "📦 Matriz de Productos"])
 
     # Carga inicial de supervisores para mapeo de nombres de responsables
@@ -25,12 +25,12 @@ def mostrar():
     lista_estados = ["En Cotización", "En ejecución", "Cerrado"]
 
     # =========================================================
-    # PESTAÑA 1: LISTADO, BÚSQUEDA Y EDICIÓN (MATRIZ DE PROYECTOS)
+    # PESTAÑA 1: LISTADO, BÚSQUEDA Y EDICIÓN (VISTA MATRIZ DE PROYECTOS)
     # =========================================================
     with tab_listado:
         st.subheader("📊 Matriz de Proyectos")
         
-        # REINGENIERÍA DE INTERFAZ: Buscador y Filtro de Estado a la misma altura
+        # Filtros alineados a la misma altura horizontal
         c_bus1, c_bus2 = st.columns([4, 4])
         
         with c_bus1:
@@ -39,39 +39,40 @@ def mostrar():
         with c_bus2:
             estado_filtro = st.selectbox("🚦 Filtrar por Estado:", ["-- Todos los Estados --"] + lista_estados, index=0)
         
-        # 1. Obtención inicial de datos mediante el buscador por texto
+        # Obtención inicial de datos mediante el buscador por texto
         df_p = obtener_proyectos(bus)
         
         if not df_p.empty:
-            # Asegurar de forma segura la existencia de la columna de estado
+            # Asegurar la existencia de la columna de estado por reingeniería
             if 'estado' not in df_p.columns:
                 df_p['estado'] = 'En Cotización'
             
-            # 2. Aplicación del filtro por estado si se seleccionó uno específico
+            # Aplicación del filtro por estado si se seleccionó uno específico
             if estado_filtro != "-- Todos los Estados --":
                 df_p = df_p[df_p['estado'] == estado_filtro].copy()
 
-        # Renderizar la matriz solo si quedan registros tras el filtrado compuesto
+        # Renderizar la matriz solo si existen registros tras el filtrado compuesto
         if not df_p.empty:
             # Mapear el ID del supervisor al nombre real para visualización en la matriz
             df_p['responsable'] = df_p['supervisor_id'].map(dict_sups_inv).fillna("Sin Asignar")
             
-            # Preparar el DataFrame para el editor interactivo
+            # Clonamos el DataFrame para el control del editor interactivo
             df_editor = df_p.copy()
             df_editor['responsable'] = df_editor['responsable'].astype(str)
 
-            # RENDERIZADO DE LA MATRIZ CON EDICIÓN EXCLUSIVA DE ESTADO
+            # RENDERIZADO SANEADO DE LA MATRIZ CON EDICIÓN EXCLUSIVA DE ESTADO
             cambios_tabla = st.data_editor(
                 df_editor[['id', 'codigo', 'proyecto_text', 'partida', 'responsable', 'total_tableros', 'estado', 'avance']],
                 column_config={
-                    "id": None, # Oculta el ID interno
+                    "id": None, # Oculta la columna de ID interno
                     "codigo": st.column_config.TextColumn("Código", disabled=True),
                     "proyecto_text": st.column_config.TextColumn("Proyecto", disabled=True),
                     "partida": st.column_config.TextColumn("Partida", disabled=True),
                     "responsable": st.column_config.TextColumn("Responsable", disabled=True),
                     "total_tableros": st.column_config.NumberColumn("Nro Tableros", format="%d", disabled=True),
-                    "avance": st.column_config.ProgressColumn("Avance Real", format="%.2f%%", min_value=0, max_value=100, disabled=True),
-                    # El Estado es totalmente mutable directamente en la celda
+                    # SOLUCIÓN AL ERROR: Se corrige format a "%.2f" (Streamlit añade la barra y la escala nativamente)
+                    "avance": st.column_config.ProgressColumn("Avance Real", format="%.2f", min_value=0.0, max_value=100.0, disabled=True),
+                    # El Estado es la única columna editable directamente en la celda de la matriz
                     "estado": st.column_config.SelectboxColumn("Estado", options=lista_estados, required=True, disabled=False)
                 },
                 hide_index=True,
@@ -97,7 +98,7 @@ def mostrar():
 
             st.divider()
             
-            # --- PANEL DE ACCIÓN SUB-SIGUIENTE: EDICIÓN DE PARÁMETROS GENERALES ---
+            # --- SECCIÓN SIGUIENTE: FORMULARIO DE EDICIÓN DE PARÁMETROS GENERALES ---
             opciones_proy = df_p['proyecto_display'].tolist()
             seleccionado = st.selectbox("🎯 Seleccione un proyecto para editar sus datos generales o eliminarlo:", ["-- Seleccionar para Gestionar --"] + opciones_proy)
 
@@ -106,10 +107,10 @@ def mostrar():
                 id_sel = int(fila_proy['id'])
                 st.session_state.id_p_sel = id_sel 
 
-                # Formulario reactivo con todos los datos editables del proyecto (A excepción del estado)
+                # Formulario reactivo para cambiar absolutamente todos los datos (A excepción del estado que se maneja arriba)
                 with st.form("form_edicion_integral_proyecto"):
                     st.markdown(f"### 🛠️ Sección de Edición: **{fila_proy['proyecto_text']}**")
-                    st.caption("Nota: El estado se edita directamente haciendo doble clic sobre la celda en la 'Matriz de Proyectos' de arriba.")
+                    st.caption("Nota: El estado se edita de forma directa interactuando sobre su celda en la 'Matriz de Proyectos' de arriba.")
                     
                     c_ed1, c_ed2 = st.columns(2)
                     edit_nombre = c_ed1.text_input("Nombre del Proyecto (Obligatorio):", value=str(fila_proy['proyecto_text']))
@@ -153,9 +154,9 @@ def mostrar():
                             except Exception as e:
                                 st.error(f"Error al actualizar la base de datos: {e}")
 
-                # --- ZONA DE ELIMINACIÓN INTEGRADA ---
+                # --- ZONA DE ELIMINACIÓN INTEGRADA EN LA SECCIÓN ---
                 with st.expander("🚫 Zona de Peligro: Eliminar Proyecto"):
-                    st.warning(f"⚠️ Al presionar el botón inferior se eliminará permanentemente el proyecto '{fila_proy['proyecto_text']}' y todas sus piezas de forma irreversible.")
+                    st.warning(f"⚠️ Al presionar el botón inferior se eliminará permanentemente el proyecto '{fila_proy['proyecto_text']}' y todas sus piezas de forma irreversible en Supabase.")
                     confirmar_borrado = st.checkbox(f"Confirmo que deseo purgar el proyecto {fila_proy['proyecto_text']} del servidor de la empresa")
                     
                     if st.button("🔥 Eliminar Proyecto Completo", type="primary", disabled=not confirmar_borrado, use_container_width=True):
@@ -165,7 +166,7 @@ def mostrar():
                             st.cache_data.clear()
                             st.rerun()
         else:
-            st.info("📂 No existen proyectos activos o en este estado que coincidan con los filtros de búsqueda.")
+            st.info("📂 No existen proyectos registrados que coincidan con los criterios de los filtros seleccionados.")
 
     # =========================================================
     # PESTAÑA 2: REGISTRAR PROYECTO NUEVO (CAMPOS MÍNIMOS OBLIGATORIOS)
@@ -205,7 +206,7 @@ def mostrar():
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Error de estas de consistencia en Supabase: {e}")
+                        st.error(f"Error de consistencia en Supabase: {e}")
 
     # =========================================================
     # PESTAÑA 3: MATRIZ DE PRODUCTOS (DESPIECE VINCULADO)
