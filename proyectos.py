@@ -14,7 +14,7 @@ def mostrar():
 
     st.markdown('<p class="report-title">📁 Centro de Control y Gestión de Proyectos</p>', unsafe_allow_html=True)
     
-    # REINGENIERÍA: Listado es la primera pestaña en visualizarse
+    # REINGENIERÍA: Listado es la primera pestaña en visualizarse por defecto
     tab_listado, tab_registro, tab_matriz = st.tabs(["📋 Listado, Búsqueda y Edición", "🆕 Registrar Proyecto Nuevo", "📦 Matriz de Productos"])
 
     # Carga inicial de supervisores para mapeo de nombres de responsables
@@ -30,7 +30,7 @@ def mostrar():
     with tab_listado:
         st.subheader("📊 Matriz de Proyectos")
         
-        # Filtros alineados a la misma altura horizontal
+        # Filtros alineados perfectamente a la misma altura horizontal
         c_bus1, c_bus2 = st.columns([4, 4])
         
         with c_bus1:
@@ -60,9 +60,8 @@ def mostrar():
             df_editor = df_p.copy()
             df_editor['responsable'] = df_editor['responsable'].astype(str)
             
-            # SOLUCIÓN AL TYPEERROR: Escalamos el avance a rango 0.0 - 1.0 para compatibilidad estricta con ProgressColumn
-            df_editor['avance'] = df_editor['avance'].fillna(0.0) / 100.0
-            # Forzar límites físicos de seguridad por si el cálculo de obra excede el rango estándar
+            # SOLUCIÓN DEFINITIVA AL TYPEERROR: Conversión estricta a tipo flotante nativo de Python (.astype(float))
+            df_editor['avance'] = df_editor['avance'].fillna(0.0).astype(float) / 100.0
             df_editor['avance'] = df_editor['avance'].clip(0.0, 1.0)
 
             # RENDERIZADO DE LA MATRIZ CON EDICIÓN EXCLUSIVA DE ESTADO
@@ -75,7 +74,7 @@ def mostrar():
                     "partida": st.column_config.TextColumn("Partida", disabled=True),
                     "responsable": st.column_config.TextColumn("Responsable", disabled=True),
                     "total_tableros": st.column_config.NumberColumn("Nro Tableros", format="%d", disabled=True),
-                    # Configuración optimizada nativa de Streamlit para evitar desbordamientos
+                    # Configuración nativa estable en rango 0.0 a 1.0
                     "avance": st.column_config.ProgressColumn("Avance Real", min_value=0.0, max_value=1.0, format="%.2f", disabled=True),
                     # El Estado es la única columna editable directamente en la celda de la matriz
                     "estado": st.column_config.SelectboxColumn("Estado", options=lista_estados, required=True, disabled=False)
