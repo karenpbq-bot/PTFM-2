@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, date
 from base_datos import crear_proyecto, obtener_proyectos, eliminar_proyecto_completo, obtener_supervisores, conectar
 
 def mostrar():
-    # Estilos CSS profesionales para la consistencia visual del sistema modular
+    # Estilos CSS profesionales para la interfaz del Centro de Control
     st.markdown("""
         <style>
         .report-title { font-size: 28px; font-weight: bold; color: #1E3A8A; margin-bottom: 0.5rem; }
@@ -14,10 +14,10 @@ def mostrar():
 
     st.markdown('<p class="report-title">📁 Centro de Control y Gestión de Proyectos</p>', unsafe_allow_html=True)
     
-    # Estructura modular de 3 pestañas principales (Listado es la vista por defecto)
+    # REINGENIERÍA: La Matriz de proyectos es la pestaña principal por defecto
     tab_listado, tab_registro, tab_matriz = st.tabs(["📋 Matriz de Proyectos", "🆕 Registrar Proyecto Nuevo", "📦 Matriz de Productos"])
 
-    # Carga inicial de supervisores para mapeo de responsables
+    # Carga inicial de supervisores para el mapeo relacional de IDs a Nombres reales
     df_sups = obtener_supervisores()
     dict_sups = {r['nombre_real']: r['id'] for _, r in df_sups.iterrows()}
     dict_sups_inv = {r['id']: r['nombre_real'] for _, r in df_sups.iterrows()}
@@ -30,48 +30,47 @@ def mostrar():
     with tab_listado:
         st.subheader("📊 Control y Edición Directa de Proyectos")
         
-        # Filtros de segmentación alineados horizontalmente a la misma altura
+        # Filtros de segmentación perfectamente alineados a la misma altura horizontal
         c_bus1, c_bus2 = st.columns([4, 4])
         with c_bus1:
             bus = st.text_input("🔍 Buscar proyecto...", placeholder="Filtre por código, nombre del proyecto o cliente...", label_visibility="visible")
         with c_bus2:
             estado_filtro = st.selectbox("🚦 Filtrar por Estado:", ["-- Todos los Estados --"] + lista_estados, index=0)
         
-        # Obtención de registros desde la capa de persistencia (base_datos.py)
+        # Obtención de datos desde la base de datos
         df_p = obtener_proyectos(bus)
         
         if not df_p.empty:
-            # Consistencia para asegurar la columna de estado por reingeniería
+            # Forzar consistencia de la columna de estado requerida
             if 'estado' not in df_p.columns:
                 df_p['estado'] = 'En Cotización'
                 
-            # Aplicación del filtro por estado si no está en la opción global
+            # Aplicar filtro cruzado por estado seleccionado
             if estado_filtro != "-- Todos los Estados --":
                 df_p = df_p[df_p['estado'] == estado_filtro].copy()
 
         if not df_p.empty:
-            # Mapear el ID del supervisor al nombre real para visualización en la cuadrícula
+            # Mapear supervisor de ID numérico a Nombre de texto para la grilla
             df_p['responsable'] = df_p['supervisor_id'].map(dict_sups_inv).fillna("Sin Asignar")
             
-            # Preparar el DataFrame para el editor interactivo
+            # Preparar clon del DataFrame para el editor interactivo
             df_editor = df_p.copy()
             df_editor['responsable'] = df_editor['responsable'].astype(str)
             
-            # Normalización y casteo estricto de la columna de avance para evitar fallos de renderizado
-            df_editor['avance'] = df_editor['avance'].fillna(0.0).astype(float) / 100.0
-            df_editor['avance'] = df_editor['avance'].clip(0.0, 1.0)
+            # SOLUCIÓN DEFINITIVA: Formateamos el avance como string numérico limpio para eliminar el inestable ProgressColumn
+            df_editor['avance_vista'] = df_editor['avance'].fillna(0.0).astype(float).map("{:.2f}%".format)
             
-            # Asegurar casteo seguro de fechas globales para el componente DateColumn
+            # Casteo y formateo seguro de fechas globales para los selectores de calendario
             df_editor['f_ini'] = pd.to_datetime(df_editor['f_ini'], errors='coerce').dt.date
             df_editor['f_fin'] = pd.to_datetime(df_editor['f_fin'], errors='coerce').dt.date
 
-            st.caption("💡 Tip operativo: Modifique cualquier celda (Texto, Estado o Fechas) haciendo doble clic directamente sobre la matriz.")
+            st.caption("💡 Tip operativo: Modifique cualquier dato (Nombre, Cliente, Partida, Responsable, Tableros, Estado o Fechas) haciendo doble clic sobre la celda.")
 
-            # RENDERIZADO DE LA MATRIZ TOTALMENTE EDITABLE
+            # RENDERIZADO DE LA MATRIZ INTEGRAL EDITABLE
             cambios_tabla = st.data_editor(
-                df_editor[['id', 'codigo', 'proyecto_text', 'cliente', 'partida', 'responsable', 'total_tableros', 'estado', 'f_ini', 'f_fin', 'avance']],
+                df_editor[['id', 'codigo', 'proyecto_text', 'cliente', 'partida', 'responsable', 'total_tableros', 'estado', 'f_ini', 'f_fin', 'avance_vista']],
                 column_config={
-                    "id": None, # Ocultar el ID del sistema
+                    "id": None, # Ocultar id de control interno
                     "codigo": st.column_config.TextColumn("Código", disabled=True),
                     "proyecto_text": st.column_config.TextColumn("Proyecto", disabled=False, required=True),
                     "cliente": st.column_config.TextColumn("Cliente", disabled=False, required=True),
@@ -79,30 +78,28 @@ def mostrar():
                     "responsable": st.column_config.SelectboxColumn("Responsable", options=list(dict_sups.keys()), disabled=False, required=True),
                     "total_tableros": st.column_config.NumberColumn("Nro Tableros", format="%d", min_value=0, disabled=False),
                     "estado": st.column_config.SelectboxColumn("Estado", options=lista_estados, required=True, disabled=False),
-                    # Configuración de fechas con calendario desplegable integrado
+                    # Columnas de fechas con inputs de calendario nativos
                     "f_ini": st.column_config.DateColumn("F. Inicio Global", format="DD/MM/YYYY", required=True, disabled=False),
                     "f_fin": st.column_config.DateColumn("F. Término Global", format="DD/MM/YYYY", required=True, disabled=False),
-                    "avance": st.column_config.ProgressColumn("Avance Real", min_value=0.0, max_value=1.0, format="%.2f", disabled=True)
+                    "avance_vista": st.column_config.TextColumn("Avance Real", disabled=True)
                 },
                 hide_index=True,
                 use_container_width=True,
                 key="matriz_proyectos_colectiva_total"
             )
 
-            # PROCESAMIENTO Y APLICACIÓN DE CAMBIOS EN BLOQUE
-            c_save_col, c_del_col = st.columns([3, 5])
-            
-            if c_save_col.button("💾 Guardar Cambios Realizados en la Matriz", type="primary", use_container_width=True):
-                # Validar si hubo alteraciones comparando contra el estado inicial en memoria
-                if not cambios_tabla.equals(df_editor[['id', 'codigo', 'proyecto_text', 'cliente', 'partida', 'responsable', 'total_tableros', 'estado', 'f_ini', 'f_fin', 'avance']]):
+            # PROCESAMIENTO Y ACTUALIZACIÓN EN BLOQUE (SUBMIT AL SERVIDOR)
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("💾 Guardar Cambios Realizados en la Matriz", type="primary"):
+                # Comparar si la matriz interactiva sufrió variaciones frente a su estado inicial
+                if not cambios_tabla.equals(df_editor[['id', 'codigo', 'proyecto_text', 'cliente', 'partida', 'responsable', 'total_tableros', 'estado', 'f_ini', 'f_fin', 'avance_vista']]):
                     cambios_detectados = 0
+                    
                     for index, row in cambios_tabla.iterrows():
                         id_fila = int(row['id'])
-                        
-                        # Obtener la fila original antes de las modificaciones del usuario
                         original_row = df_p[df_p['id'] == id_fila].iloc[0]
                         
-                        # Extraer variables con fallback seguro de tipos
+                        # Extraer strings limpios
                         p_text = str(row['proyecto_text']).strip()
                         p_client = str(row['cliente']).strip()
                         p_partida = str(row['partida']).strip()
@@ -110,11 +107,11 @@ def mostrar():
                         p_tableros = int(row['total_tableros'])
                         p_estado = str(row['estado'])
                         
-                        # Procesamiento seguro de fechas mutadas
+                        # Transformación segura de objetos date a string ISO
                         p_f_ini = row['f_ini'].isoformat() if isinstance(row['f_ini'], (date, datetime)) else str(row['f_ini'])
                         p_f_fin = row['f_fin'].isoformat() if isinstance(row['f_fin'], (date, datetime)) else str(row['f_fin'])
 
-                        # Evaluar si esta fila en particular sufrió cambios estructurales
+                        # Evaluar si la fila actual presenta diferencias con el registro original de Supabase
                         if (p_text != str(original_row['proyecto_text']) or 
                             p_client != str(original_row['cliente']) or 
                             p_partida != str(original_row['partida']) or 
@@ -125,7 +122,7 @@ def mostrar():
                             p_f_fin != str(original_row['f_fin'])):
                             
                             if not p_text or not p_client or not p_partida:
-                                st.error(f"❌ Error en fila con Código {row['codigo']}: Los campos Proyecto, Cliente y Partida no pueden quedar vacíos.")
+                                st.error(f"❌ Los campos de Texto Obligatorios no pueden quedar vacíos en el Proyecto Código: {row['codigo']}")
                                 continue
                                 
                             try:
@@ -142,16 +139,16 @@ def mostrar():
                                 conectar().table("proyectos").update(payload_update).eq("id", id_fila).execute()
                                 cambios_detectados += 1
                             except Exception as e:
-                                st.error(f"Error al guardar datos del proyecto {row['codigo']}: {e}")
+                                st.error(f"Error al impactar Supabase para el proyecto {row['codigo']}: {e}")
                     
                     if cambios_detectados > 0:
-                        st.success(f"🎉 Se sincronizaron con éxito {cambios_detectados} proyecto(s) en el servidor de la empresa.")
+                        st.success(f"🎉 Sincronización exitosa. Se actualizaron {cambios_detectados} registro(s) en la base de datos de la empresa.")
                         st.cache_data.clear()
                         st.rerun()
                 else:
-                    st.info("ℹ️ No se detectó ninguna modificación en las celdas de la matriz para procesar.")
+                    st.info("ℹ️ No se detectaron modificaciones pendientes de procesar en las celdas.")
 
-            # --- SELECTOR INTEGRADO EXCLUSIVO PARA ASIGNAR EL PROYECTO ACTIVO EN SESIÓN O ELIMINACIÓN ---
+            # --- PANEL DE ACCIÓN INTEGRADO PARA SELECCIÓN ACTIVA O PURGA ---
             st.divider()
             opciones_proy = df_p['proyecto_display'].tolist()
             seleccionado = st.selectbox("🎯 Seleccione un proyecto de la matriz para enlazar su Despiece de Productos o removerlo:", ["-- Seleccionar Proyecto Activo --"] + opciones_proy)
@@ -160,15 +157,15 @@ def mostrar():
                 fila_proy = df_p[df_p['id'] == df_p[df_p['proyecto_display'] == seleccionado]['id'].values[0]].iloc[0]
                 id_sel = int(fila_proy['id'])
                 st.session_state.id_p_sel = id_sel 
-                st.info(f"✨ Proyecto **{fila_proy['proyecto_text']}** seleccionado para gestión de despieces. Puede dirigirse a la tercera pestaña.")
+                st.info(f"✨ Proyecto **{fila_proy['proyecto_text']}** enlazado correctamente. Puede dirigirse a la pestaña de 'Matriz de Productos' para ver o registrar piezas.")
 
                 with st.expander("🚫 Zona de Peligro: Eliminar Proyecto Seleccionado"):
-                    st.warning(f"⚠️ Al presionar el botón inferior se eliminará permanentemente el proyecto '{fila_proy['proyecto_text']}' y todas sus piezas asociadas de forma irreversible en Supabase.")
-                    confirmar_borrado = st.checkbox(f"Confirmo que deseo purgar el proyecto {fila_proy['proyecto_text']} del servidor central")
+                    st.warning(f"⚠️ Al presionar el botón inferior se eliminará permanentemente el proyecto '{fila_proy['proyecto_text']}' y todas sus piezas vinculadas de forma irreversible.")
+                    confirmar_borrado = st.checkbox(f"Confirmo que deseo purgar el proyecto {fila_proy['proyecto_text']} de los servidores centrales")
                     
                     if st.button("🔥 Eliminar Proyecto Completo", type="primary", disabled=not confirmar_borrado, use_container_width=True):
                         if eliminar_proyecto_completo(id_sel):
-                            st.success("💥 Proyecto eliminado de la base de datos central de la organización.")
+                            st.success("💥 Proyecto y dependencias eliminadas del sistema con éxito.")
                             st.session_state.id_p_sel = None
                             st.cache_data.clear()
                             st.rerun()
@@ -189,7 +186,7 @@ def mostrar():
                 reg_cliente = st.text_input("Cliente / Razón Social o Propietario:", placeholder="Ej: Inmobiliaria San Jerónimo S.A.C.")
                 reg_partida = st.text_input("Partida Presupuestal / Nro de Contrato:", placeholder="Ej: PART-2026-99A")
             
-            st.info("💡 Los campos técnicos como Código, Responsable, Tableros y Fechas Globales se inicializarán automáticamente en blanco. Podrá completarlos en la sección inferior de la primera pestaña; el Estado se configurará inicialmente como 'En Cotización'.")
+            st.info("💡 Los campos técnicos como Código, Responsable, Tableros y Fechas Globales se inicializarán automáticamente en blanco. Podrá completarlos directamente sobre las celdas de la primera pestaña; el Estado inicial será 'En Cotización'.")
 
             if st.form_submit_button("🚀 INICIALIZAR PROYECTO EN EL SISTEMA", type="primary", use_container_width=True):
                 if not reg_nombre or not reg_cliente or not reg_partida:
@@ -209,7 +206,7 @@ def mostrar():
                         }
                         
                         conectar().table("proyectos").insert(payload_nuevo).execute()
-                        st.success(f"🎉 ¡Proyecto '{reg_nombre}' creado con éxito! Vaya a la primera pestaña para completar sus datos generales directamente en la matriz.")
+                        st.success(f"🎉 ¡Proyecto '{reg_nombre}' creado con éxito! Regrese a la primera pestaña para completar todos sus datos directo en la matriz.")
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
