@@ -94,7 +94,7 @@ with st.sidebar:
     st.caption(f"Rol: {rol_usuario}")
     
     # Definición limpia de opciones del menú
-    opciones = ["Proyectos", "Estatus de Muebles", "Producción Proyectada", "Rendimiento de Corte", "Avance de Optmización", "Seguimiento", "Gantt", "Incidencias", "Usuarios"]
+    opciones = ["Proyectos", "Estatus de Muebles", "Producción Proyectada", "Rendimiento de Corte", "Avance de Optimización", "Seguimiento", "Gantt", "Incidencias", "Usuarios"]
     menu = st.radio("MENÚ PRINCIPAL", opciones)
     
     st.write("---")
