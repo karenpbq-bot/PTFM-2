@@ -1,21 +1,19 @@
 # =========================================================
-# 1. IMPORTACIONES (MODIFICADO: Incluye 'os')
+# 1. IMPORTACIONES (SANEADO Y INTEGRADO)
 # =========================================================
 import streamlit as st
 import pandas as pd
 from datetime import timedelta, datetime, date
 import plotly.express as px
 from base_datos import *
-import os  # <-- Importante para manejar rutas de archivos
-import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes, tableros_req, estatus_muebles
-# --- MARCADOR DE SINCRONIZACIÓN OPERATIVA ---
-# REESTRUCTURACIÓN DE MÓDULO: 3 PESTAÑAS INDEPENDIENTES DE MÁQUINAS (S / E / C)
-# ACTUALIZACIÓN EN CADENA PARA REFLEJAR CAMBIOS DE FORMA INMEDIATA.
+import os  # <-- Manejo seguro de rutas de archivos de la empresa
 
-# --- Lógica para localizar el logo ---
-# Esto debe estar ANTES de st.set_page_config
+# Importación limpia de todos los submódulos operativos del sistema
+import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes, tableros_req, estatus_muebles 
+
+# --- Lógica para localizar el logo de la organización ---
 directorio_actual = os.path.dirname(__file__)
-nombre_logo_pestaña = "LOGO PRACTIFORMAS SIN FONDO.PNG" # Nombre exacto del archivo
+nombre_logo_pestaña = "LOGO PRACTIFORMAS SIN FONDO.PNG"
 ruta_logo_pestaña = os.path.join(directorio_actual, nombre_logo_pestaña)
 
 # =========================================================
