@@ -5,14 +5,18 @@ import io
 from base_datos import conectar, obtener_proyectos, obtener_productos_por_proyecto
 
 def mostrar(supervisor_id=None):
+    # CSS inyectado y optimizado para pantallas móviles (fuentes más compactas y reducción de paddings)
     st.markdown("""
         <style>
-        .report-title { font-size: 28px; font-weight: bold; color: #1E3A8A; margin-bottom: 0.5rem; }
-        [data-testid=\"stMetricValue\"] { color: #1E3A8A !important; font-weight: bold !important; font-size: 24px !important; }
+        .report-title { font-size: 22px; font-weight: bold; color: #1E3A8A; margin-bottom: 0.2rem; }
+        [data-testid="stMetricValue"] { color: #1E3A8A !important; font-weight: bold !important; font-size: 20px !important; }
+        div[data-testid="stMetric"] { padding: 5px; }
+        /* Forzar compactación en contenedores de tablas Streamlit para móviles */
+        .stDataEditor { font-size: 12px; }
         </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('<p class="report-title">🪚 Matriz de Estatus Acumulativa de Muebles</p>', unsafe_allow_html=True)
+    st.markdown('<p class="report-title">🪚 Matriz de Estatus Móvil</p>', unsafe_allow_html=True)
     
     supabase = conectar()
     rol_u = str(st.session_state.get('rol', 'Supervisor')).strip().lower()
@@ -21,9 +25,9 @@ def mostrar(supervisor_id=None):
     # --- A. SELECCIÓN DE PROYECTO ---
     nombre_p_act = st.session_state.get('p_nom_sel_estatus', "Ninguno")
     
-    with st.expander(f"🎯 Proyecto Activo: {nombre_p_act}", expanded=not st.session_state.get('id_p_sel_estatus')):
-        c1, c2 = st.columns([2, 1])
-        bus_p = c1.text_input("Filtrar por nombre o código:", key="bus_estatus_muebles")
+    with st.expander(f"🎯 Proyecto: {nombre_p_act}", expanded=not st.session_state.get('id_p_sel_estatus')):
+        c1, c2 = st.columns([1, 1])
+        bus_p = c1.text_input("Filtrar:", key="bus_estatus_muebles")
         df_p_all = obtener_proyectos(bus_p)
         
         if not es_jefe and not df_p_all.empty:
@@ -41,22 +45,22 @@ def mostrar(supervisor_id=None):
                 st.session_state.p_nom_sel_estatus = sel_n
                 st.rerun()
         else:
-            st.warning("⚠️ No se encontraron proyectos asignados."); return
+            st.warning("⚠️ Sin proyectos asignados."); return
 
     if not st.session_state.get('id_p_sel_estatus'):
-        st.info("💡 Seleccione un proyecto en el panel superior para desplegar el despiece."); return
+        st.info("💡 Seleccione un proyecto arriba."); return
 
     id_p = st.session_state.id_p_sel_estatus
     prods_all = obtener_productos_por_proyecto(id_p)
     
     if prods_all.empty:
-        st.info("📂 Este proyecto no registra despieces de melamina aún."); return
+        st.info("📂 Proyecto sin despieces aún."); return
 
     # --- B. CARGA DE ESTATUS DESDE SUPABASE ---
     res_db = supabase.table("estatus_muebles").select("*").in_("producto_id", prods_all['id'].tolist()).execute()
     df_estatus_db = pd.DataFrame(res_db.data) if res_db.data else pd.DataFrame(columns=['producto_id', 'en_proceso', 'culminado', 'entregado', 'observaciones'])
 
-    # --- C. CÁLCULO DE LAS 4 MÉTRICAS EN FILA (BASADO EN VALORES FÍSICOS REALES) ---
+    # --- C. CÁLCULO DE LAS 4 MÉTRICAS EN FILA ---
     df_metricas = prods_all[['id']].copy()
     df_metricas = df_metricas.merge(df_estatus_db, left_on='id', right_on='producto_id', how='left')
     df_metricas['en_proceso'] = df_metricas['en_proceso'].fillna(False).astype(bool)
@@ -70,14 +74,14 @@ def mostrar(supervisor_id=None):
     cant_entregado = len(df_metricas[df_metricas['entregado'] == True])
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("⏳ % Pendientes", f"{((cant_pendiente)/total_muebles)*100:.2f}%")
-    m2.metric("🟡 % En Proceso", f"{((cant_proceso)/total_muebles)*100:.2f}%")
-    m3.metric("🟢 % Culminados", f"{((cant_culminado)/total_muebles)*100:.2f}%")
-    m4.metric("🌲 % Entregados", f"{((cant_entregado)/total_muebles)*100:.2f}%")
+    m1.metric("⏳ Pend.", f"{((cant_pendiente)/total_muebles)*100:.0f}%")
+    m2.metric("🪚 Proc.", f"{((cant_proceso)/total_muebles)*100:.0f}%")
+    m3.metric("📦 Culm.", f"{((cant_culminado)/total_muebles)*100:.0f}%")
+    m4.metric("✅ Entr.", f"{((cant_entregado)/total_muebles)*100:.0f}%")
     
     # --- D. GESTIÓN OFFLINE CON EXCEL ---
-    with st.expander("⚙️ Gestión Offline (Importar / Exportar Excel)"):
-        tab_exp, tab_imp = st.tabs(["📥 Descargar Formato / Reporte", "📤 Subir Excel de Supervisión"])
+    with st.expander("⚙️ Importar / Exportar Excel"):
+        tab_exp, tab_imp = st.tabs(["📥 Descargar", "📤 Subir"])
         
         with tab_exp:
             df_excel = prods_all[['id', 'ubicacion', 'tipo', 'ml']].copy()
@@ -89,16 +93,16 @@ def mostrar(supervisor_id=None):
             
             df_excel = df_excel.rename(columns={
                 'id': 'ID Pieza', 'ubicacion': 'Ubicación', 'tipo': 'Tipo Mueble', 'ml': 'ML',
-                'en_proceso': '[🪚] En Proceso', 'culminado': '[🟢] Culminado', 'entregado': '[🌲] Entregado', 'observaciones': 'Observaciones'
+                'en_proceso': '[🪚] En Proceso', 'culminado': '[📦] Culminado', 'entregado': '[✅] Entregado', 'observaciones': 'Observaciones'
             })
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df_excel.to_excel(writer, index=False)
-            st.download_button("📥 Descargar Reporte Base Excel", data=output.getvalue(), file_name=f"Estatus_Offline_{id_p}.xlsx", use_container_width=True)
+            st.download_button("📥 Descargar Excel", data=output.getvalue(), file_name=f"Estatus_Offline_{id_p}.xlsx", use_container_width=True)
             
         with tab_imp:
-            f_subida = st.file_uploader("Seleccione archivo .xlsx", type=["xlsx"], key="excel_uploader_estatus")
-            if f_subida and st.button("🚀 Procesar Sincronización Masiva"):
+            f_subida = st.file_uploader("Seleccione .xlsx", type=["xlsx"], key="excel_uploader_estatus")
+            if f_subida and st.button("🚀 Sincronizar Masivo"):
                 try:
                     df_imp = pd.read_excel(f_subida)
                     lote_excel_upsert = []
@@ -110,8 +114,8 @@ def mostrar(supervisor_id=None):
                     for _, r in df_imp.iterrows():
                         pid_ex = int(r['ID Pieza'])
                         b_proc = str(r.get('[🪚] En Proceso', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
-                        b_culm = str(r.get('[🟢] Culminado', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
-                        b_entr = str(r.get('[🌲] Entregado', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
+                        b_culm = str(r.get('[📦] Culminado', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
+                        b_entr = str(r.get('[✅] Entregado', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
                         obs_ex = str(r.get('Observaciones', '')).strip()
                         if obs_ex in ["nan", "None", ""]: obs_ex = None
                         
@@ -122,19 +126,12 @@ def mostrar(supervisor_id=None):
                         
                         now_str = datetime.now().isoformat()
                         
-                        # CASCADA AUTOMÁTICA OFFLINE (Solo si están vacíos)
                         if b_entr:
-                            if not b_proc:
-                                b_proc = True
-                                if not f_proc: f_proc = now_str
-                            if not b_culm:
-                                b_culm = True
-                                if not f_culm: f_culm = now_str
+                            if not b_proc: b_proc = True; f_proc = now_str if not f_proc else f_proc
+                            if not b_culm: b_culm = True; f_culm = now_str if not f_culm else f_culm
                             if not f_entr: f_entr = now_str
                         elif b_culm:
-                            if not b_proc:
-                                b_proc = True
-                                if not f_proc: f_proc = now_str
+                            if not b_proc: b_proc = True; f_proc = now_str if not f_proc else f_proc
                             if not f_culm: f_culm = now_str
                         elif b_proc:
                             if not f_proc: f_proc = now_str
@@ -158,26 +155,25 @@ def mostrar(supervisor_id=None):
                         
                         promedio_avance_global = round(suma_avances_totales / len(lote_excel_upsert), 2)
                         supabase.table("proyectos").update({"avance": float(promedio_avance_global)}).eq("id", id_p).execute()
-                        st.success("🎉 ¡Sincronización externa procesada con éxito!"); st.cache_data.clear(); st.rerun()
+                        st.success("🎉 Sincronizado correctamente."); st.cache_data.clear(); st.rerun()
                 except Exception as e:
-                    st.error(f"Error al procesar el archivo Excel: {e}")
+                    st.error(f"Error: {e}")
 
-    # --- E. FILTROS ---
-    st.divider()
-    c_f1, c_f2 = st.columns([4, 4])
-    f_ubic = c_f1.text_input("🔍 Filtrar por Ambiente / Ubicación:", key="txt_f_u")
-    f_tipo = c_f2.text_input("🪵 Filtrar por Tipo de Mueble:", key="txt_f_t")
+    # --- E. FILTROS COMPACTOS ---
+    c_f1, c_f2 = st.columns(2)
+    f_ubic = c_f1.text_input("🔍 Ubicación:", key="txt_f_u")
+    f_tipo = c_f2.text_input("🪵 Mueble:", key="txt_f_t")
 
     df_filtrado = prods_all.copy()
     if f_ubic: df_filtrado = df_filtrado[df_filtrado['ubicacion'].astype(str).str.contains(f_ubic, case=False)]
     if f_tipo: df_filtrado = df_filtrado[df_filtrado['tipo'].astype(str).str.contains(f_tipo, case=False)]
 
-    # --- F. CONSTRUCCIÓN DE LA MATRIZ EDITOR ---
+    # --- F. CONSTRUCCIÓN DE LA MATRIZ REDUCIDA ---
     df_grid = pd.DataFrame()
     df_grid['id'] = df_filtrado['id']
-    df_grid['Ubicación'] = df_filtrado['ubicacion'].fillna("-").astype(str)
-    df_grid['Tipo Mueble'] = df_filtrado['tipo'].fillna("-").astype(str)
-    df_grid['ML'] = df_filtrado['ml'].fillna(0.0).astype(float)
+    df_grid['Ubicacion'] = df_filtrado['ubicacion'].fillna("-").astype(str)
+    df_grid['Mueble'] = df_filtrado['tipo'].fillna("-").astype(str)
+    df_grid['ml'] = df_filtrado['ml'].fillna(0.0).astype(float)
     
     df_grid = df_grid.merge(df_estatus_db[['producto_id', 'en_proceso', 'culminado', 'entregado', 'observaciones']], left_on='id', right_on='producto_id', how='left')
     df_grid['en_proceso'] = df_grid['en_proceso'].fillna(False).astype(bool)
@@ -185,38 +181,38 @@ def mostrar(supervisor_id=None):
     df_grid['entregado'] = df_grid['entregado'].fillna(False).astype(bool)
     df_grid['Observaciones'] = df_grid['observaciones'].fillna("-").astype(str)
 
+    # REQUERIMIENTO: Solo se mantiene el ícono puro eliminando textos redundantes de porcentajes
     def asignar_semaforo(row):
-        pct = (30.0 if row['en_proceso'] else 0.0) + (60.0 if row['culminado'] else 0.0) + (10.0 if row['entregado'] else 0.0)
-        if row['entregado']: return f"🌲 V. Oscuro ({int(pct)}%)"
-        elif row['culminado']: return f"🟢 V. Claro ({int(pct)}%)"
-        elif row['en_proceso']: return f"🟡 Amarillo ({int(pct)}%)"
-        return "⚪ Gris (0%)"
+        if row['entregado']: return "🌲"
+        elif row['culminado']: return "🟢"
+        elif row['en_proceso']: return "🟡"
+        return "⚪"
 
-    df_grid['Alerta de Estatus'] = df_grid.apply(asignar_semaforo, axis=1)
+    df_grid['🚦'] = df_grid.apply(asignar_semaforo, axis=1)
 
-    # --- G. RENDERIZADO DEL DATAFRAME EDITABLE ---
+    # --- G. RENDERIZADO DEL DATAFRAME CONFIGURADO PARA ANCHOS MÍNIMOS ---
     cambios_grid = st.data_editor(
-        df_grid[['id', 'Alerta de Estatus', 'Ubicación', 'Tipo Mueble', 'ML', 'en_proceso', 'culminado', 'entregado', 'Observaciones']],
+        df_grid[['id', '🚦', 'Ubicacion', 'Mueble', 'ml', 'en_proceso', 'culminado', 'entregado', 'Observaciones']],
         column_config={
             "id": None, 
-            "Alerta de Estatus": st.column_config.TextColumn("🚦 Alerta", disabled=True),
-            "Ubicación": st.column_config.TextColumn("Ubicación/Ambiente", disabled=True),
-            "Tipo Mueble": st.column_config.TextColumn("Tipo de Mueble", disabled=True),
-            "ML": st.column_config.NumberColumn("Metros Lineales", format="%.2f", disabled=True),
-            "en_proceso": st.column_config.CheckboxColumn("🪚 En Proceso"),
-            "culminado": st.column_config.CheckboxColumn("🟢 Culminado"),
-            "entregado": st.column_config.CheckboxColumn("🌲 Entregado"),
-            "Observaciones": st.column_config.TextColumn("Observaciones de Carpintería", disabled=False)
+            "🚦": st.column_config.TextColumn("🚦", disabled=True),
+            "Ubicacion": st.column_config.TextColumn("Ubicación", disabled=True),
+            "Mueble": st.column_config.TextColumn("Tipo Mueble", disabled=True),
+            "ml": st.column_config.NumberColumn("ml", format="%.2f", disabled=True),
+            "en_proceso": st.column_config.CheckboxColumn("🪚"),
+            "culminado": st.column_config.CheckboxColumn("📦"),
+            "entregado": st.column_config.CheckboxColumn("✅"),
+            "Observaciones": st.column_config.TextColumn("Obs.", disabled=False)
         },
         hide_index=True,
         use_container_width=True,
         key=f"grid_unrestricted_muebles_{id_p}"
     )
 
-    # --- H. MOTOR DE GUARDADO CON LÓGICA DE CASCADA CRONOLÓGICA ---
+    # --- H. MOTOR DE GUARDADO CON LOGICA DE CASCADA CRONOLÓGICA ---
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("💾 Guardar Marcaciones Realizadas", type="primary", use_container_width=True):
-        if not cambios_grid.equals(df_grid[['id', 'Alerta de Estatus', 'Ubicación', 'Tipo Mueble', 'ML', 'en_proceso', 'culminado', 'entregado', 'Observaciones']]):
+    if st.button("💾 Guardar Cambios", type="primary", use_container_width=True):
+        if not cambios_grid.equals(df_grid[['id', '🚦', 'Ubicacion', 'Mueble', 'ml', 'en_proceso', 'culminado', 'entregado', 'Observaciones']]):
             lote_upsert = []
             lote_fechas = []
             suma_avances_manual = 0.0
@@ -243,27 +239,15 @@ def mostrar(supervisor_id=None):
                 ts_culm = fechas_previas.get('fecha_culminado')
                 ts_entr = fechas_previas.get('fecha_entregado')
 
-                # =========================================================
-                # EJECUCIÓN DE CASCADA CRONOLÓGICA DE HITOS
-                # =========================================================
                 if bool_entregado and not orig_entregado:
-                    if not bool_proceso:
-                        bool_proceso = True
-                        if not ts_proc: ts_proc = now_iso
-                    if not bool_culminado:
-                        bool_culminado = True
-                        if not ts_culm: ts_culm = now_iso
+                    if not bool_proceso: bool_proceso = True; ts_proc = now_iso if not ts_proc else ts_proc
+                    if not bool_culminado: bool_culminado = True; ts_culm = now_iso if not ts_culm else ts_culm
                     if not ts_entr: ts_entr = now_iso
-
                 elif bool_culminado and not orig_culminado:
-                    if not bool_proceso:
-                        bool_proceso = True
-                        if not ts_proc: ts_proc = now_iso
+                    if not bool_proceso: bool_proceso = True; ts_proc = now_iso if not ts_proc else ts_proc
                     if not ts_culm: ts_culm = now_iso
-
                 elif bool_proceso and not orig_proceso:
                     if not ts_proc: ts_proc = now_iso
-                # =========================================================
 
                 avance_m = (30.0 if bool_proceso else 0.0) + (60.0 if bool_culminado else 0.0) + (10.0 if bool_entregado else 0.0)
                 suma_avances_manual += avance_m
@@ -288,8 +272,8 @@ def mostrar(supervisor_id=None):
                     
                     promedio_global = round(suma_avances_manual / total_muebles, 2)
                     supabase.table("proyectos").update({"avance": float(promedio_global)}).eq("id", id_p).execute()
-                    st.success("🎉 Cambios y marcas cronológicas sincronizadas con éxito."); st.cache_data.clear(); st.rerun()
+                    st.success("🎉 Datos sincronizados con éxito."); st.cache_data.clear(); st.rerun()
                 except Exception as e:
-                    st.error(f"Error al guardar datos: {e}")
+                    st.error(f"Error al guardar: {e}")
         else:
-            st.info("ℹ️ No se detectaron modificaciones en las celdas.")
+            st.info("ℹ️ No se detectaron modificaciones.")
