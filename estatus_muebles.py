@@ -183,7 +183,7 @@ def mostrar(supervisor_id=None):
 
     # REQUERIMIENTO: Solo se mantiene el ícono puro eliminando textos redundantes de porcentajes
     def asignar_semaforo(row):
-        if row['entregado']: return "🌲"
+        if row['entregado']: return "✳️"
         elif row['culminado']: return "🟢"
         elif row['en_proceso']: return "🟡"
         return "⚪"
