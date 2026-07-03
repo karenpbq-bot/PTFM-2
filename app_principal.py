@@ -121,7 +121,7 @@ elif menu == "Producción Proyectada":
 elif menu == "Rendimiento de Corte":
     cortes.mostrar()
 
-elif menu == "Avance por Proyecto":
+elif menu == "Avance de Optimización":
     tableros_req.mostrar()  # <--- Apunta ahora al archivo tableros_req.py
 
 elif menu == "Seguimiento": 
