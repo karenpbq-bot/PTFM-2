@@ -3,7 +3,7 @@ import pandas as pd
 from base_datos import * # Aquí se asume que se importa obtener_proyectos y conectar
 
 def mostrar():
-    st.markdown("### 📂 Control de Avances Operativos por Proyecto")
+    st.markdown("### 📂 Avances de Optimización")
     st.write("Análisis del avance en base al número de tableros requeridos y procesados por frente de trabajo.")
 
     # 1. ENLACE DIRECTO CON EL EXCEL ALOJADO EN GOOGLE DRIVE (En vivo)
