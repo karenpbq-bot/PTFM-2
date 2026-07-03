@@ -7,7 +7,7 @@ from datetime import timedelta, datetime, date
 import plotly.express as px
 from base_datos import *
 import os  # <-- Importante para manejar rutas de archivos
-import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes, tableros_req, estatus_muebles 
+import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes, tableros_req, estatus_muebles
 # --- MARCADOR DE SINCRONIZACIÓN OPERATIVA ---
 # REESTRUCTURACIÓN DE MÓDULO: 3 PESTAÑAS INDEPENDIENTES DE MÁQUINAS (S / E / C)
 # ACTUALIZACIÓN EN CADENA PARA REFLEJAR CAMBIOS DE FORMA INMEDIATA.
