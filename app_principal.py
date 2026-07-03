@@ -7,7 +7,7 @@ from datetime import timedelta, datetime, date
 import plotly.express as px
 from base_datos import *
 import os  # <-- Importante para manejar rutas de archivos
-import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes, tableros_req 
+import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes, tableros_req, estatus_muebles 
 # --- MARCADOR DE SINCRONIZACIÓN OPERATIVA ---
 # REESTRUCTURACIÓN DE MÓDULO: 3 PESTAÑAS INDEPENDIENTES DE MÁQUINAS (S / E / C)
 # ACTUALIZACIÓN EN CADENA PARA REFLEJAR CAMBIOS DE FORMA INMEDIATA.
@@ -96,7 +96,7 @@ with st.sidebar:
     st.caption(f"Rol: {rol_usuario}")
     
     # Definición limpia de opciones del menú
-    opciones = ["Proyectos", "Producción Proyectada", "Rendimiento de Corte", "Avance por Proyecto", "Seguimiento", "Gantt", "Incidencias", "Usuarios"]
+    opciones = ["Proyectos", "Estatus de Muebles", "Producción Proyectada", "Rendimiento de Corte", "Avance por Proyecto", "Seguimiento", "Gantt", "Incidencias", "Usuarios"]
     menu = st.radio("MENÚ PRINCIPAL", opciones)
     
     st.write("---")
@@ -112,6 +112,10 @@ with st.sidebar:
 
 if menu == "Proyectos":
     proyectos.mostrar() 
+
+elif menu == "Estatus de Muebles":
+    # Envía de forma segura el ID del supervisor conectado al nuevo módulo modular
+    estatus_muebles.mostrar(supervisor_id=id_usuario if rol_usuario == "Supervisor" else None)
 
 elif menu == "Producción Proyectada":
     produccion.mostrar()
