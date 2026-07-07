@@ -159,6 +159,7 @@ def mostrar():
         data_tectra = []
         total_e = 0.0
         
+        # 1. El bucle FOR únicamente se encarga de acumular los datos diarios
         for d in rango_dias:
             df_dia = df_filtrado[df_filtrado["Fecha_Corte"] == d]
             nombre_col = d.strftime("%d/%m")
@@ -168,11 +169,18 @@ def mostrar():
             ret_e = df_e[df_e["Material"] == "Retazo"]["Cantidad"].sum()
             total_e += (tab_e + ret_e)
             
-            # SOLUCIÓN: Registro diario forzado para mantener la continuidad cronológica del gráfico
+            # Registro diario forzado para mantener la continuidad cronológica del gráfico
             data_tectra.append({"Día": nombre_col, "Cantidad": round(tab_e, 2), "Componente": "🪚 Tableros Tectra"})
             data_tectra.append({"Día": nombre_col, "Cantidad": round(ret_e, 2), "Componente": "♻️ Retazos Tectra"})
             
+        # 2. FUERA DEL BUCLE: Procesamos, ordenamos y dibujamos la gráfica final consolidada
+        if data_tectra:
             df_plotly_e = pd.DataFrame(data_tectra)
+            
+            # SOLUCIÓN CRÍTICA: Forzar ordenamiento por calendario para eliminar nudos o cruces hacia atrás
+            df_plotly_e['Fecha_Temp'] = pd.to_datetime(df_plotly_e['Día'] + f"/{datetime.now().year}", format="%d/%m/%Y")
+            df_plotly_e = df_plotly_e.sort_values(by='Fecha_Temp').drop(columns=['Fecha_Temp'])
+            
             fig_e = px.line(
                 df_plotly_e, x="Día", y="Cantidad", color="Componente", text="Cantidad",
                 color_discrete_map={"🪚 Tableros Tectra": "#1976D2", "♻️ Retazos Tectra": "#90CAF9"}
@@ -180,6 +188,8 @@ def mostrar():
             fig_e.update_traces(textposition="top center", marker=dict(size=5), mode="lines+markers+text")
             fig_e.update_layout(
                 xaxis_title=None, yaxis_title="Cantidad (Unidades / ml)",
+                # Asegurar que Plotly siga el orden estricto del calendario
+                xaxis=dict(type='category', categoryorder='array', categoryarray=df_plotly_e['Día'].unique()),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 margin=dict(l=10, r=10, t=15, b=10), hovermode="x unified"
             )
