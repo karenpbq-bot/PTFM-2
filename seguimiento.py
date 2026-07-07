@@ -140,8 +140,8 @@ def mostrar(supervisor_id=None):
                                 })
                                 
                     if lote_delete_ids:
-                        # Purgar el historial previo del lote afectado
-                        supabase.table("seguimiento").delete().in="producto_id", lote_delete_ids).execute()
+                        # CORRECCIÓN DE SINTAXIS AQUÍ: Uso correcto de .in_() con paréntesis y guion bajo
+                        supabase.table("seguimiento").delete().in_("producto_id", lote_delete_ids).execute()
                         
                         if lote_imp:
                             # Inserción vertical limpia sin supervisor_id
