@@ -127,10 +127,9 @@ def mostrar():
             ret_s = df_s[df_s["Material"] == "Retazo"]["Cantidad"].sum()
             total_s += (tab_s + ret_s)
             
-            if tab_s > 0:
-                data_sprint.append({"Día": nombre_col, "Cantidad": round(tab_s, 2), "Componente": "🪚 Tableros Sprint"})
-            if ret_s > 0:
-                data_sprint.append({"Día": nombre_col, "Cantidad": round(ret_s, 2), "Componente": "♻️ Retazos Sprint"})
+            # SOLUCIÓN: Se eliminan los filtros 'if > 0' y se envía el día con 0.0 si no hubo movimiento
+            data_sprint.append({"Día": nombre_col, "Cantidad": round(tab_s, 2), "Componente": "🪚 Tableros Sprint"})
+            data_sprint.append({"Día": nombre_col, "Cantidad": round(ret_s, 2), "Componente": "♻️ Retazos Sprint"})
 
         if data_sprint:
             df_plotly_s = pd.DataFrame(data_sprint)
@@ -169,12 +168,10 @@ def mostrar():
             ret_e = df_e[df_e["Material"] == "Retazo"]["Cantidad"].sum()
             total_e += (tab_e + ret_e)
             
-            if tab_e > 0:
-                data_tectra.append({"Día": nombre_col, "Cantidad": round(tab_e, 2), "Componente": "🪚 Tableros Tectra"})
-            if ret_e > 0:
-                data_tectra.append({"Día": nombre_col, "Cantidad": round(ret_e, 2), "Componente": "♻️ Retazos Tectra"})
-
-        if data_tectra:
+            # SOLUCIÓN: Registro diario forzado para mantener la continuidad cronológica del gráfico
+            data_tectra.append({"Día": nombre_col, "Cantidad": round(tab_e, 2), "Componente": "🪚 Tableros Tectra"})
+            data_tectra.append({"Día": nombre_col, "Cantidad": round(ret_e, 2), "Componente": "♻️ Retazos Tectra"})
+            
             df_plotly_e = pd.DataFrame(data_tectra)
             fig_e = px.line(
                 df_plotly_e, x="Día", y="Cantidad", color="Componente", text="Cantidad",
