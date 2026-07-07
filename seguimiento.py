@@ -81,35 +81,115 @@ def mostrar(supervisor_id=None):
             bus_u = f2.text_input("Filtrar Ubicación", key="f_ubic")
             bus_t = f3.text_input("Refinar por Tipo", key="f_tipo")
         with t3:
-            st.write("**Importación masiva desde Excel**")
-            f_av = st.file_uploader("Subir archivo (.xlsx)", type=["xlsx"], key="up_excel_seg")
+            st.write("**Importación masiva desde el reporte de seguimiento horizontal**")
+            f_av = st.file_uploader("Subir archivo de avance (.xlsx)", type=["xlsx"], key="up_excel_seg")
             if f_av and st.button("🚀 Iniciar Importación"):
                 try:
                     df_imp = pd.read_excel(f_av)
+                    df_imp.columns = df_imp.columns.str.strip()
+                    
+                    if 'id' not in df_imp.columns:
+                        st.error("❌ Estructura de archivo incorrecta. Falta la columna de control maestro 'id'.")
+                        st.stop()
+                    
+                    # Descarte inmediato de filas vacías residuales
+                    df_imp = df_imp.dropna(subset=['id'])
+                    
+                    # Diccionario temporal de fechas existentes para salvaguardar el rastro cronológico real
+                    dict_fechas_historicas = {}
+                    if not segs.empty:
+                        for _, r_db in segs.iterrows():
+                            dict_fechas_historicas[(int(r_db['producto_id']), str(r_db['hito']).strip())] = r_db['fecha']
+                    
+                    lote_delete_ids = []
                     lote_imp = []
+                    now_str = datetime.now().strftime("%d/%m/%Y")
+                    
                     for _, r_ex in df_imp.iterrows():
-                        u, t = str(r_ex.get('ubicacion','')).strip(), str(r_ex.get('tipo','')).strip()
-                        match = prods_all[(prods_all['ubicacion'].astype(str).str.strip() == u) & (prods_all['tipo'].astype(str).str.strip() == t)]
-                        if not match.empty:
-                            pid = int(match.iloc[0]['id'])
-                            for h_nom in HITOS_LIST:
-                                if h_nom in r_ex and pd.notnull(r_ex[h_nom]) and str(r_ex[h_nom]).strip().upper() in ["X", "1", "SI"]:
-                                    lote_imp.append({"producto_id": pid, "hito": h_nom, "fecha": datetime.now().strftime("%d/%m/%Y"), "supervisor_id": supervisor_id})
-                    if lote_imp:
-                        supabase.table("seguimiento").upsert(lote_imp, on_conflict="producto_id, hito").execute()
+                        try:
+                            pid = int(float(str(r_ex['id']).strip()))
+                        except:
+                            continue  # Salto seguro si el ID de la fila está dañado o alterado
+                        
+                        lote_delete_ids.append(pid)
+                        
+                        # Lectura e interpretación de hitos del archivo muestra
+                        v_ins = str(r_ex.get('Instalado', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
+                        v_rev = str(r_ex.get('Revisión y Observaciones', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
+                        v_ent = str(r_ex.get('Entrega', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
+                        
+                        obs_ex = str(r_ex.get('Observaciones', '')).strip()
+                        if obs_ex in ["nan", "None", "", "-"]: obs_ex = ""
+                        
+                        mapeo_lote = [
+                            ("Instalado", v_ins),
+                            ("Revisión y Observaciones", v_rev),
+                            ("Entrega", v_ent)
+                        ]
+                        
+                        for hito_nombre, activo in mapeo_lote:
+                            if activo:
+                                # Si ya existía fecha, la respeta; de lo contrario asigna hoy
+                                fecha_final = dict_fechas_historicas.get((pid, hito_nombre), now_str)
+                                # SANEADO: Se elimina supervisor_id por completo del payload
+                                lote_imp.append({
+                                    "producto_id": pid, 
+                                    "hito": hito_nombre, 
+                                    "fecha": fecha_final, 
+                                    "observaciones": obs_ex
+                                })
+                                
+                    if lote_delete_ids:
+                        # Purgar el historial previo del lote afectado
+                        supabase.table("seguimiento").delete().in="producto_id", lote_delete_ids).execute()
+                        
+                        if lote_imp:
+                            # Inserción vertical limpia sin supervisor_id
+                            supabase.table("seguimiento").insert(lote_imp).execute()
+                            
                         from base_datos import sincronizar_avances_etapas
                         sincronizar_avances_etapas(id_p)
-                        st.success("Importación completada."); st.cache_data.clear(); st.rerun()
-                except Exception as e: st.error(f"Error: {e}")
+                        st.success("🎉 Importación completada correctamente."); st.cache_data.clear(); st.rerun()
+                except Exception as e: 
+                    st.error(f"Error técnico en el procesamiento: {e}")
         with t4:
-            df_exp = prods_all.copy()
-            for h in HITOS_LIST: 
-                df_exp[h] = df_exp['id'].apply(lambda x: segs[(segs['producto_id']==x) & (segs['hito']==h)]['fecha'].iloc[0] if not segs[(segs['producto_id']==x) & (segs['hito']==h)].empty else "")
+            st.write("Genere el formato simplificado para el llenado de avances en el taller o campo.")
+            
+            # Replicar exactamente la matriz del documento de muestra
+            df_exp = pd.DataFrame()
+            df_exp['id'] = prods_all['id']
+            df_exp['ubicacion'] = prods_all['ubicacion'].fillna("-").astype(str)
+            df_exp['tipo'] = prods_all['tipo'].fillna("-").astype(str)
+            df_exp['ml'] = prods_all['ml'].fillna(0.0).astype(float)
+            df_exp['ctd'] = prods_all['ctd'].fillna(1).astype(int)
+            
+            # Inicializar celdas de hitos en blanco
+            df_exp['Instalado'] = ""
+            df_exp['Revisión y Observaciones'] = ""
+            df_exp['Entrega'] = ""
+            df_exp['Observaciones'] = ""
+            
+            # Rellenado horizontal con "si" si el registro existe en Supabase
+            for idx, row_exp in df_exp.iterrows():
+                pid_exp = row_exp['id']
+                match_segs = segs[segs['producto_id'] == pid_exp]
+                
+                if not match_segs.empty:
+                    hitos_actuales = match_segs['hito'].tolist()
+                    if "Instalado" in hitos_actuales: df_exp.loc[idx, 'Instalado'] = "si"
+                    if "Revisión y Observaciones" in hitos_actuales: df_exp.loc[idx, 'Revisión y Observaciones'] = "si"
+                    if "Entrega" in hitos_actuales: df_exp.loc[idx, 'Entrega'] = "si"
+                    
+                    # Recuperar la última observación ingresada
+                    obs_val = match_segs['observaciones'].dropna().tolist()
+                    if obs_val and str(obs_val[0]).strip() not in ["", "nan", "None"]:
+                        df_exp.loc[idx, 'Observaciones'] = str(obs_val[0]).strip()
+
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_exp.to_excel(writer, index=False)
-            st.download_button("📤 Descargar Reporte", data=output.getvalue(), file_name=f"Reporte_Seguimiento_{id_p}.xlsx", use_container_width=True)
-
+                df_exp.to_excel(writer, index=False, sheet_name="Sheet1")
+            st.download_button("📤 Descargar Reporte de Seguimiento", data=output.getvalue(), file_name=f"Reporte_Seguimiento_{id_p}.xlsx", use_container_width=True)
+   
     # --- E. FILTRADO REAL DE LA MATRIZ ---
     df_f = prods_all.copy()
     if bus_u: df_f = df_f[df_f['ubicacion'].astype(str).str.contains(bus_u, case=False)]
