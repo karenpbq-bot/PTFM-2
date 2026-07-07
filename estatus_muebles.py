@@ -84,20 +84,38 @@ def mostrar(supervisor_id=None):
         tab_exp, tab_imp = st.tabs(["📥 Descargar", "📤 Subir"])
         
         with tab_exp:
-            df_excel = prods_all[['id', 'ubicacion', 'tipo', 'ml']].copy()
-            df_excel = df_excel.merge(df_estatus_db[['producto_id', 'en_proceso', 'culminado', 'entregado', 'observaciones']], left_on='id', right_on='producto_id', how='left')
-            df_excel['en_proceso'] = df_excel['en_proceso'].apply(lambda x: "X" if x == True else "")
-            df_excel['culminado'] = df_excel['culminado'].apply(lambda x: "X" if x == True else "")
-            df_excel['entregado'] = df_excel['entregado'].apply(lambda x: "X" if x == True else "")
-            df_excel['observaciones'] = df_excel['observaciones'].fillna("")
+            # Replicar exactamente las columnas del formato horizontal simplificado solicitado
+            df_excel = pd.DataFrame()
+            df_excel['id'] = prods_all['id']
+            df_excel['ubicacion'] = prods_all['ubicacion'].fillna("-").astype(str)
+            df_excel['tipo'] = prods_all['tipo'].fillna("-").astype(str)
+            df_excel['ml'] = prods_all['ml'].fillna(0.0).astype(float)
+            df_excel['ctd'] = prods_all['ctd'].fillna(1).astype(int)
             
-            df_excel = df_excel.rename(columns={
-                'id': 'ID Pieza', 'ubicacion': 'Ubicación', 'tipo': 'Tipo Mueble', 'ml': 'ML',
-                'en_proceso': '[🪚] En Proceso', 'culminado': '[📦] Culminado', 'entregado': '[✅] Entregado', 'observaciones': 'Observaciones'
-            })
+            # Inicializar celdas de hitos horizontales en blanco
+            df_excel['Instalado'] = ""
+            df_excel['Revisión y Observaciones'] = ""
+            df_excel['Entrega'] = ""
+            df_excel['Observaciones'] = ""
+            
+            # Rellenar con "si" si la base de datos registra la etapa completada
+            for idx, row_ex in df_excel.iterrows():
+                pid_ex = row_ex['id']
+                match_db = df_estatus_db[df_estatus_db['producto_id'] == pid_ex]
+                
+                if not match_db.empty:
+                    r_db = match_db.iloc[0]
+                    if bool(r_db.get('en_proceso', False)): df_excel.loc[idx, 'Instalado'] = "si"
+                    if bool(r_db.get('culminado', False)): df_excel.loc[idx, 'Revisión y Observaciones'] = "si"
+                    if bool(r_db.get('entregado', False)): df_excel.loc[idx, 'Entrega'] = "si"
+                    
+                    obs_db = r_db.get('observaciones', None)
+                    if obs_db and str(obs_db).strip() not in ["", "nan", "None", "-"]:
+                        df_excel.loc[idx, 'Observaciones'] = str(obs_db).strip()
+            
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_excel.to_excel(writer, index=False)
+                df_excel.to_excel(writer, index=False, sheet_name="Sheet1")
             st.download_button("📥 Descargar Excel", data=output.getvalue(), file_name=f"Estatus_Offline_{id_p}.xlsx", use_container_width=True)
             
         with tab_imp:
@@ -105,47 +123,88 @@ def mostrar(supervisor_id=None):
             if f_subida and st.button("🚀 Sincronizar Masivo"):
                 try:
                     df_imp = pd.read_excel(f_subida)
+                    df_imp.columns = df_imp.columns.str.strip()
+                    
+                    # Soporte dual si la columna viene mapeada como 'id' o 'ID Pieza'
+                    col_id_maestra = 'id' if 'id' in df_imp.columns else ('ID Pieza' if 'ID Pieza' in df_imp.columns else None)
+                    if not col_id_maestra:
+                        st.error("❌ Estructura de archivo incorrecta. Falta la columna de identificación maestra 'id'.")
+                        st.stop()
+                        
+                    df_imp = df_imp.dropna(subset=[col_id_maestra])
+                    
+                    # MAPEO DE PREVALENCIA: Obtener el estado actual en Supabase para no borrar ni reescribir hitos del pasado
+                    dict_db_actual = {r['producto_id']: r for r in df_estatus_db.to_dict(orient='records')} if not df_estatus_db.empty else {}
+                    
                     lote_excel_upsert = []
+                    lote_fechas_upsert = []
+                    
                     res_fechas = supabase.table("fechas_hitos_muebles").select("*").in_("producto_id", prods_all['id'].tolist()).execute()
                     dict_fechas = {f['producto_id']: f for f in res_fechas.data} if res_fechas.data else {}
-                    lote_fechas_upsert = []
-                    suma_avances_totales = 0.0
-
+                    
+                    now_str = datetime.now().isoformat()
+                    
                     for _, r in df_imp.iterrows():
-                        pid_ex = int(r['ID Pieza'])
-                        b_proc = str(r.get('[🪚] En Proceso', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
-                        b_culm = str(r.get('[📦] Culminado', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
-                        b_entr = str(r.get('[✅] Entregado', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
-                        obs_ex = str(r.get('Observaciones', '')).strip()
-                        if obs_ex in ["nan", "None", ""]: obs_ex = None
+                        try:
+                            pid_ex = int(float(str(r[col_id_maestra]).strip()))
+                        except:
+                            continue
                         
+                        # Interpretación flexible y tolerante del archivo muestra (Acepta X, x, SI, si)
+                        excel_proc = str(r.get('Instalado', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
+                        excel_culm = str(r.get('Revisión y Observaciones', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
+                        excel_entr = str(r.get('Entrega', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
+                        
+                        obs_ex = str(r.get('Observaciones', '')).strip()
+                        if obs_ex in ["nan", "None", "", "-"]: obs_ex = None
+                        
+                        # Recuperar estados actuales de Supabase
+                        reg_db = dict_db_actual.get(pid_ex, {})
+                        db_proc = bool(reg_db.get('en_proceso', False))
+                        db_culm = bool(reg_db.get('culminado', False))
+                        db_entr = bool(reg_db.get('entregado', False))
+                        db_obs = reg_db.get('observaciones', None)
+                        
+                        # LÓGICA DE PREVALENCIA: Solo se cambia a True si en Supabase estaba en False y en el Excel viene marcado.
+                        # NUNCA se revierte un True anterior a False mediante la importación.
+                        nuevo_proc = db_proc or excel_proc
+                        nuevo_culm = db_culm or excel_culm
+                        nuevo_entr = db_entr or excel_entr
+                        nuevo_obs = db_obs if db_obs else obs_ex
+                        
+                        # Recuperar historial de fechas
                         f_existente = dict_fechas.get(pid_ex, {})
                         f_proc = f_existente.get('fecha_proceso')
                         f_culm = f_existente.get('fecha_culminado')
                         f_entr = f_existente.get('fecha_entregado')
                         
-                        now_str = datetime.now().isoformat()
-                        
-                        if b_entr:
-                            if not b_proc: b_proc = True; f_proc = now_str if not f_proc else f_proc
-                            if not b_culm: b_culm = True; f_culm = now_str if not f_culm else f_culm
+                        # Cascada cronológica de fechas solo para los hitos que acaban de activarse
+                        if nuevo_entr and not db_entr:
+                            if not nuevo_proc: nuevo_proc = True; f_proc = now_str if not f_proc else f_proc
+                            if not nuevo_culm: nuevo_culm = True; f_culm = now_str if not f_culm else f_culm
                             if not f_entr: f_entr = now_str
-                        elif b_culm:
-                            if not b_proc: b_proc = True; f_proc = now_str if not f_proc else f_proc
+                        elif nuevo_culm and not db_culm:
+                            if not nuevo_proc: nuevo_proc = True; f_proc = now_str if not f_proc else f_proc
                             if not f_culm: f_culm = now_str
-                        elif b_proc:
+                        elif nuevo_proc and not db_proc:
                             if not f_proc: f_proc = now_str
 
-                        avance_mueble = (30.0 if b_proc else 0.0) + (60.0 if b_culm else 0.0) + (10.0 if b_entr else 0.0)
-                        suma_avances_totales += avance_mueble
-
                         lote_excel_upsert.append({
-                            "producto_id": pid_ex, "en_proceso": b_proc, "culminado": b_culm, "entregado": b_entr,
-                            "observaciones": obs_ex, "supervisor_id": supervisor_id, "updated_at": now_str
+                            "producto_id": pid_ex, 
+                            "en_proceso": nuevo_proc, 
+                            "culminado": nuevo_culm, 
+                            "entregado": nuevo_entr,
+                            "observaciones": nuevo_obs, 
+                            "supervisor_id": supervisor_id, 
+                            "updated_at": now_str
                         })
-                        if b_proc or b_culm or b_entr:
+                        
+                        if nuevo_proc or nuevo_culm or nuevo_entr:
                             lote_fechas_upsert.append({
-                                "producto_id": pid_ex, "fecha_proceso": f_proc, "fecha_culminado": f_culm, "fecha_entregado": f_entr
+                                "producto_id": pid_ex, 
+                                "fecha_proceso": f_proc, 
+                                "fecha_culminado": f_culm, 
+                                "fecha_entregado": f_entr
                             })
                     
                     if lote_excel_upsert:
@@ -153,12 +212,17 @@ def mostrar(supervisor_id=None):
                         if lote_fechas_upsert:
                             supabase.table("fechas_hitos_muebles").upsert(lote_fechas_upsert, on_conflict="producto_id").execute()
                         
-                        promedio_avance_global = round(suma_avances_totales / len(lote_excel_upsert), 2)
-                        supabase.table("proyectos").update({"avance": float(promedio_avance_global)}).eq("id", id_p).execute()
-                        st.success("🎉 Sincronizado correctamente."); st.cache_data.clear(); st.rerun()
+                        # Recalcular el avance del proyecto basado en la matriz consolidada completa
+                        res_total = supabase.table("estatus_muebles").select("en_proceso, culminado, entregado").in_("producto_id", prods_all['id'].tolist()).execute()
+                        if res_total.data:
+                            suma_avances_totales = sum([(30.0 if x['en_proceso'] else 0.0) + (60.0 if x['culminado'] else 0.0) + (10.0 if x['entregado'] else 0.0) for x in res_total.data])
+                            promedio_avance_global = round(suma_avances_totales / len(prods_all), 2)
+                            supabase.table("proyectos").update({"avance": float(promedio_avance_global)}).eq("id", id_p).execute()
+                            
+                        st.success("🎉 Sincronización incremental completada. Historial blindado."); st.cache_data.clear(); st.rerun()
                 except Exception as e:
-                    st.error(f"Error: {e}")
-
+                    st.error(f"Error al procesar la planilla: {e}")
+                    
     # --- E. FILTROS COMPACTOS ---
     c_f1, c_f2 = st.columns(2)
     f_ubic = c_f1.text_input("🔍 Ubicación:", key="txt_f_u")
