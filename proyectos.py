@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, date
+import io  # <-- INTEGRADO: Requerido para procesar flujos de archivos Excel/CSV en memoria
 from base_datos import crear_proyecto, obtener_proyectos, eliminar_proyecto_completo, obtener_supervisores, conectar
 
 def mostrar():
@@ -44,8 +45,10 @@ def mostrar():
         df_p = obtener_proyectos(bus)
         
         if not df_p.empty:
-            # Asegurar consistencia de la columna de estado requerida
-            if 'estado' not in df_p.columns:
+            # ALINEACIÓN SUPABASE: Mapear la columna real 'estatus' a la variable de interfaz 'estado'
+            if 'estatus' in df_p.columns:
+                df_p['estado'] = df_p['estatus'].fillna('En Cotización').astype(str)
+            elif 'estado' not in df_p.columns:
                 df_p['estado'] = 'En Cotización'
                 
             # Aplicar filtro cruzado por estado seleccionado
@@ -67,20 +70,20 @@ def mostrar():
             df_editor['total_tableros'] = df_p['total_tableros'].fillna(0).astype(int)
             df_editor['estado'] = df_p['estado'].fillna("En Cotización").astype(str)
             
-            # SOLUCIÓN DEFINITIVA AL ERROR: Se elimina ProgressColumn y se renderiza como texto formateado ultraestable
+            # Formateo visual numérico estable para el avance
             df_editor['avance_vista'] = df_p['avance'].fillna(0.0).astype(float).map("{:.2f}%".format)
             
-            # Fallback seguro para fechas globales en la matriz: Si es nulo, toma hoy o hoy + 30 días para no romper la celda
+            # Fallback seguro para fechas globales en la matriz
             df_editor['f_ini'] = pd.to_datetime(df_p['f_ini'], errors='coerce').dt.date.fillna(date.today())
             df_editor['f_fin'] = pd.to_datetime(df_p['f_fin'], errors='coerce').dt.date.fillna(date.today() + timedelta(days=30))
 
-            st.caption("💡 Tip operativo: Modifique cualquier dato (Nombre, Cliente, Partida, Responsable, Tableros, Estado o Fechas) haciendo doble clic sobre la celda de la matriz.")
+            st.caption("💡 Tip operativo: Modifique cualquier dato haciendo doble clic sobre la celda de la matriz.")
 
-            # RENDERIZADO DE LA MATRIZ INTEGRAL EDITABLE (Saneada de tipos mutables y nulos)
+            # RENDERIZADO DE LA MATRIZ INTEGRAL EDITABLE
             cambios_tabla = st.data_editor(
                 df_editor[['id', 'codigo', 'proyecto_text', 'cliente', 'partida', 'responsable', 'total_tableros', 'estado', 'f_ini', 'f_fin', 'avance_vista']],
                 column_config={
-                    "id": None, # Ocultar id de control interno del backend
+                    "id": None, 
                     "codigo": st.column_config.TextColumn("Código", disabled=True),
                     "proyecto_text": st.column_config.TextColumn("Proyecto", disabled=False, required=True),
                     "cliente": st.column_config.TextColumn("Cliente", disabled=False, required=True),
@@ -88,7 +91,6 @@ def mostrar():
                     "responsable": st.column_config.SelectboxColumn("Responsable", options=lista_responsables_opciones, disabled=False, required=True),
                     "total_tableros": st.column_config.NumberColumn("Nro Tableros", format="%d", min_value=0, disabled=False),
                     "estado": st.column_config.SelectboxColumn("Estado", options=lista_estados, required=True, disabled=False),
-                    # Columnas de fechas estables asistidas por calendario nativo en la celda
                     "f_ini": st.column_config.DateColumn("F. Inicio Global", format="DD/MM/YYYY", required=True, disabled=False),
                     "f_fin": st.column_config.DateColumn("F. Término Global", format="DD/MM/YYYY", required=True, disabled=False),
                     "avance_vista": st.column_config.TextColumn("Avance Real", disabled=True)
@@ -98,10 +100,9 @@ def mostrar():
                 key="matriz_proyectos_colectiva_total"
             )
 
-            # PROCESAMIENTO Y ACTUALIZACIÓN EN BLOQUE (SUBMIT AL SERVIDOR)
+            # PROCESAMIENTO Y ACTUALIZACIÓN EN BLOQUE
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("💾 Guardar Cambios Realizados en la Matriz", type="primary", use_container_width=True):
-                # Comparar si la matriz interactiva sufrió variaciones frente a su inicialización limpia
                 if not cambios_tabla.equals(df_editor[['id', 'codigo', 'proyecto_text', 'cliente', 'partida', 'responsable', 'total_tableros', 'estado', 'f_ini', 'f_fin', 'avance_vista']]):
                     cambios_detectados = 0
                     
@@ -109,45 +110,38 @@ def mostrar():
                         id_fila = int(row['id'])
                         original_row = df_p[df_p['id'] == id_fila].iloc[0]
                         
-                        # Extraer strings limpios
                         p_text = str(row['proyecto_text']).strip()
                         p_client = str(row['cliente']).strip()
                         p_partida = str(row['partida']).strip()
-                        
-                        # Si el responsable es "-", se guarda como un nulo físico (None) en Supabase
                         p_resp_id = dict_sups.get(row['responsable'], None)
-                        
                         p_tableros = int(row['total_tableros'])
                         p_estado = str(row['estado'])
                         
-                        # Transformación segura de objetos date a string ISO para PostgreSQL
                         p_f_ini = row['f_ini'].isoformat() if isinstance(row['f_ini'], (date, datetime)) else str(row['f_ini'])
                         p_f_fin = row['f_fin'].isoformat() if isinstance(row['f_fin'], (date, datetime)) else str(row['f_fin'])
 
-                        # Evaluar celda por celda si el registro cambió respecto a la base de datos central
+                        # Comparación de auditoría relacional
+                        orig_estatus = str(original_row['estatus'] if 'estatus' in original_row and original_row['estatus'] else "En Cotización").strip()
+
                         if (p_text != str(original_row['proyecto_text']).strip() or 
                             p_client != str(original_row['cliente']).strip() or 
                             p_partida != str(original_row['partida']).strip() or 
                             p_resp_id != original_row['supervisor_id'] or 
                             p_tableros != int(original_row['total_tableros'] if original_row['total_tableros'] else 0) or 
-                            p_estado != str(original_row['estado'] if 'estado' in original_row else "En Cotización") or 
+                            p_estado != orig_estatus or 
                             p_f_ini != (original_row['f_ini'].isoformat() if isinstance(original_row['f_ini'], (date, datetime)) else str(original_row['f_ini'])) or 
                             p_f_fin != (original_row['f_fin'].isoformat() if isinstance(original_row['f_fin'], (date, datetime)) else str(original_row['f_fin']))):
                             
                             if not p_text or p_text == "-" or not p_client or p_client == "-" or not p_partida or p_partida == "-":
-                                st.error(f"❌ Los campos obligatorios no pueden quedar vacíos o como '-' en el Proyecto Código: {row['codigo']}")
+                                st.error(f"❌ Los campos obligatorios no pueden quedar vacíos en el Código: {row['codigo']}")
                                 continue
                                 
                             try:
+                                # ALINEACIÓN SUPABASE: Inyección directa en la columna física 'estatus'
                                 payload_update = {
-                                    "proyecto_text": p_text,
-                                    "cliente": p_client,
-                                    "partida": p_partida,
-                                    "supervisor_id": p_resp_id,
-                                    "total_tableros": p_tableros,
-                                    "estado": p_estado,
-                                    "f_ini": p_f_ini,
-                                    "f_fin": p_f_fin
+                                    "proyecto_text": p_text, "cliente": p_client, "partida": p_partida,
+                                    "supervisor_id": p_resp_id, "total_tableros": p_tableros, "estatus": p_estado,
+                                    "f_ini": p_f_ini, "f_fin": p_f_fin
                                 }
                                 conectar().table("proyectos").update(payload_update).eq("id", id_fila).execute()
                                 cambios_detectados += 1
@@ -161,7 +155,7 @@ def mostrar():
                 else:
                     st.info("ℹ️ No se detectaron modificaciones pendientes de procesar en las celdas.")
 
-            # --- PANEL DE ACCIÓN INTEGRADO PARA ENLAZAR EL DESPIECE O ELIMINACIÓN ---
+            # --- PANEL DE ACCIÓN INTEGRADO PARA ENLAZAR EL DESPIECE ---
             st.divider()
             opciones_proy = df_p['proyecto_display'].tolist()
             seleccionado = st.selectbox("🎯 Seleccione un proyecto de la matriz para enlazar su Despiece de Productos o removerlo:", ["-- Seleccionar Proyecto Activo --"] + opciones_proy)
@@ -186,7 +180,7 @@ def mostrar():
             st.info("📂 No existen proyectos registrados que coincidan con los criterios de los filtros seleccionados.")
 
     # =========================================================
-    # PESTAÑA 2: REGISTRAR PROYECTO NUEVO (CAMPOS MÍNIMOS OBLIGATORIOS)
+    # PESTAÑA 2: REGISTRAR PROYECTO NUEVO
     # =========================================================
     with tab_registro:
         st.subheader("🆕 Alta de Proyecto Nuevo")
@@ -199,34 +193,28 @@ def mostrar():
                 reg_cliente = st.text_input("Cliente / Razón Social o Propietario:", placeholder="Ej: Inmobiliaria San Jerónimo S.A.C.")
                 reg_partida = st.text_input("Partida Presupuestal / Nro de Contrato:", placeholder="Ej: PART-2026-99A")
             
-            st.info("💡 Los campos técnicos como Código, Responsable, Tableros y Fechas Globales se inicializarán automáticamente vacíos. Podrá completarlos directamente sobre las celdas de la primera pestaña; el Estado inicial será 'En Cotización'.")
+            st.info("💡 Los campos técnicos como Código, Responsable, Tableros y Fechas Globales se inicializarán automáticamente vacíos.")
 
             if st.form_submit_button("🚀 INICIALIZAR PROYECTO EN EL SISTEMA", type="primary", use_container_width=True):
                 if not reg_nombre or not reg_cliente or not reg_partida:
                     st.warning("⚠️ Para aperturar el proyecto debe indicar obligatoriamente el Nombre, Cliente y la Partida.")
                 else:
                     try:
+                        # ALINEACIÓN SUPABASE: Corrección de la columna física a 'estatus'
                         payload_nuevo = {
-                            "proyecto_text": reg_nombre.strip(),
-                            "cliente": reg_cliente.strip(),
-                            "partida": reg_partida.strip(),
-                            "codigo": f"TEMP-{datetime.now().strftime('%M%S')}", 
-                            "estado": "En Cotización", 
-                            "total_tableros": 0,
-                            "avance": 0.0,
-                            "f_ini": date.today().isoformat(),
-                            "f_fin": (date.today() + timedelta(days=30)).isoformat()
+                            "proyecto_text": reg_nombre.strip(), "cliente": reg_cliente.strip(), "partida": reg_partida.strip(),
+                            "codigo": f"TEMP-{datetime.now().strftime('%M%S')}", "estatus": "En Cotización", "total_tableros": 0, "avance": 0.0,
+                            "f_ini": date.today().isoformat(), "f_fin": (date.today() + timedelta(days=30)).isoformat()
                         }
-                        
                         conectar().table("proyectos").insert(payload_nuevo).execute()
-                        st.success(f"🎉 ¡Proyecto '{reg_nombre}' creado con éxito! Regrese a la primera pestaña para completar todos sus datos directo en la matriz.")
+                        st.success(f"🎉 ¡Proyecto '{reg_nombre}' creado con éxito! Regrese a la primera pestaña para completar sus datos.")
                         st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error de consistencia en Supabase: {e}")
 
     # =========================================================
-    # PESTAÑA 3: MATRIZ DE PRODUCTOS (DESPIECE VINCULADO)
+    # PESTAÑA 3: MATRIZ DE PRODUCTOS (DESPIECE VINCULADO / IMPORTACIÓN MASIVA)
     # =========================================================
     with tab_matriz:
         if st.session_state.get('id_p_sel'):
@@ -235,7 +223,73 @@ def mostrar():
                 info_p = res_info.data[0]
                 st.subheader(f"📦 Despiece de Productos Vinculado: {info_p['proyecto_text']} ({info_p['codigo']})")
 
-                # Formulario para agregar producto manual
+                # --- SUBSISTEMA DE IMPORTACIÓN MASIVA DESDE PLANILLA DE CARPINTERÍA ---
+                with st.expander("📥 Importar Despiece desde Archivo Externo (Excel / CSV)", expanded=False):
+                    st.write("Cargue la planilla excel de despiece para este lote. Columnas requeridas: **Ubicación**, **Tipo Mueble**, **ML**.")
+                    archivo_despiece = st.file_uploader("Seleccione el archivo de despiece de melamina:", type=["xlsx", "csv"], key="uploader_despiece_masivo")
+                    
+                    if archivo_despiece and st.button("🚀 PROCESAR E IMPORTAR PLANILLA", type="primary", use_container_width=True):
+                        try:
+                            # 1. Selección dinámica del motor según extensión
+                            if archivo_despiece.name.endswith(".csv"):
+                                df_imp = pd.read_csv(archivo_despiece)
+                            else:
+                                df_imp = pd.read_excel(archivo_despiece)
+                            
+                            # Limpieza y normalización de espacios en encabezados
+                            df_imp.columns = df_imp.columns.str.strip()
+                            
+                            # Diccionario inteligente de acople de nomenclatura de ingeniería
+                            mapeo_columnas = {
+                                'Ubicación': 'ubicacion', 'Ubicacion': 'ubicacion',
+                                'Tipo Mueble': 'tipo', 'Tipo': 'tipo', 'Tipo de Mueble': 'tipo',
+                                'ML': 'ml', 'Metros Lineales': 'ml'
+                            }
+                            df_imp = df_imp.rename(columns=mapeo_columnas)
+                            
+                            # 2. Validación de columnas mandatorias
+                            columnas_necesarias = ['ubicacion', 'tipo', 'ml']
+                            if all(col in df_imp.columns for col in columnas_necesarias):
+                                # Descarte riguroso de registros vacíos en el archivo externo
+                                df_imp = df_imp.dropna(subset=['ubicacion', 'tipo'])
+                                
+                                # Obtener el correlativo real exacto consultando Supabase
+                                res_c = conectar().table("productos").select("id", count="exact").eq("proyecto_id", st.session_state.id_p_sel).execute()
+                                conteo_inicial = res_c.count if res_c.count else 0
+                                
+                                lote_productos = []
+                                for idx, row in df_imp.iterrows():
+                                    conteo_inicial += 1
+                                    # Construcción de la etiqueta de rastreo única de la empresa
+                                    etiqueta_generada = f"{info_p['codigo']}-{str(conteo_inicial).zfill(4)}"
+                                    
+                                    # Leer cantidad o setear 1 por defecto (bigint)
+                                    cantidad_pieza = int(row['Cantidad']) if 'Cantidad' in df_imp.columns else 1
+                                    # Sanitización estricta de float para double precision
+                                    metros_lineales = pd.to_numeric(row['ml'], errors='coerce')
+                                    if pd.isna(metros_lineales): metros_lineales = 0.0
+
+                                    lote_productos.append({
+                                        "proyecto_id": int(st.session_state.id_p_sel),
+                                        "codigo_etiqueta": etiqueta_generada,
+                                        "ubicacion": str(row['ubicacion']).strip(),
+                                        "tipo": str(row['tipo']).strip(),
+                                        "ctd": cantidad_pieza,
+                                        "ml": float(metros_lineales)
+                                    })
+                                
+                                # 3. Escritura masiva optimizada (Batch Insert)
+                                if lote_productos:
+                                    conectar().table("productos").insert(lote_productos).execute()
+                                    st.success(f"🎉 ¡Planilla procesada con éxito! Se cargaron {len(lote_productos)} productos al proyecto de forma masiva.")
+                                    st.cache_data.clear()
+                                    st.rerun()
+                            else:
+                                st.error("❌ Estructura de columnas incorrecta. Asegúrese de que el archivo contenga las columnas: 'Ubicación', 'Tipo Mueble' y 'ML'.")
+                        except Exception as e:
+                            st.error(f"Falla técnica al procesar el archivo de despiece: {e}")
+
+                # Formulario para agregar producto manual (Se mantiene intacto para control unitario)
                 with st.expander("➕ Agregar Producto Manualmente", expanded=False):
                     with st.form("form_producto_manual_reing", clear_on_submit=True):
                         c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
@@ -252,12 +306,8 @@ def mostrar():
                                     etiqueta = f"{info_p['codigo']}-{str(nuevo_n).zfill(4)}"
 
                                     datos_producto = {
-                                        "proyecto_id": int(st.session_state.id_p_sel),
-                                        "codigo_etiqueta": etiqueta,
-                                        "ubicacion": str(u).strip(),
-                                        "tipo": str(t).strip(),
-                                        "ctd": int(c),
-                                        "ml": float(m)
+                                        "proyecto_id": int(st.session_state.id_p_sel), "codigo_etiqueta": etiqueta,
+                                        "ubicacion": str(u).strip(), "tipo": str(t).strip(), "ctd": int(c), "ml": float(m)
                                     }
                                     conectar().table("productos").insert(datos_producto).execute()
                                     st.success(f"✅ Pieza registrada con etiqueta: {etiqueta}")
@@ -273,11 +323,7 @@ def mostrar():
                 if res_p.data:
                     df_matriz_prod = pd.DataFrame(res_p.data)
                     df_unificado = df_matriz_prod.rename(columns={
-                        'codigo_etiqueta': 'Código ID',
-                        'ubicacion': 'Ubicación',
-                        'tipo': 'Tipo Mueble',
-                        'ctd': 'Cantidad',
-                        'ml': 'ML'
+                        'codigo_etiqueta': 'Código ID', 'ubicacion': 'Ubicación', 'tipo': 'Tipo Mueble', 'ctd': 'Cantidad', 'ml': 'ML'
                     })
                     st.dataframe(df_unificado, hide_index=True, use_container_width=True)
                     
