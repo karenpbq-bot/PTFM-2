@@ -58,7 +58,6 @@ def mostrar(supervisor_id=None):
     df_seg_db = pd.DataFrame(res_db.data) if res_db.data else pd.DataFrame(columns=['producto_id', 'hito', 'fecha', 'observaciones'])
 
     # --- C. CONSTRUCCIÓN DE LA MATRIZ HORIZONTAL SIMPLIFICADA ---
-    # Convertimos los hitos verticales en columnas horizontales tal como el reporte muestra del usuario
     dict_instalado = {}
     dict_revision = {}
     dict_entrega = {}
@@ -84,7 +83,6 @@ def mostrar(supervisor_id=None):
     df_grid['ml'] = prods_all['ml'].fillna(0.0).astype(float)
     df_grid['ctd'] = prods_all['ctd'].fillna(1).astype(int)
     
-    # Mapeo horizontal integrado
     df_grid['Instalado'] = df_grid['id'].map(dict_instalado).fillna("")
     df_grid['Revisión y Observaciones'] = df_grid['id'].map(dict_revision).fillna("")
     df_grid['Entrega'] = df_grid['id'].map(dict_entrega).fillna("")
@@ -115,21 +113,26 @@ def mostrar(supervisor_id=None):
                     if 'id' not in df_imp.columns:
                         st.error("❌ Archivo inválido. Falta la columna matriz de control 'id'.")
                         st.stop()
-                        
-                    # Diccionario de fechas previas en Supabase para proteger el registro histórico real
+                    
+                    # BLINDAJE: Filtrar y eliminar filas del excel donde el ID sea nulo o esté vacío
+                    df_imp = df_imp.dropna(subset=['id'])
+                    
                     dict_fechas_historicas = {}
                     if not df_seg_db.empty:
                         for _, r_db in df_seg_db.iterrows():
-                            dict_fechas_historicas[(r_db['producto_id'], r_db['hito'])] = r_db['fecha']
+                            dict_fechas_historicas[(int(r_db['producto_id']), r_db['hito'])] = r_db['fecha']
 
                     lote_delete_ids = []
                     lote_insert_rows = []
                     now_str = datetime.now().isoformat()
 
                     for _, r in df_imp.iterrows():
-                        pid_ex = int(r['id'])
+                        # SANEADO DE TIPOS: Asegurar conversión limpia a entero descartando decimales flotantes del excel
+                        try:
+                            pid_ex = int(float(str(r['id']).strip()))
+                        except:
+                            continue # Si no es un ID válido, salta la línea de forma segura
                         
-                        # Captura flexible tolerante a X, x, SI, si
                         v_ins = str(r.get('Instalado', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
                         v_rev = str(r.get('Revisión y Observaciones', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
                         v_ent = str(r.get('Entrega', '')).strip().upper() in ["X", "1", "SI", "TRUE"]
@@ -139,7 +142,6 @@ def mostrar(supervisor_id=None):
                         
                         lote_delete_ids.append(pid_ex)
                         
-                        # Lista de mapeo para procesamiento iterativo limpio
                         mapeo_hitos = [
                             ("Instalado", v_ins),
                             ("Revisión y Observaciones", v_rev),
@@ -148,7 +150,6 @@ def mostrar(supervisor_id=None):
                         
                         for hito_nombre, activo in mapeo_hitos:
                             if activo:
-                                # PROTECCIÓN HISTÓRICA: Si ya existía fecha, se mantiene; si es nuevo, toma 'now'
                                 f_orig = dict_fechas_historicas.get((pid_ex, hito_nombre), now_str)
                                 lote_insert_rows.append({
                                     "producto_id": pid_ex,
@@ -158,10 +159,10 @@ def mostrar(supervisor_id=None):
                                 })
 
                     if lote_delete_ids:
-                        # 1. Limpieza del lote afectado para reescribir de forma controlada
+                        # 1. Limpieza segura por lote en Supabase
                         supabase.table("seguimiento").delete().in_("producto_id", lote_delete_ids).execute()
                         
-                        # 2. Inserción masiva de hitos en formato vertical limpio (Sin supervisor_id)
+                        # 2. Inserción vertical limpia sin supervisor_id
                         if lote_insert_rows:
                             supabase.table("seguimiento").insert(lote_insert_rows).execute()
                         
@@ -169,7 +170,7 @@ def mostrar(supervisor_id=None):
                 except Exception as e:
                     st.error(f"Falla al procesar el archivo excel: {e}")
 
-    # --- E. RENDIMIENTO DE LA INTERFAZ VISUAL (DATAFRAME EDITABLE DIRECTO) ---
+    # --- E. RENDIMIENTO DE LA INTERFAZ VISUAL ---
     st.divider()
     st.markdown("#### 📱 Cuadrícula de Avances en Vivo")
     
@@ -198,7 +199,7 @@ def mostrar(supervisor_id=None):
                 dict_fechas_historicas = {}
                 if not df_seg_db.empty:
                     for _, r_db in df_seg_db.iterrows():
-                        dict_fechas_historicas[(r_db['producto_id'], r_db['hito'])] = r_db['fecha']
+                        dict_fechas_historicas[(int(r_db['producto_id']), r_db['hito'])] = r_db['fecha']
 
                 lote_delete_manual = []
                 lote_insert_manual = []
