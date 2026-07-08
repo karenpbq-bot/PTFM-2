@@ -339,7 +339,7 @@ def mostrar(supervisor_id=None):
             inyectar_tabla_pdf("CANTEO", ["CANT.", "DESCRIPCIÓN", "TIPO DE CANTO", "F. INICIO", "H. INICIAL", "CANTO USADO", "F. FINAL", "OBS/INCIDENCIAS"], ed_cant, op_cant, es_canteo=True)
 
             # --- NUEVA SECCIÓN 5 FIJA EN EL PDF (Réplica exacta de la distribución física) ---
-            story.append(Paragraph("<b>🚚 SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</b>", style_bold))
+            story.append(Paragraph("<b> ARMADO, ENRUTAMIENTO Y DESPACHO</b>", style_bold))
             story.append(Spacer(1, 3))
             
             f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
