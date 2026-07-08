@@ -98,18 +98,18 @@ def mostrar(supervisor_id=None):
                 }).execute()
                 st.rerun()
             
-            # Configuración base de columnas comunes para permitir navegación fluida por Tab / Flechas
+            # Configuración base de columnas comunes optimizada para compatibilidad
             config_columnas = {
                 "id": None,
                 "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
                 "descripcion": st.column_config.TextColumn("DESCRIPCION"),
-                "fecha_inicio": st.column_config.TextColumn("F. INICIO (DD/MM)", placeholder="Ej: 06/07"),
+                "fecha_inicio": st.column_config.TextColumn("F. INICIO (DD/MM)"),
                 "hora_inicio": st.column_config.TextColumn("H. INICIO"),
                 "cant_final_pl_pzs": st.column_config.TextColumn(col_cant_nom),
                 "hora_termino": st.column_config.TextColumn("H. TERMINO"),
-                "fecha_termino": st.column_config.TextColumn("F. TERMINO (DD/MM)", placeholder="Ej: 06/07"),
+                "fecha_termino": st.column_config.TextColumn("F. TERMINO (DD/MM)"),
                 "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS"),
-                "nombre_firma_operario": None # Se oculta de la tabla porque ya se captura arriba
+                "nombre_firma_operario": None
             }
             
             columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias']
