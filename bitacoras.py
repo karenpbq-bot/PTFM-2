@@ -138,13 +138,13 @@ def mostrar(supervisor_id=None):
             else:
                 df_limpio = pd.DataFrame(columns=columnas_visibles)
 
-            # BLINDAJE CRÍTICO DE TIPOS: Forzar a que todas las columnas de texto sean tratadas como strings
-            for col_c, config in config_columnas.items():
-                if isinstance(config, st.column_config.TextColumn) and col_c in df_limpio.columns:
-                    # Rellenamos nulos con texto vacío y cambiamos el tipo a string objeto
-                    df_limpio[col_c] = df_limpio[col_c].fillna("").astype(str)
-                elif col_c == "cantidad" and col_c in df_limpio.columns:
+            # BLINDAJE CRÍTICO DE TIPOS AUTOMÁTICO
+            for col_c in df_limpio.columns:
+                if col_c == "cantidad":
                     df_limpio[col_c] = pd.to_numeric(df_limpio[col_c]).fillna(0.0)
+                elif col_c != "id":
+                    # Forzar de manera segura a que cualquier otro campo operativo sea tratado como texto limpio (String)
+                    df_limpio[col_c] = df_limpio[col_c].fillna("").astype(str).str.strip()
 
             # Renderizado seguro libre de excepciones de validación
             res_ed = st.data_editor(
