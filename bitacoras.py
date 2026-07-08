@@ -162,7 +162,7 @@ def mostrar(supervisor_id=None):
         ed_cant, op_cant = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "CANTO USADO")
 
         # SECCIÓN 5: LOGÍSTICA (Réplica exacta de la distribución de la imagen física)
-        st.markdown('<div class="section-header">🚚 SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</div>', unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("**1. ENRUTAMIENTO DE PIEZAS (CONTROL DE DESTINO)**")
             c_arm, c_des = st.columns(2)
