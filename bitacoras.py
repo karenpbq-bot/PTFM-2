@@ -312,8 +312,14 @@ def mostrar(supervisor_id=None):
                     for _ in range(2):
                         rows_pdf.append([Paragraph("", style_normal) for _ in cabeceras])
                         
-                # Ajuste de proporciones horizontales para ocupar el ancho A4 completo
-                ancho_cols = [30, 145, 45, 40, 55, 40, 45, 70, 85] if not es_canteo else [30, 110, 55, 40, 45, 55, 45, 80, 95]
+                # NUEVO: Ajuste estricto a 555 puntos totales para alineación perfecta con Sec. 1 y 5
+                if not es_canteo:
+                    # Total: 35 + 140 + 50 + 50 + 65 + 50 + 50 + 115 = 555
+                    ancho_cols = [35, 140, 50, 50, 65, 50, 50, 115]
+                else:
+                    # Total: 35 + 120 + 60 + 45 + 45 + 55 + 45 + 150 = 555
+                    ancho_cols = [35, 120, 60, 45, 45, 55, 45, 150]
+                
                 ancho_cols = ancho_cols[:len(cabeceras)]
                 
                 t_block = Table(rows_pdf, colWidths=ancho_cols)
@@ -321,8 +327,9 @@ def mostrar(supervisor_id=None):
                     ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
                     ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 2),
-                    ('TOPPADDING', (0,0), (-1,-1), 2),
+                    # MODIFICADO: Incremento de altura interna (padding) para evitar el efecto apiñado
+                    ('TOPPADDING', (0,0), (-1,-1), 5),
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 5),
                 ]))
                 story.append(t_block)
                 story.append(Spacer(1, 6))
