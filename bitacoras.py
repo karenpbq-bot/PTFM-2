@@ -156,23 +156,74 @@ def mostrar(supervisor_id=None):
             )
             return res_ed, op_val
 
-        # Despliegue secuencial de las tablas de manufactura
+        # Despliegue secuencial de las tablas de manufactura (Secciones 2, 3 y 4)
         ed_secc, op_secc = generar_bloque_interfaz("🪚 SECCIÓN 2: CORTE SECCIONADORA", "SECCIONADORA", df_secc, "CANT. FINAL PL.")
         ed_escu, op_escu = generar_bloque_interfaz("📐 SECCIÓN 3: CORTE ESCUADRADORA", "ESCUADRADORA", df_escu, "CANT. PIEZAS")
         ed_cant, op_cant = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "CANTO USADO")
-        ed_sec5, op_sec5 = generar_bloque_interfaz("📦 SECCIÓN 5: ACABADO Y LOGÍSTICA", "SECCION5", df_sec5, "CANT. FINAL")
+
+        # SECCIÓN 5: LOGÍSTICA (Réplica exacta de la distribución de la imagen física)
+        st.markdown('<div class="section-header">🚚 SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</div>', unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("**1. ENRUTAMIENTO DE PIEZAS (CONTROL DE DESTINO)**")
+            c_arm, c_des = st.columns(2)
+            
+            with c_arm:
+                st.markdown("<font color='#4B5563'><b>📦 ZONA DE ARMADO (Taller)</b></font>", unsafe_allow_html=True)
+                f_arm_val = cab.get('log_armado_fecha')
+                f_arm_dt = datetime.strptime(f_arm_val, "%Y-%m-%d").date() if f_arm_val else None
+                u_log_armado_fecha = st.date_input("FECHA RECEPCIÓN (ARMADO):", value=f_arm_dt, format="DD/MM/YYYY", key="f_arm_log")
+                u_log_armado_cant = st.text_input("Nº PALLETS / PIEZAS (ARMADO):", value=cab.get('log_armado_cant') or "")
+                u_log_armado_vob = st.text_input("VºBº SUP. PRODUCCIÓN:", value=cab.get('log_armado_vob') or "")
+
+            with c_des:
+                st.markdown("<font color='#4B5563'><b>?. ZONA DE DESPACHO (Obra)</b></font>", unsafe_allow_html=True)
+                f_des_val = cab.get('log_despacho_fecha')
+                f_des_dt = datetime.strptime(f_des_val, "%Y-%m-%d").date() if f_des_val else None
+                u_log_despacho_fecha = st.date_input("FECHA RECEPCIÓN (DESPACHO):", value=f_des_dt, format="DD/MM/YYYY", key="f_des_log")
+                u_log_despacho_cant = st.text_input("Nº PALLETS / PIEZAS (DESPACHO):", value=cab.get('log_despacho_cant') or "")
+                u_log_despacho_vob = st.text_input("VºBº ALMACÉN / DESPACHO:", value=cab.get('log_despacho_vob') or "")
+
+            st.divider()
+            st.markdown("**2. DATOS DE SALIDA A OBRA**")
+            col_s1, col_s2, col_s3 = st.columns(3)
+            f_sal_val = cab.get('log_salida_fecha')
+            f_sal_dt = datetime.strptime(f_sal_val, "%Y-%m-%d").date() if f_sal_val else None
+            
+            u_log_salida_fecha = col_s1.date_input("FECHA SALIDA A OBRA:", value=f_sal_dt, format="DD/MM/YYYY", key="f_sal_log")
+            u_log_salida_conductor = col_s2.text_input("CONDUCTOR / CHOFER:", value=cab.get('log_salida_conductor') or "")
+            u_log_salida_vob = col_s3.text_input("VºBº ALMACÉN (SALIDA):", value=cab.get('log_salida_vob') or "")
+
+            st.divider()
+            st.markdown("**3. OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA**")
+            u_log_observaciones = st.text_area("Registre novedades del flete, embalaje o despacho general:", value=cab.get('log_observaciones') or "", height=80, label_visibility="collapsed")
 
         # Guardado unificado y procesamiento inteligente de fechas cortas (DD/MM -> AAAA-MM-DD)
         st.divider()
         c_save, c_pdf = st.columns(2)
         
-        if c_save.button("💾 GUARDAR AVANCES Y CAMBIOPANEL", type="primary", use_container_width=True):
+        if c_save.button("💾 GUARDAR AVANCES Y CAMBIO PANEL", type="primary", use_container_width=True):
             try:
-                # Actualizar datos generales
+                # Actualizar datos generales e incluir los campos fijos de la Sección 5 (Logística)
                 supabase.table("bitacoras_taller").update({
-                    "fecha": u_fecha.isoformat(), "n_orden": u_n_orden, "tipo_mueble": u_tipo_mueble,
-                    "motivo": u_motivo, "cliente": u_cliente, "proyecto": u_proyecto,
-                    "solicitado_por": u_sol_por, "sup_production": u_sup_prod, "estado": u_estado
+                    "fecha": u_fecha.isoformat(), 
+                    "n_orden": u_n_orden, 
+                    "tipo_mueble": u_tipo_mueble,
+                    "motivo": u_motivo, 
+                    "cliente": u_cliente, 
+                    "proyecto": u_proyecto,
+                    "solicitado_por": u_sol_por, 
+                    "sup_production": u_sup_prod, 
+                    "estado": u_estado,
+                    "log_armado_fecha": u_log_armado_fecha.isoformat() if u_log_armado_fecha else None,
+                    "log_armado_cant": u_log_armado_cant,
+                    "log_armado_vob": u_log_armado_vob,
+                    "log_despacho_fecha": u_log_despacho_fecha.isoformat() if u_log_despacho_fecha else None,
+                    "log_despacho_cant": u_log_despacho_cant,
+                    "log_despacho_vob": u_log_despacho_vob,
+                    "log_salida_fecha": u_log_salida_fecha.isoformat() if u_log_salida_fecha else None,
+                    "log_salida_conductor": u_log_salida_conductor,
+                    "log_salida_vob": u_log_salida_vob,
+                    "log_observaciones": u_log_observaciones
                 }).eq("id", id_act).execute()
                 
                 # Función para empaquetar y formatear las fechas del taller a ISO
@@ -202,12 +253,10 @@ def mostrar(supervisor_id=None):
                 procesar_lote_guardado(ed_secc, "SECCIONADORA", op_secc)
                 procesar_lote_guardado(ed_escu, "ESCUADRADORA", op_escu)
                 procesar_lote_guardado(ed_cant, "CANTEO", op_cant)
-                procesar_lote_guardado(ed_sec5, "SECCION5", op_sec5)
                 
-                st.success("🎉 Trazabilidad y conversión de fechas procesadas con éxito."); st.rerun()
+                st.success("🎉 Trazabilidad y sección logística guardadas con éxito."); st.rerun()
             except Exception as e:
                 st.error(f"Falla de sincronización: {e}")
-
         # MOTOR DE COMPILACIÓN NATIVA PDF EN UNA SOLA PÁGINA A4
         try:
             buffer_pdf = io.BytesIO()
