@@ -98,7 +98,7 @@ def mostrar(supervisor_id=None):
                 }).execute()
                 st.rerun()
             
-            # 1. Definir columnas base por defecto
+            # 1. Definir columnas visibles base
             columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias']
             
             # 2. Configuración base adaptable de columnas
@@ -129,17 +129,24 @@ def mostrar(supervisor_id=None):
                     "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS")
                 }
 
-            # 4. Asegurar la creación simétrica del DataFrame incluso estando vacío
+            # 4. Asegurar la creación simétrica del DataFrame y forzar casilleros vacíos a texto limpio
             if not df_bloque.empty:
-                # Filtrar solo las columnas que existan o inicializarlas vacías si faltan
                 for col_obligatoria in columnas_visibles:
                     if col_obligatoria not in df_bloque.columns:
-                        df_bloque[col_obligatoria] = None
+                        df_bloque[col_obligatoria] = ""
                 df_limpio = df_bloque[columnas_visibles].copy()
             else:
                 df_limpio = pd.DataFrame(columns=columnas_visibles)
-            
-            # Renderizado seguro e irrestricto
+
+            # BLINDAJE CRÍTICO DE TIPOS: Forzar a que todas las columnas de texto sean tratadas como strings
+            for col_c, config in config_columnas.items():
+                if isinstance(config, st.column_config.TextColumn) and col_c in df_limpio.columns:
+                    # Rellenamos nulos con texto vacío y cambiamos el tipo a string objeto
+                    df_limpio[col_c] = df_limpio[col_c].fillna("").astype(str)
+                elif col_c == "cantidad" and col_c in df_limpio.columns:
+                    df_limpio[col_c] = pd.to_numeric(df_limpio[col_c]).fillna(0.0)
+
+            # Renderizado seguro libre de excepciones de validación
             res_ed = st.data_editor(
                 df_limpio,
                 column_config=config_columnas,
