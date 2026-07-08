@@ -38,9 +38,19 @@ def mostrar(supervisor_id=None):
         # Filtro de búsqueda rápida
         busq = st.text_input("🔍 Filtrar por Nº Orden, Proyecto, Cliente o Mueble:", placeholder="Ej: 262200017...")
         
-        # Carga rápida de cabeceras existentes
-        res_t = supabase.table("bitacoras_taller").select("*").order("fecha", desc=True).execute()
-        df_t = pd.DataFrame(res_t.data) if res_t.data else pd.DataFrame()
+        # Carga rápida de cabeceras existentes con blindaje contra tablas vacías o errores de tipado
+        try:
+            res_t = supabase.table("bitacoras_taller").select("*").execute()
+            if res_t.data:
+                df_t = pd.DataFrame(res_t.data)
+                # Ordenamos en Python de forma segura en lugar de forzar a Supabase
+                if 'fecha' in df_t.columns:
+                    df_t = df_t.sort_values(by="fecha", ascending=False)
+            else:
+                df_t = pd.DataFrame()
+        except Exception as e:
+            st.error(f"⚠️ Alerta de inicialización en Supabase: {e}")
+            df_t = pd.DataFrame()
         
         if busq and not df_t.empty:
             df_t = df_t[
