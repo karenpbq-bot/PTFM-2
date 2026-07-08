@@ -257,6 +257,7 @@ def mostrar(supervisor_id=None):
                 st.success("🎉 Trazabilidad y sección logística guardadas con éxito."); st.rerun()
             except Exception as e:
                 st.error(f"Falla de sincronización: {e}")
+        
         # MOTOR DE COMPILACIÓN NATIVA PDF EN UNA SOLA PÁGINA A4
         try:
             buffer_pdf = io.BytesIO()
@@ -322,10 +323,61 @@ def mostrar(supervisor_id=None):
             inyectar_tabla_pdf("CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F. INICIO", "H. INICIO", "CANT. FINAL PL.", "H. TERMINO", "F. TERMINO", "OBS/INCIDENCIAS"], ed_secc, op_secc)
             inyectar_tabla_pdf("CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F. INICIO", "H. INICIO", "CANT. PIEZAS", "H. TERMINO", "F. TERMINO", "OBS/INCIDENCIAS"], ed_escu, op_escu)
             inyectar_tabla_pdf("CANTEO", ["CANT.", "DESCRIPCIÓN", "TIPO DE CANTO", "F. INICIO", "H. INICIAL", "CANTO USADO", "F. FINAL", "OBS/INCIDENCIAS"], ed_cant, op_cant, es_canteo=True)
-            inyectar_tabla_pdf("ACABADO Y LOGÍSTICA", ["CANT.", "DESCRIPCIÓN", "F. INICIO", "H. INICIO", "CANT. FINAL", "H. TERMINO", "F. TERMINO", "OBS/INCIDENCIAS"], ed_sec5, op_sec5)
+
+            # --- NUEVA SECCIÓN 5 FIJA EN EL PDF (Réplica exacta de la distribución física) ---
+            story.append(Paragraph("<b>🚚 SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</b>", style_bold))
+            story.append(Spacer(1, 3))
+            
+            f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
+            f_des_p = u_log_despacho_fecha.strftime("%d/%m/%Y") if u_log_despacho_fecha else ""
+            f_sal_p = u_log_salida_fecha.strftime("%d/%m/%Y") if u_log_salida_fecha else ""
+
+            data_log_tab = [
+                [Paragraph("<b>ZONA DE ARMADO (Piezas en Planta)</b>", style_bold), Paragraph("<b>ZONA DE DESPACHO (Directo a Obra)</b>", style_bold)],
+                [Paragraph(f"FECHA RECEPCIÓN: {f_arm_p}", style_normal), Paragraph(f"FECHA RECEPCIÓN: {f_des_p}", style_normal)],
+                [Paragraph(f"Nº PALLETS / PIEZAS: {u_log_armado_cant}", style_normal), Paragraph(f"Nº PALLETS / PIEZAS: {u_log_despacho_cant}", style_normal)],
+                [Paragraph(f"VºBº SUP. PRODUCCIÓN: {u_log_armado_vob}", style_normal), Paragraph(f"VºBº ALMACÉN / DESPACHO: {u_log_despacho_vob}", style_normal)]
+            ]
+            t_log = Table(data_log_tab, colWidths=[277, 278])
+            t_log.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (1,0), colors.lightgrey),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2), ('TOPPADDING', (0,0), (-1,-1), 2),
+            ]))
+            story.append(t_log)
+            story.append(Spacer(1, 4))
+
+            data_salida = [
+                [Paragraph(f"<b>FECHA SALIDA A OBRA:</b> {f_sal_p}", style_normal), 
+                 Paragraph(f"<b>CONDUCTOR:</b> {u_log_salida_conductor}", style_normal), 
+                 Paragraph(f"<b>VºBº ALMACÉN:</b> {u_log_salida_vob}", style_normal)]
+            ]
+            t_sal = Table(data_salida, colWidths=[150, 250, 155])
+            t_sal.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 3), ('TOPPADDING', (0,0), (-1,-1), 3),
+            ]))
+            story.append(t_sal)
+            story.append(Spacer(1, 4))
+
+            data_obs = [
+                [Paragraph("<b>OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA:</b>", style_bold)],
+                [Paragraph(u_log_observaciones if u_log_observaciones.strip() else "Sin incidencias.", style_normal)]
+            ]
+            t_obs = Table(data_obs, colWidths=[555])
+            t_obs.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (0,0), colors.lightgrey),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('BOTTOMPADDING', (0,1), (0,1), 10),
+                ('TOPPADDING', (0,1), (0,1), 2),
+            ]))
+            story.append(t_obs)
             
             doc_pdf.build(story)
-            c_pdf.download_button("🖨️ EXPORTAR BITÁCORA EN PDF (UNA PÁGINA)", data=buffer_pdf.getvalue(), file_name=f"Bitacora_{u_n_orden}.pdf", mime="application/pdf", use_container_width=True)
+
+            c_pdf.download_button("🖨️ EXPORTAR BITÁCORA EN PDF", data=buffer_pdf.getvalue(), file_name=f"Bitacora_{u_n_orden}.pdf", mime="application/pdf", use_container_width=True)
         except Exception as e_pdf:
             c_pdf.error(f"Alerta en motor PDF: {e_pdf}")
 
