@@ -98,7 +98,10 @@ def mostrar(supervisor_id=None):
                 }).execute()
                 st.rerun()
             
-            # Configuración base de columnas comunes optimizada para compatibilidad
+            # 1. Definir columnas base por defecto
+            columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias']
+            
+            # 2. Configuración base adaptable de columnas
             config_columnas = {
                 "id": None,
                 "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
@@ -108,23 +111,35 @@ def mostrar(supervisor_id=None):
                 "cant_final_pl_pzs": st.column_config.TextColumn(col_cant_nom),
                 "hora_termino": st.column_config.TextColumn("H. TERMINO"),
                 "fecha_termino": st.column_config.TextColumn("F. TERMINO (DD/MM)"),
-                "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS"),
-                "nombre_firma_operario": None
+                "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS")
             }
             
-            columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias']
-            
+            # 3. Ajuste estricto y simétrico exclusivo para el bloque de Canteo
             if bloque_id == 'CANTEO':
-                # Reajuste exclusivo para el formato de la estación de Canteo (Imagen 4)
-                config_columnas["tipo_canto"] = st.column_config.TextColumn("TIPO DE CANTO")
-                columnas_visibles.insert(2, "tipo_canto")
-                # Canteo no requiere hora_termino según el diseño provisto
-                if "hora_termino" in columnas_visibles: columnas_visibles.remove("hora_termino")
-                config_columnas["fecha_termino"] = st.column_config.TextColumn("F. FINAL (DD/MM)")
-                config_columnas["hora_inicio"] = st.column_config.TextColumn("H. INICIAL")
+                columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'fecha_termino', 'obs_incidencias']
+                config_columnas = {
+                    "id": None,
+                    "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
+                    "descripcion": st.column_config.TextColumn("DESCRIPCION"),
+                    "tipo_canto": st.column_config.TextColumn("TIPO DE CANTO"),
+                    "fecha_inicio": st.column_config.TextColumn("F. INICIO (DD/MM)"),
+                    "hora_inicio": st.column_config.TextColumn("H. INICIAL"),
+                    "cant_final_pl_pzs": st.column_config.TextColumn("CANTO USADO"),
+                    "fecha_termino": st.column_config.TextColumn("F. FINAL (DD/MM)"),
+                    "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS")
+                }
 
-            df_limpio = df_bloque[columnas_visibles] if not df_bloque.empty else pd.DataFrame(columns=columnas_visibles)
+            # 4. Asegurar la creación simétrica del DataFrame incluso estando vacío
+            if not df_bloque.empty:
+                # Filtrar solo las columnas que existan o inicializarlas vacías si faltan
+                for col_obligatoria in columnas_visibles:
+                    if col_obligatoria not in df_bloque.columns:
+                        df_bloque[col_obligatoria] = None
+                df_limpio = df_bloque[columnas_visibles].copy()
+            else:
+                df_limpio = pd.DataFrame(columns=columnas_visibles)
             
+            # Renderizado seguro e irrestricto
             res_ed = st.data_editor(
                 df_limpio,
                 column_config=config_columnas,
