@@ -269,6 +269,13 @@ def mostrar(supervisor_id=None):
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=7, leading=9)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
             
+            # NUEVO: Estilo para el título principal exclusivo del PDF impreso
+            style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
+            
+            # NUEVO: Inyectar título superior en el documento PDF
+            story.append(Paragraph("BITÁCORA DE PRODUCCIÓN", style_main_title))
+            story.append(Spacer(1, 10)) # Espacio de separación antes de la cabecera de datos generales
+            
             # Cabecera de Datos Generales en PDF
             fecha_str = u_fecha.strftime("%d/%m/%Y")
             data_s1 = [
@@ -413,7 +420,7 @@ def mostrar(supervisor_id=None):
                     hide_index=True, use_container_width=True, key="grid_estados_inicial"
                 )
                 
-                if st.button("💾 Actualizar Estados Modificados"):
+                if st.button("💾 Actualizar"):
                     for _, r_e in df_estados.iterrows():
                         supabase.table("bitacoras_taller").update({"estado": r_e['estado']}).eq("id", int(r_e['id'])).execute()
                     st.success("Estados guardados."); st.rerun()
@@ -438,7 +445,7 @@ def mostrar(supervisor_id=None):
                 sl_n = st.text_input("SOLICITADO POR:")
                 sp_n = st.text_input("SUP. DE PRODUCCION:", value="DOMÉNICO MORÓN")
                 
-                if st.form_submit_button("🚀 Inicializar Hoja (Por Defecto: Pendiente)", type="primary"):
+                if st.form_submit_button("🚀 Inicializar Bitácora", type="primary"):
                     res_ins = supabase.table("bitacoras_taller").insert({
                         "fecha": f_n.isoformat(), "n_orden": o_n, "tipo_mueble": m_n,
                         "motivo": mt_n, "cliente": cl_n, "proyecto": pr_n,
