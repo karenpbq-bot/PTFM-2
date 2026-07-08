@@ -201,7 +201,7 @@ def mostrar(supervisor_id=None):
         st.divider()
         c_save, c_pdf = st.columns(2)
         
-        if c_save.button("💾 GUARDAR AVANCES Y CAMBIO PANEL", type="primary", use_container_width=True):
+        if c_save.button("💾 GUARDAR AVANCES Y CAMBIOS", type="primary", use_container_width=True):
             try:
                 # Actualizar datos generales e incluir los campos fijos de la Sección 5 (Logística)
                 supabase.table("bitacoras_taller").update({
@@ -371,7 +371,7 @@ def mostrar(supervisor_id=None):
 
             data_obs = [
                 [Paragraph("<b>OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA:</b>", style_bold)],
-                [Paragraph(u_log_observaciones if u_log_observaciones.strip() else "Sin incidencias.", style_normal)]
+                [Paragraph(u_log_observaciones if u_log_observaciones.strip() else "", style_normal)]
             ]
             t_obs = Table(data_obs, colWidths=[555])
             t_obs.setStyle(TableStyle([
