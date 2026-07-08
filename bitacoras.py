@@ -384,8 +384,11 @@ def mostrar(supervisor_id=None):
             t_obs.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (0,0), colors.lightgrey),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-                ('BOTTOMPADDING', (0,1), (0,1), 10),
-                ('TOPPADDING', (0,1), (0,1), 2),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
+                # MODIFICADO: Incremento a 40 para hacer la caja 4 veces más alta en la impresión
+                ('BOTTOMPADDING', (0,1), (0,1), 40), 
+                ('LEFTPADDING', (0,1), (0,1), 6),
+                ('VALIGN', (0,1), (0,1), 'TOP'),
             ]))
             story.append(t_obs)
             
