@@ -136,7 +136,7 @@ def mostrar(supervisor_id=None):
             
             col2.write(f"**Nº Orden:** {cab['n_orden'] or '-'}")
             col2.write(f"**Motivo:** {cab['motivo'] or '-'}")
-            col2.write(f"**Sup. Producción:** {cab['sup_produccion'] or '-'}")
+            col2.write(f"**Sup. Producción:** {cab['sup_production'] or '-'}")
             
             col3.write(f"**Cliente:** {cab['cliente'] or '-'}")
             col3.write(f"**Proyecto:** {cab['proyecto'] or '-'}")
