@@ -346,14 +346,14 @@ def mostrar(supervisor_id=None):
                 story.append(t_block)
                 
                 # CORREGIDO: Fila única unificada horizontal con nombres y firmas continuas (Estilo Imagen 4)
-                txt_ops = op_nom1 if op_nom1 else "........................"
+                txt_ops = op_nom1 if op_nom1 else ""
                 if op_nom2:
                     txt_ops += f" / {op_nom2}"
                 
-                txt_responsables = f"<b>RESPONSABLE (S):</b> {txt_ops} __________________________"
+                txt_responsables = f"<b>RESPONSABLE (S):</b> {txt_ops} "
                 
                 data_firmas = [
-                    [Paragraph(txt_responsables, style_normal), Paragraph("<b>V°B° SUP PROD:</b> ________________________", style_normal)]
+                    [Paragraph(txt_responsables, style_normal), Paragraph("<b>V°B° SUP PROD:</b>", style_normal)]
                 ]
                 t_firmas = Table(data_firmas, colWidths=[365, 190])
                 t_firmas.setStyle(TableStyle([
