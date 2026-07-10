@@ -296,7 +296,7 @@ def mostrar(supervisor_id=None):
                 [Paragraph("<b>FECHA:</b>", style_s1_bld), Paragraph(fecha_str, style_s1), Paragraph("<b>Nº ORDEN:</b>", style_s1_bld), Paragraph(u_n_orden, style_s1)],
                 [Paragraph("<b>TIPO DE MUEBLE:</b>", style_s1_bld), Paragraph(u_tipo_mueble, style_s1), Paragraph("<b>MOTIVO:</b>", style_s1_bld), Paragraph(u_motivo, style_s1)],
                 [Paragraph("<b>CLIENTE:</b>", style_s1_bld), Paragraph(u_cliente, style_s1), Paragraph("<b>PROYECTO:</b>", style_s1_bld), Paragraph(u_proyecto, style_s1)],
-                [Paragraph("<b>SOLICITADO POR:</b>", style_s1_bld), Paragraph(u_sol_por, style_s1), Paragraph("<b>SUP. DE PRODUCCIÓN:</b>", style_s1_bld), Paragraph(u_sup_prod, style_s1)]
+                [Paragraph("<b>SOLICITADO POR:</b>", style_s1_bld), Paragraph(u_sol_por, style_s1), Paragraph("<b>SUP. PROD.:</b>", style_s1_bld), Paragraph(u_sup_prod, style_s1)]
             ]
             t_s1 = Table(data_s1, colWidths=[90, 185, 95, 185])
             t_s1.setStyle(TableStyle([
