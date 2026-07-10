@@ -170,7 +170,7 @@ def mostrar(supervisor_id=None):
         ed_escu, op_escu, op2_escu = generar_bloque_interfaz("📐 SECCIÓN 3: CORTE ESCUADRADORA", "ESCUADRADORA", df_escu, "CANT. PIEZAS")
         ed_cant, op_cant, op2_cant = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "CANTO USADO")
 
-        # SECCIÓN 5: LOGÍSTICA (Réplica exacta de la distribución de la imagen física)
+        # SECCIÓN 5: LOGÍSTICA (Optimización contra valores nulos en inputs de fecha)
         st.markdown('<div class="section-header">🚚 SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</div>', unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("**1. ENRUTAMIENTO DE PIEZAS (CONTROL DE DESTINO)**")
@@ -180,9 +180,9 @@ def mostrar(supervisor_id=None):
                 st.markdown("<font color='#4B5563'><b>📦 ZONA DE ARMADO (Taller)</b></font>", unsafe_allow_html=True)
                 try:
                     f_arm_val = cab.get('log_armado_fecha')
-                    f_arm_dt = datetime.strptime(f_arm_val, "%Y-%m-%d").date() if f_arm_val else None
+                    f_arm_dt = datetime.strptime(f_arm_val, "%Y-%m-%d").date() if f_arm_val else date.today()
                 except Exception:
-                    f_arm_dt = None
+                    f_arm_dt = date.today()
                 u_log_armado_fecha = st.date_input("FECHA RECEPCIÓN (ARMADO):", value=f_arm_dt, format="DD/MM/YYYY", key="f_arm_log")
                 u_log_armado_cant = st.text_input("Nº PALLETS / PIEZAS (ARMADO):", value=str(cab.get('log_armado_cant') or ""))
                 u_log_armado_vob = st.text_input("VºBº SUP. PRODUCCIÓN:", value=str(cab.get('log_armado_vob') or ""))
@@ -191,9 +191,9 @@ def mostrar(supervisor_id=None):
                 st.markdown("<font color='#4B5563'><b>?. ZONA DE DESPACHO (Obra)</b></font>", unsafe_allow_html=True)
                 try:
                     f_des_val = cab.get('log_despacho_fecha')
-                    f_des_dt = datetime.strptime(f_des_val, "%Y-%m-%d").date() if f_des_val else None
+                    f_des_dt = datetime.strptime(f_des_val, "%Y-%m-%d").date() if f_des_val else date.today()
                 except Exception:
-                    f_des_dt = None
+                    f_des_dt = date.today()
                 u_log_despacho_fecha = st.date_input("FECHA RECEPCIÓN (DESPACHO):", value=f_des_dt, format="DD/MM/YYYY", key="f_des_log")
                 u_log_despacho_cant = st.text_input("Nº PALLETS / PIEZAS (DESPACHO):", value=str(cab.get('log_despacho_cant') or ""))
                 u_log_despacho_vob = st.text_input("VºBº ALMACÉN / DESPACHO:", value=str(cab.get('log_despacho_vob') or ""))
@@ -203,9 +203,9 @@ def mostrar(supervisor_id=None):
             col_s1, col_s2, col_s3 = st.columns(3)
             try:
                 f_sal_val = cab.get('log_salida_fecha')
-                f_sal_dt = datetime.strptime(f_sal_val, "%Y-%m-%d").date() if f_sal_val else None
+                f_sal_dt = datetime.strptime(f_sal_val, "%Y-%m-%d").date() if f_sal_val else date.today()
             except Exception:
-                f_sal_dt = None
+                f_sal_dt = date.today()
             u_log_salida_fecha = col_s1.date_input("FECHA SALIDA A OBRA:", value=f_sal_dt, format="DD/MM/YYYY", key="f_sal_log")
             u_log_salida_conductor = col_s2.text_input("CONDUCTOR / CHOFER:", value=str(cab.get('log_salida_conductor') or ""))
             u_log_salida_vob = col_s3.text_input("VºBº ALMACÉN (SALIDA):", value=str(cab.get('log_salida_vob') or ""))
@@ -221,7 +221,8 @@ def mostrar(supervisor_id=None):
         if c_save.button("💾 GUARDAR AVANCES Y CAMBIOS", type="primary", use_container_width=True):
             try:
                 supabase.table("bitacoras_taller").update({
-                    "fecha": u_fecha.isoformat(), "n_orden": u_n_orden, "tipo_mueble": u_tipo_mueble,
+                    "fecha": u_fecha.isoformat() if u_fecha else None, 
+                    "n_orden": u_n_orden, "tipo_mueble": u_tipo_mueble,
                     "motivo": u_motivo, "cliente": u_cliente, "proyecto": u_proyecto,
                     "solicitado_por": u_sol_por, "sup_production": u_sup_prod, "estado": u_estado,
                     "log_armado_fecha": u_log_armado_fecha.isoformat() if u_log_armado_fecha else None,
@@ -283,7 +284,7 @@ def mostrar(supervisor_id=None):
             story.append(Paragraph("BITÁCORA DE PRODUCCIÓN", style_main_title))
             story.append(Spacer(1, 10))
             
-            fecha_str = u_fecha.strftime("%d/%m/%Y")
+            fecha_str = u_fecha.strftime("%d/%m/%Y") if u_fecha else ""
             data_s1 = [
                 [Paragraph("<b>FECHA:</b>", style_normal), Paragraph(fecha_str, style_normal), Paragraph("<b>Nº ORDEN:</b>", style_normal), Paragraph(u_n_orden, style_normal)],
                 [Paragraph("<b>TIPO DE MUEBLE:</b>", style_normal), Paragraph(u_tipo_mueble, style_normal), Paragraph("<b>MOTIVO:</b>", style_normal), Paragraph(u_motivo, style_normal)],
