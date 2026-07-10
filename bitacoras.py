@@ -97,7 +97,7 @@ def mostrar(supervisor_id=None):
                     op_actual2 = df_bloque['nombre_firma_operario2'].iloc[0] or ""
                 
             cx1, cx2, cx3 = st.columns([2, 2.5, 2.5])
-            btn_ins = cx1.button(f"➕ Insertar Registro", key=f"btn_ins_{bloque_id}")
+            btn_ins = cx1.button(f"➕ Insertar Registro a {titulo.split(': ')[1] if ': ' in titulo else titulo}", key=f"btn_ins_{bloque_id}")
             
             idx_op1 = lista_ops.index(op_actual1) if op_actual1 in lista_ops else None
             idx_op2 = lista_ops.index(op_actual2) if op_actual2 in lista_ops else None
@@ -201,6 +201,7 @@ def mostrar(supervisor_id=None):
             try:
                 f_sal_val = cab.get('log_salida_fecha')
                 f_sal_dt = datetime.strptime(f_sal_val, "%Y-%m-%d").date() if f_sal_val else None
+            except Exception:
                 f_sal_dt = None
             u_log_salida_fecha = col_s1.date_input("FECHA SALIDA A OBRA:", value=f_sal_dt, format="DD/MM/YYYY", key="f_sal_log")
             u_log_salida_conductor = col_s2.text_input("CONDUCTOR / CHOFER:", value=str(cab.get('log_salida_conductor') or ""))
@@ -270,11 +271,9 @@ def mostrar(supervisor_id=None):
             
             styles = getSampleStyleSheet()
             
-            # Ajuste de Jerarquía de Tipografía: Sección 1 reducida un 20% (de 11pt a 8.8pt)
             style_s1 = ParagraphStyle('Sec1', fontName='Helvetica', fontSize=8.5, leading=10.5)
             style_s1_bld = ParagraphStyle('Sec1Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=10.5)
             
-            # Estilos optimizados para matrices y secciones
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=9, leading=11)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=9, leading=11)
             style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=16, leading=19, alignment=1)
@@ -283,7 +282,6 @@ def mostrar(supervisor_id=None):
             story.append(Paragraph("BITÁCORA DE PRODUCCIÓN", style_main_title))
             story.append(Spacer(1, 6))
             
-            # SECCIÓN 1: Datos Generales (Etiqueta corregida a SUP. PRODUC.)
             fecha_str = u_fecha.strftime("%d/%m/%Y") if u_fecha else ""
             data_s1 = [
                 [Paragraph("<b>FECHA:</b>", style_s1_bld), Paragraph(fecha_str, style_s1), Paragraph("<b>Nº ORDEN:</b>", style_s1_bld), Paragraph(u_n_orden, style_s1)],
@@ -300,14 +298,12 @@ def mostrar(supervisor_id=None):
             story.append(t_s1)
             story.append(Spacer(1, 4))
             
-            # Función inyectora calibrada con control explícito de alturas por fila para simetría perfecta
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op_nom1, op_nom2, es_canteo=False):
                 story.append(Paragraph(f"<b>{titulo}</b>", style_section_title))
                 story.append(Spacer(1, 1))
                 
                 rows_pdf = [[Paragraph(f"<b>{h}</b>", style_bold) for h in cabeceras]]
                 
-                # 1. Cargar las filas que contienen datos reales
                 filas_cargadas = 0
                 if not df_ed.empty:
                     for _, r in df_ed.iterrows():
@@ -319,21 +315,17 @@ def mostrar(supervisor_id=None):
                         rows_pdf.append(fila)
                         filas_cargadas += 1
                 
-                # 2. Rellenar con filas vacías estructuradas idénticamente
                 filas_restantes = max(0, 7 - filas_cargadas)
                 for _ in range(filas_restantes):
                     fila_vacia = [Table([[Spacer(1, 9)]], colWidths=[40], rowHeights=[9]) for _ in range(len(cabeceras))]
                     rows_pdf.append(fila_vacia)
                         
-                # Definición estricta de anchos por columnas (Suma exacta: 555 puntos)
                 if not es_canteo:
                     ancho_cols = [40, 215, 40, 40, 40, 40, 60, 80]
                 else:
                     ancho_cols = [35, 160, 60, 40, 40, 40, 40, 60, 80]
                 
                 ancho_cols = ancho_cols[:len(cabeceras)]
-                
-                # Altura fija exacta para cada fila (14pt para cabecera, 18pt para las 7 filas)
                 alturas_filas = [14] + [18] * 7
                 
                 t_block = Table(rows_pdf, colWidths=ancho_cols, rowHeights=alturas_filas)
@@ -347,7 +339,6 @@ def mostrar(supervisor_id=None):
                 ]))
                 story.append(t_block)
                 
-                # Fila unificada horizontal para firmas al ras de la matriz
                 txt_ops = op_nom1 if op_nom1 else "........................"
                 if op_nom2:
                     txt_ops += f" / {op_nom2}"
@@ -367,13 +358,10 @@ def mostrar(supervisor_id=None):
                 story.append(t_firmas)
                 story.append(Spacer(1, 4))
 
-            # Ejecución de matrices de manufactura (Cabecera CANT. reemplazada por #)
             inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PL.", "OBS."], ed_secc, op_secc, op2_secc)
             inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PIEZAS", "OBS."], ed_escu, op_escu, op2_escu)
             inyectar_tabla_pdf("CANTEO", ["#", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "CANTO USADO", "OBS."], ed_cant, op_cant, op2_cant, es_canteo=True)
 
-            # SECCIÓN 5: LOGÍSTICA (Aumento leve de márgenes internos para escritura cómoda)
-            story.append(Spacer(1, 2))
             story.append(Paragraph("<b>🚚 SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</b>", style_section_title))
             story.append(Spacer(1, 2))
             
