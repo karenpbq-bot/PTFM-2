@@ -376,9 +376,9 @@ def mostrar(supervisor_id=None):
                 story.append(Spacer(1, 4))
 
             # Ejecución de matrices de manufactura
-            inyectar_tabla_pdf("CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PL.", "OBS."], ed_secc, op_secc, op2_secc)
-            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PIEZAS", "OBS."], ed_escu, op_escu, op2_escu)
-            inyectar_tabla_pdf("CANTEO", ["CANT.", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "CANTO USADO", "OBS."], ed_cant, op_cant, op2_cant, es_canteo=True)
+            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "# TABL", "OBS"], ed_secc, op_secc, op2_secc)
+            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "# PIEZAS", "OBS"], ed_escu, op_escu, op2_escu)
+            inyectar_tabla_pdf("CANTEO", ["#", "DESCRIPCIÓN", "TIPO CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "ML USADO", "OBS"], ed_cant, op_cant, op2_cant, es_canteo=True)
 
             # SECCIÓN 5: LOGÍSTICA (Aumento leve de márgenes internos para escritura cómoda)
             story.append(Spacer(1, 2))
