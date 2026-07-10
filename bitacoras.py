@@ -258,8 +258,9 @@ def mostrar(supervisor_id=None):
                             "nombre_firma_operario": op_nombre1,
                             "nombre_firma_operario2": op_nombre2
                         }
-                        supabase.table("bitacoras_lines").update(payload).eq("id", int(r['id'])).execute()
-
+                        # CORREGIDO: "bitacoras_lineas" en lugar de "bitacoras_lines"
+                        supabase.table("bitacoras_lineas").update(payload).eq("id", int(r['id'])).execute()
+                        
                 # 3. Guardado secuencial de los bloques de producción
                 procesar_lote_guardado(ed_secc, "SECCIONADORA", op_secc, op2_secc)
                 procesar_lote_guardado(ed_escu, "ESCUADRADORA", op_escu, op2_escu)
