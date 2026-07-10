@@ -265,8 +265,8 @@ def mostrar(supervisor_id=None):
             except Exception as e:
                 st.error(f"Falla de sincronización: {e}")
         
-        # =========================================================================
-        # MOTOR DE COMPILACIÓN NATIVA PDF
+       # =========================================================================
+        # MOTOR DE COMPILACIÓN NATIVA PDF (OPTIMIZADO Y COMPACTO)
         # =========================================================================
         try:
             buffer_pdf = io.BytesIO()
@@ -274,30 +274,38 @@ def mostrar(supervisor_id=None):
             story = []
             
             styles = getSampleStyleSheet()
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=11, leading=14)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=11, leading=14)
-            style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=11, leading=14, alignment=1)
-            style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=20, leading=24, alignment=1)
-            style_section_title = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=14, leading=18)
+            
+            # Ajuste de Jerarquía de Tipografía: Sección 1 reducida un 20% (de 11pt a 8.8pt)
+            style_s1 = ParagraphStyle('Sec1', fontName='Helvetica', fontSize=8.8, leading=11)
+            style_s1_bld = ParagraphStyle('Sec1Bld', fontName='Helvetica-Bold', fontSize=8.8, leading=11)
+            
+            # Estilos para matrices y secciones
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=10, leading=12)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=10, leading=12)
+            style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=18, leading=22, alignment=1)
+            style_section_title = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=12, leading=15)
             
             story.append(Paragraph("BITÁCORA DE PRODUCCIÓN", style_main_title))
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 8))
             
-            fecha_str = u_fecha.strftime("%d/%m/%Y")
+            # SECCIÓN 1: Formato con padding reducido a la mitad y letra optimizada
+            fecha_str = u_fecha.strftime("%d/%m/%Y") if u_fecha else ""
             data_s1 = [
-                [Paragraph("<b>FECHA:</b>", style_normal), Paragraph(fecha_str, style_normal), Paragraph("<b>Nº ORDEN:</b>", style_normal), Paragraph(u_n_orden, style_normal)],
-                [Paragraph("<b>TIPO DE MUEBLE:</b>", style_normal), Paragraph(u_tipo_mueble, style_normal), Paragraph("<b>MOTIVO:</b>", style_normal), Paragraph(u_motivo, style_normal)],
-                [Paragraph("<b>CLIENTE:</b>", style_normal), Paragraph(u_cliente, style_normal), Paragraph("<b>PROYECTO:</b>", style_normal), Paragraph(u_proyecto, style_normal)],
-                [Paragraph("<b>SOLICITADO POR:</b>", style_normal), Paragraph(u_sol_por, style_normal), Paragraph("<b>SUP. DE PRODUCCIÓN:</b>", style_normal), Paragraph(u_sup_prod, style_normal)]
+                [Paragraph("<b>FECHA:</b>", style_s1_bld), Paragraph(fecha_str, style_s1), Paragraph("<b>Nº ORDEN:</b>", style_s1_bld), Paragraph(u_n_orden, style_s1)],
+                [Paragraph("<b>TIPO DE MUEBLE:</b>", style_s1_bld), Paragraph(u_tipo_mueble, style_s1), Paragraph("<b>MOTIVO:</b>", style_s1_bld), Paragraph(u_motivo, style_s1)],
+                [Paragraph("<b>CLIENTE:</b>", style_s1_bld), Paragraph(u_cliente, style_s1), Paragraph("<b>PROYECTO:</b>", style_s1_bld), Paragraph(u_proyecto, style_s1)],
+                [Paragraph("<b>SOLICITADO POR:</b>", style_s1_bld), Paragraph(u_sol_por, style_s1), Paragraph("<b>SUP. DE PRODUCCIÓN:</b>", style_s1_bld), Paragraph(u_sup_prod, style_s1)]
             ]
-            t_s1 = Table(data_s1, colWidths=[100, 180, 100, 175])
+            t_s1 = Table(data_s1, colWidths=[90, 185, 95, 185])
             t_s1.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (0,3), colors.lightgrey), ('BACKGROUND', (2,0), (2,3), colors.lightgrey),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('TOPPADDING', (0,0), (-1,-1), 2.5), ('BOTTOMPADDING', (0,0), (-1,-1), 2.5), # Reducido a la mitad
             ]))
             story.append(t_s1)
-            story.append(Spacer(1, 8))
+            story.append(Spacer(1, 6))
             
+            # Función inyectora calibrada con anchos proporcionales y firmas unificadas estilo Imagen 1
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op_nom1, op_nom2, es_canteo=False):
                 story.append(Paragraph(f"<b>{titulo}</b>", style_section_title))
                 story.append(Spacer(1, 2))
@@ -315,42 +323,48 @@ def mostrar(supervisor_id=None):
                     for _ in range(2):
                         rows_pdf.append([Paragraph("", style_normal) for _ in cabeceras])
                         
+                # RECALIBRACIÓN DE ANCHOS: Descripción como la más ancha, CANT. homogeneizadas a 60pt (como Canteo)
                 if not es_canteo:
-                    ancho_cols = [35, 165, 45, 45, 45, 45, 120, 55]
+                    # Columnas: CANT(40), DESCRIPCIÓN(215), F.I(40), H.I(40), H.T(40), F.T(40), CANT. RESULTADO(60), OBS(80) -> Total 555
+                    ancho_cols = [40, 215, 40, 40, 40, 40, 60, 80]
                 else:
-                    ancho_cols = [35, 120, 90, 40, 40, 40, 40, 95, 55]
+                    # Columnas: CANT(35), DESCRIPCIÓN(160), TIPO CANTO(60), F.I(40), H.I(40), H.T(40), F.T(40), CANTO USADO(60), OBS(80) -> Total 555
+                    ancho_cols = [35, 160, 60, 40, 40, 40, 40, 60, 80]
                 
-                ancho_cols = ancho_cols[:len(cabeceras)]
                 t_block = Table(rows_pdf, colWidths=ancho_cols)
                 t_block.setStyle(TableStyle([
                     ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
                     ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('TOPPADDING', (0,0), (-1,-1), 5), ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                    ('TOPPADDING', (0,0), (-1,-1), 2.5), ('BOTTOMPADDING', (0,0), (-1,-1), 2.5), # Reducido a la mitad
                 ]))
                 story.append(t_block)
-                story.append(Spacer(1, 4))
                 
-                txt_op1 = op_nom1 if op_nom1 else "........................"
-                txt_op2 = op_nom2 if op_nom2 else "........................"
+                # ESTRUCTURA DE FIRMA UNIFICADA AL RAS DE LA MATRIZ (Estilo Imagen 1)
+                txt_responsables = f"<b>RESPONSABLE (S):</b> {op_nom1}" + (f" / {op_nom2}" if op_nom2 else "")
                 data_firmas = [
-                    [Paragraph(f"Responsable 1: {txt_op1}", style_normal), Paragraph(f"Responsable 2: {txt_op2}", style_normal)],
-                    [Paragraph("Firma: _______________________", style_normal), Paragraph("Firma: _______________________", style_normal)]
+                    [Paragraph(txt_responsables, style_normal), Paragraph("<b>SUP. PROD:</b>", style_normal)],
+                    [Paragraph("Firma: ____________________________________________", style_normal), Paragraph("Firma: ________________________", style_normal)]
                 ]
-                t_firmas = Table(data_firmas, colWidths=[277, 278])
+                t_firmas = Table(data_firmas, colWidths=[375, 180])
                 t_firmas.setStyle(TableStyle([
+                    ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,1), (-1,1), 10),
+                    ('TOPPADDING', (0,0), (-1,-1), 4), ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                    ('BOTTOMPADDING', (0,1), (-1,1), 18), # Espacio óptimo para la firma física
                 ]))
                 story.append(t_firmas)
-                story.append(Spacer(1, 6))
+                story.append(Spacer(1, 4))
 
+            # Ejecución de matrices de manufactura
             inyectar_tabla_pdf("CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PL.", "OBS."], ed_secc, op_secc, op2_secc)
             inyectar_tabla_pdf("CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PIEZAS", "OBS."], ed_escu, op_escu, op2_escu)
             inyectar_tabla_pdf("CANTEO", ["CANT.", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "CANTO USADO", "OBS."], ed_cant, op_cant, op2_cant, es_canteo=True)
 
+            # SECCIÓN 5: LOGÍSTICA (Aumento leve de márgenes internos para escritura cómoda)
+            story.append(Spacer(1, 2))
             story.append(Paragraph("<b>🚚 SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</b>", style_section_title))
-            story.append(Spacer(1, 3))
+            story.append(Spacer(1, 2))
             
             f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
             f_des_p = u_log_despacho_fecha.strftime("%d/%m/%Y") if u_log_despacho_fecha else ""
@@ -365,7 +379,8 @@ def mostrar(supervisor_id=None):
             t_log = Table(data_log_tab, colWidths=[277, 278])
             t_log.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('TOPPADDING', (0,0), (-1,-1), 5), ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
+                ('TOPPADDING', (0,0), (-1,-1), 7), ('BOTTOMPADDING', (0,0), (-1,-1), 7), # Incrementado un 40% para holgura
             ]))
             story.append(t_log)
             story.append(Spacer(1, 4))
@@ -376,7 +391,7 @@ def mostrar(supervisor_id=None):
             t_sal = Table(data_salida, colWidths=[150, 250, 155])
             t_sal.setStyle(TableStyle([
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 5), ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ('TOPPADDING', (0,0), (-1,-1), 7), ('BOTTOMPADDING', (0,0), (-1,-1), 7), # Incrementado un 40% para holgura
             ]))
             story.append(t_sal)
             story.append(Spacer(1, 4))
@@ -388,15 +403,15 @@ def mostrar(supervisor_id=None):
             t_obs = Table(data_obs, colWidths=[555])
             t_obs.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (0,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-                ('TOPPADDING', (0,0), (-1,-1), 4), ('BOTTOMPADDING', (0,1), (0,1), 40), ('LEFTPADDING', (0,1), (0,1), 6), ('VALIGN', (0,1), (0,1), 'TOP'),
+                ('TOPPADDING', (0,0), (-1,-1), 5), ('BOTTOMPADDING', (0,1), (0,1), 35), ('LEFTPADDING', (0,1), (0,1), 6), ('VALIGN', (0,1), (0,1), 'TOP'),
             ]))
             story.append(t_obs)
             
             doc_pdf.build(story)
             c_pdf.download_button("🖨️ EXPORTAR BITÁCORA EN PDF", data=buffer_pdf.getvalue(), file_name=f"Bitacora_{u_n_orden}.pdf", mime="application/pdf", use_container_width=True)
         except Exception as e_pdf:
-            c_pdf.error(f"Alerta en motor PDF: {e_pdf}")
-
+            c_pdf.error(f"Alerta en motor PDF: {e_pdf}")        
+        
     # =========================================================================
     # ENTORNO INICIAL: HISTORIAL Y LISTADOS + PESTAÑA CONFIGURACIÓN
     # =========================================================================
