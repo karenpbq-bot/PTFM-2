@@ -1,4 +1,4 @@
 import streamlit as st
 
 def mostrar(supervisor_id=None):
-    st.write("Módulo de bitácoras temporal en mantenimiento.")
+    st.info("🔄 El módulo de Bitácoras de Producción se encuentra temporalmente en mantenimiento.")
