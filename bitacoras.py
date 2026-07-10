@@ -275,20 +275,22 @@ def mostrar(supervisor_id=None):
             
             styles = getSampleStyleSheet()
             
-            # Ajuste de Jerarquía de Tipografía: Sección 1 reducida un 20% (de 11pt a 8.8pt)
-            style_s1 = ParagraphStyle('Sec1', fontName='Helvetica', fontSize=8.8, leading=11)
-            style_s1_bld = ParagraphStyle('Sec1Bld', fontName='Helvetica-Bold', fontSize=8.8, leading=11)
+            # Ajuste de Jerarquía de Tipografía: Sección 1 compacta
+            style_s1 = ParagraphStyle('Sec1', fontName='Helvetica', fontSize=8.5, leading=10.5)
+            style_s1_bld = ParagraphStyle('Sec1Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=10.5)
             
-            # Estilos para matrices y secciones
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=10, leading=12)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=10, leading=12)
-            style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=18, leading=22, alignment=1)
-            style_section_title = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=12, leading=15)
+            # Estilos optimizados para que 7 filas quepan en una sola página
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=9, leading=11)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=9, leading=11)
+            style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=16, leading=19, alignment=1)
+            
+            # Reducción de títulos de sección para optimizar espacio vertical
+            style_section_title = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=11, leading=13)
             
             story.append(Paragraph("BITÁCORA DE PRODUCCIÓN", style_main_title))
-            story.append(Spacer(1, 8))
+            story.append(Spacer(1, 6))
             
-            # SECCIÓN 1: Formato con padding reducido a la mitad y letra optimizada
+            # SECCIÓN 1: Datos Generales
             fecha_str = u_fecha.strftime("%d/%m/%Y") if u_fecha else ""
             data_s1 = [
                 [Paragraph("<b>FECHA:</b>", style_s1_bld), Paragraph(fecha_str, style_s1), Paragraph("<b>Nº ORDEN:</b>", style_s1_bld), Paragraph(u_n_orden, style_s1)],
@@ -300,17 +302,20 @@ def mostrar(supervisor_id=None):
             t_s1.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (0,3), colors.lightgrey), ('BACKGROUND', (2,0), (2,3), colors.lightgrey),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 2.5), ('BOTTOMPADDING', (0,0), (-1,-1), 2.5), # Reducido a la mitad
+                ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2),
             ]))
             story.append(t_s1)
-            story.append(Spacer(1, 6))
+            story.append(Spacer(1, 4))
             
-            # Función inyectora calibrada con anchos proporcionales y firmas unificadas estilo Imagen 1
+            # Función inyectora calibrada a 7 filas y firmas horizontales unificadas
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op_nom1, op_nom2, es_canteo=False):
                 story.append(Paragraph(f"<b>{titulo}</b>", style_section_title))
-                story.append(Spacer(1, 2))
+                story.append(Spacer(1, 1))
                 
                 rows_pdf = [[Paragraph(f"<b>{h}</b>", style_bold) for h in cabeceras]]
+                
+                # Pasar los datos guardados a la matriz del PDF
+                filas_cargadas = 0
                 if not df_ed.empty:
                     for _, r in df_ed.iterrows():
                         fila = []
@@ -319,16 +324,16 @@ def mostrar(supervisor_id=None):
                                 val_t = str(r[col_id]) if (r[col_id] is not None and not pd.isna(r[col_id])) else ""
                                 fila.append(Paragraph(val_t, style_normal))
                         rows_pdf.append(fila)
-                else:
-                    for _ in range(2):
-                        rows_pdf.append([Paragraph("", style_normal) for _ in cabeceras])
+                        filas_cargadas += 1
+                
+                # MODIFICADO: Rellenar dinámicamente con filas vacías hasta completar exactamente 7 líneas
+                filas_restantes = max(0, 7 - filas_cargadas)
+                for _ in range(filas_restantes):
+                    rows_pdf.append([Paragraph("", style_normal) for _ in cabeceras])
                         
-                # RECALIBRACIÓN DE ANCHOS: Descripción como la más ancha, CANT. homogeneizadas a 60pt (como Canteo)
                 if not es_canteo:
-                    # Columnas: CANT(40), DESCRIPCIÓN(215), F.I(40), H.I(40), H.T(40), F.T(40), CANT. RESULTADO(60), OBS(80) -> Total 555
                     ancho_cols = [40, 215, 40, 40, 40, 40, 60, 80]
                 else:
-                    # Columnas: CANT(35), DESCRIPCIÓN(160), TIPO CANTO(60), F.I(40), H.I(40), H.T(40), F.T(40), CANTO USADO(60), OBS(80) -> Total 555
                     ancho_cols = [35, 160, 60, 40, 40, 40, 40, 60, 80]
                 
                 t_block = Table(rows_pdf, colWidths=ancho_cols)
@@ -336,22 +341,26 @@ def mostrar(supervisor_id=None):
                     ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
                     ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('TOPPADDING', (0,0), (-1,-1), 2.5), ('BOTTOMPADDING', (0,0), (-1,-1), 2.5), # Reducido a la mitad
+                    ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2), # Ajuste fino de celdas
                 ]))
                 story.append(t_block)
                 
-                # ESTRUCTURA DE FIRMA UNIFICADA AL RAS DE LA MATRIZ (Estilo Imagen 1)
-                txt_responsables = f"<b>RESPONSABLE (S):</b> {op_nom1}" + (f" / {op_nom2}" if op_nom2 else "")
+                # CORREGIDO: Fila única unificada horizontal con nombres y firmas continuas (Estilo Imagen 4)
+                txt_ops = op_nom1 if op_nom1 else "........................"
+                if op_nom2:
+                    txt_ops += f" / {op_nom2}"
+                
+                txt_responsables = f"<b>RESPONSABLE (S):</b> {txt_ops} __________________________"
+                
                 data_firmas = [
-                    [Paragraph(txt_responsables, style_normal), Paragraph("<b>SUP. PROD:</b>", style_normal)],
-                    [Paragraph("Firma: ____________________________________________", style_normal), Paragraph("Firma: ________________________", style_normal)]
+                    [Paragraph(txt_responsables, style_normal), Paragraph("<b>V°B° SUP PROD:</b> ________________________", style_normal)]
                 ]
-                t_firmas = Table(data_firmas, colWidths=[375, 180])
+                t_firmas = Table(data_firmas, colWidths=[365, 190])
                 t_firmas.setStyle(TableStyle([
                     ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('TOPPADDING', (0,0), (-1,-1), 4), ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-                    ('BOTTOMPADDING', (0,1), (-1,1), 18), # Espacio óptimo para la firma física
+                    ('TOPPADDING', (0,0), (-1,-1), 8), 
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 8), # Altura idónea para firmas manuales rápidas
                 ]))
                 story.append(t_firmas)
                 story.append(Spacer(1, 4))
