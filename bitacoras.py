@@ -64,7 +64,7 @@ def mostrar(supervisor_id=None):
             u_cliente = c1.text_input("CLIENTE:", value=cab['cliente'] or "")
             u_proyecto = c2.text_input("PROYECTO:", value=cab['proyecto'] or "")
             u_sol_por = c1.text_input("SOLICITADO POR:", value=cab['solicitado_por'] or "")
-            u_sup_prod = c2.text_input("SUP. DE PRODUCCION:", value=cab['sup_production'] or "")
+            u_sup_prod = c2.text_input("SUP. PRODUC.:", value=cab['sup_production'] or "")
             u_estado = st.selectbox("ESTADO DE LA BITÁCORA:", ["Pendiente", "En Proceso", "Cerrada"], index=["Pendiente", "En Proceso", "Cerrada"].index(cab['estado']))
 
         # Carga y normalización de líneas operativas desde Supabase
@@ -112,12 +112,11 @@ def mostrar(supervisor_id=None):
                 }).execute()
                 st.rerun()
             
-            # Reordenamiento horizontal: Resultados van después de F.T. y nombres reducidos
             if bloque_id == 'CANTEO':
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
+                    "cantidad": st.column_config.NumberColumn("#", format="%.2f"),
                     "descripcion": st.column_config.SelectboxColumn("DESCRIPCION", options=lista_descs, required=True),
                     "tipo_canto": st.column_config.SelectboxColumn("TIPO DE CANTO", options=lista_cantos, required=True),
                     "fecha_inicio": st.column_config.TextColumn("F.I."),
@@ -131,7 +130,7 @@ def mostrar(supervisor_id=None):
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
+                    "cantidad": st.column_config.NumberColumn("#", format="%.2f"),
                     "descripcion": st.column_config.SelectboxColumn("DESCRIPCION", options=lista_descs, required=True),
                     "fecha_inicio": st.column_config.TextColumn("F.I."),
                     "hora_inicio": st.column_config.TextColumn("H.I."),
@@ -149,7 +148,6 @@ def mostrar(supervisor_id=None):
             else:
                 df_limpio = pd.DataFrame(columns=columnas_visibles)
 
-            # Blindaje automático de tipos
             for col_c in df_limpio.columns:
                 if col_c == "cantidad":
                     df_limpio[col_c] = pd.to_numeric(df_limpio[col_c]).fillna(0.0)
@@ -165,12 +163,11 @@ def mostrar(supervisor_id=None):
             )
             return res_ed, op_val1, op_val2
 
-        # Despliegue secuencial de las tablas de manufactura (Secciones 2, 3 y 4)
         ed_secc, op_secc, op2_secc = generar_bloque_interfaz("🪚 SECCIÓN 2: CORTE SECCIONADORA", "SECCIONADORA", df_secc, "CANT. PL.")
         ed_escu, op_escu, op2_escu = generar_bloque_interfaz("📐 SECCIÓN 3: CORTE ESCUADRADORA", "ESCUADRADORA", df_escu, "CANT. PIEZAS")
         ed_cant, op_cant, op2_cant = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "CANTO USADO")
 
-        # SECCIÓN 5: LOGÍSTICA (Réplica exacta de la distribución de la imagen física)
+        # SECCIÓN 5: LOGÍSTICA
         st.markdown('<div class="section-header">🚚 SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</div>', unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("**1. ENRUTAMIENTO DE PIEZAS (CONTROL DE DESTINO)**")
@@ -204,7 +201,6 @@ def mostrar(supervisor_id=None):
             try:
                 f_sal_val = cab.get('log_salida_fecha')
                 f_sal_dt = datetime.strptime(f_sal_val, "%Y-%m-%d").date() if f_sal_val else None
-            except Exception:
                 f_sal_dt = None
             u_log_salida_fecha = col_s1.date_input("FECHA SALIDA A OBRA:", value=f_sal_dt, format="DD/MM/YYYY", key="f_sal_log")
             u_log_salida_conductor = col_s2.text_input("CONDUCTOR / CHOFER:", value=str(cab.get('log_salida_conductor') or ""))
@@ -214,7 +210,6 @@ def mostrar(supervisor_id=None):
             st.markdown("**3. OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA**")
             u_log_observaciones = st.text_area("Registre novedades del flete, embalaje o despacho general:", value=str(cab.get('log_observaciones') or ""), height=80, label_visibility="collapsed")
 
-        # Guardado unificado y procesamiento inteligente de fechas cortas
         st.divider()
         c_save, c_pdf = st.columns(2)
         
@@ -264,9 +259,9 @@ def mostrar(supervisor_id=None):
                 st.success("🎉 Cambios guardados con éxito."); st.rerun()
             except Exception as e:
                 st.error(f"Falla de sincronización: {e}")
-        
-       # =========================================================================
-        # MOTOR DE COMPILACIÓN NATIVA PDF (OPTIMIZADO Y COMPACTO)
+
+        # =========================================================================
+        # MOTOR DE COMPILACIÓN NATIVA PDF (7 FILAS SIMÉTRICAS FIJAS)
         # =========================================================================
         try:
             buffer_pdf = io.BytesIO()
@@ -275,28 +270,26 @@ def mostrar(supervisor_id=None):
             
             styles = getSampleStyleSheet()
             
-            # Ajuste de Jerarquía de Tipografía: Sección 1 compacta
+            # Ajuste de Jerarquía de Tipografía: Sección 1 reducida un 20% (de 11pt a 8.8pt)
             style_s1 = ParagraphStyle('Sec1', fontName='Helvetica', fontSize=8.5, leading=10.5)
             style_s1_bld = ParagraphStyle('Sec1Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=10.5)
             
-            # Estilos optimizados para que 7 filas quepan en una sola página
+            # Estilos optimizados para matrices y secciones
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=9, leading=11)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=9, leading=11)
             style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=16, leading=19, alignment=1)
-            
-            # Reducción de títulos de sección para optimizar espacio vertical
             style_section_title = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=11, leading=13)
             
             story.append(Paragraph("BITÁCORA DE PRODUCCIÓN", style_main_title))
             story.append(Spacer(1, 6))
             
-            # SECCIÓN 1: Datos Generales
+            # SECCIÓN 1: Datos Generales (Etiqueta corregida a SUP. PRODUC.)
             fecha_str = u_fecha.strftime("%d/%m/%Y") if u_fecha else ""
             data_s1 = [
                 [Paragraph("<b>FECHA:</b>", style_s1_bld), Paragraph(fecha_str, style_s1), Paragraph("<b>Nº ORDEN:</b>", style_s1_bld), Paragraph(u_n_orden, style_s1)],
                 [Paragraph("<b>TIPO DE MUEBLE:</b>", style_s1_bld), Paragraph(u_tipo_mueble, style_s1), Paragraph("<b>MOTIVO:</b>", style_s1_bld), Paragraph(u_motivo, style_s1)],
                 [Paragraph("<b>CLIENTE:</b>", style_s1_bld), Paragraph(u_cliente, style_s1), Paragraph("<b>PROYECTO:</b>", style_s1_bld), Paragraph(u_proyecto, style_s1)],
-                [Paragraph("<b>SOLICITADO POR:</b>", style_s1_bld), Paragraph(u_sol_por, style_s1), Paragraph("<b>SUP. PROD.:</b>", style_s1_bld), Paragraph(u_sup_prod, style_s1)]
+                [Paragraph("<b>SOLICITADO POR:</b>", style_s1_bld), Paragraph(u_sol_por, style_s1), Paragraph("<b>SUP. PRODUC.:</b>", style_s1_bld), Paragraph(u_sup_prod, style_s1)]
             ]
             t_s1 = Table(data_s1, colWidths=[90, 185, 95, 185])
             t_s1.setStyle(TableStyle([
@@ -307,7 +300,7 @@ def mostrar(supervisor_id=None):
             story.append(t_s1)
             story.append(Spacer(1, 4))
             
-            # Función inyectora con control explícito de alturas por fila para simetría perfecta
+            # Función inyectora calibrada con control explícito de alturas por fila para simetría perfecta
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op_nom1, op_nom2, es_canteo=False):
                 story.append(Paragraph(f"<b>{titulo}</b>", style_section_title))
                 story.append(Spacer(1, 1))
@@ -329,7 +322,6 @@ def mostrar(supervisor_id=None):
                 # 2. Rellenar con filas vacías estructuradas idénticamente
                 filas_restantes = max(0, 7 - filas_cargadas)
                 for _ in range(filas_restantes):
-                    # Usamos un Spacer sutil dentro de cada celda vacía para forzar volumen constante
                     fila_vacia = [Table([[Spacer(1, 9)]], colWidths=[40], rowHeights=[9]) for _ in range(len(cabeceras))]
                     rows_pdf.append(fila_vacia)
                         
@@ -341,7 +333,7 @@ def mostrar(supervisor_id=None):
                 
                 ancho_cols = ancho_cols[:len(cabeceras)]
                 
-                # CORREGIDO: Definimos la altura fija exacta para cada fila (14pt para cabecera, 18pt para las 7 filas)
+                # Altura fija exacta para cada fila (14pt para cabecera, 18pt para las 7 filas)
                 alturas_filas = [14] + [18] * 7
                 
                 t_block = Table(rows_pdf, colWidths=ancho_cols, rowHeights=alturas_filas)
@@ -355,15 +347,15 @@ def mostrar(supervisor_id=None):
                 ]))
                 story.append(t_block)
                 
-                # Fila unificada horizontal para firmas
-                txt_ops = op_nom1 if op_nom1 else ""
+                # Fila unificada horizontal para firmas al ras de la matriz
+                txt_ops = op_nom1 if op_nom1 else "........................"
                 if op_nom2:
                     txt_ops += f" / {op_nom2}"
                 
-                txt_responsables = f"<b>RESPONSABLE (S):</b> {txt_ops} "
+                txt_responsables = f"<b>RESPONSABLE (S):</b> {txt_ops} __________________________"
                 
                 data_firmas = [
-                    [Paragraph(txt_responsables, style_normal), Paragraph("<b>V°B° SUP PROD:</b> ", style_normal)]
+                    [Paragraph(txt_responsables, style_normal), Paragraph("<b>V°B° SUP PROD:</b> ________________________", style_normal)]
                 ]
                 t_firmas = Table(data_firmas, colWidths=[365, 190], rowHeights=[24])
                 t_firmas.setStyle(TableStyle([
@@ -375,10 +367,10 @@ def mostrar(supervisor_id=None):
                 story.append(t_firmas)
                 story.append(Spacer(1, 4))
 
-            # Ejecución de matrices de manufactura
-            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "# TABL", "OBS"], ed_secc, op_secc, op2_secc)
-            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "# PIEZAS", "OBS"], ed_escu, op_escu, op2_escu)
-            inyectar_tabla_pdf("CANTEO", ["#", "DESCRIPCIÓN", "CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "ML USADO", "OBS"], ed_cant, op_cant, op2_cant, es_canteo=True)
+            # Ejecución de matrices de manufactura (Cabecera CANT. reemplazada por #)
+            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PL.", "OBS."], ed_secc, op_secc, op2_secc)
+            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PIEZAS", "OBS."], ed_escu, op_escu, op2_escu)
+            inyectar_tabla_pdf("CANTEO", ["#", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "CANTO USADO", "OBS."], ed_cant, op_cant, op2_cant, es_canteo=True)
 
             # SECCIÓN 5: LOGÍSTICA (Aumento leve de márgenes internos para escritura cómoda)
             story.append(Spacer(1, 2))
@@ -399,7 +391,7 @@ def mostrar(supervisor_id=None):
             t_log.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-                ('TOPPADDING', (0,0), (-1,-1), 7), ('BOTTOMPADDING', (0,0), (-1,-1), 7), # Incrementado un 40% para holgura
+                ('TOPPADDING', (0,0), (-1,-1), 7), ('BOTTOMPADDING', (0,0), (-1,-1), 7),
             ]))
             story.append(t_log)
             story.append(Spacer(1, 4))
@@ -410,7 +402,7 @@ def mostrar(supervisor_id=None):
             t_sal = Table(data_salida, colWidths=[150, 250, 155])
             t_sal.setStyle(TableStyle([
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 7), ('BOTTOMPADDING', (0,0), (-1,-1), 7), # Incrementado un 40% para holgura
+                ('TOPPADDING', (0,0), (-1,-1), 7), ('BOTTOMPADDING', (0,0), (-1,-1), 7),
             ]))
             story.append(t_sal)
             story.append(Spacer(1, 4))
@@ -429,8 +421,8 @@ def mostrar(supervisor_id=None):
             doc_pdf.build(story)
             c_pdf.download_button("🖨️ EXPORTAR BITÁCORA EN PDF", data=buffer_pdf.getvalue(), file_name=f"Bitacora_{u_n_orden}.pdf", mime="application/pdf", use_container_width=True)
         except Exception as e_pdf:
-            c_pdf.error(f"Alerta en motor PDF: {e_pdf}")        
-        
+            c_pdf.error(f"Alerta en motor PDF: {e_pdf}")
+
     # =========================================================================
     # ENTORNO INICIAL: HISTORIAL Y LISTADOS + PESTAÑA CONFIGURACIÓN
     # =========================================================================
