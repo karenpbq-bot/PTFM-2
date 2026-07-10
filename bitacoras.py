@@ -220,6 +220,7 @@ def mostrar(supervisor_id=None):
         
         if c_save.button("💾 GUARDAR AVANCES Y CAMBIOS", type="primary", use_container_width=True):
             try:
+                # 1. Actualización de datos principales de la bitácora
                 supabase.table("bitacoras_taller").update({
                     "fecha": u_fecha.isoformat() if u_fecha else None, 
                     "n_orden": u_n_orden, "tipo_mueble": u_tipo_mueble,
@@ -234,6 +235,7 @@ def mostrar(supervisor_id=None):
                     "log_observaciones": u_log_observaciones
                 }).eq("id", id_act).execute()
                 
+                # 2. Función auxiliar para procesar los cambios de los data editors
                 def procesar_lote_guardado(df_editor, bloque_id, op_nombre1, op_nombre2):
                     for _, r in df_editor.iterrows():
                         def normalizar_fecha_iso(valor_celda):
@@ -256,13 +258,15 @@ def mostrar(supervisor_id=None):
                             "nombre_firma_operario": op_nombre1,
                             "nombre_firma_operario2": op_nombre2
                         }
-                        supabase.table("bitacoras_lineas").update(payload).eq("id", int(r['id'])).execute()
+                        supabase.table("bitacoras_lines").update(payload).eq("id", int(r['id'])).execute()
 
+                # 3. Guardado secuencial de los bloques de producción
                 procesar_lote_guardado(ed_secc, "SECCIONADORA", op_secc, op2_secc)
                 procesar_lote_guardado(ed_escu, "ESCUADRADORA", op_escu, op2_escu)
                 procesar_lote_guardado(ed_cant, "CANTEO", op_cant, op2_cant)
                 
-                st.success("🎉 Cambios guardados con éxito."); st.rerun()
+                st.success("🎉 Cambios guardados con éxito.")
+                st.rerun()
             except Exception as e:
                 st.error(f"Falla de sincronización: {e}")
         
