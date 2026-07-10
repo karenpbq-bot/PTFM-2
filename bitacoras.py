@@ -307,14 +307,14 @@ def mostrar(supervisor_id=None):
             story.append(t_s1)
             story.append(Spacer(1, 4))
             
-            # Función inyectora calibrada con simetría estructural perfecta para las 7 filas
+            # Función inyectora con control explícito de alturas por fila para simetría perfecta
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op_nom1, op_nom2, es_canteo=False):
                 story.append(Paragraph(f"<b>{titulo}</b>", style_section_title))
                 story.append(Spacer(1, 1))
                 
                 rows_pdf = [[Paragraph(f"<b>{h}</b>", style_bold) for h in cabeceras]]
                 
-                # 1. Cargar las filas que ya contienen datos reales desde Supabase
+                # 1. Cargar las filas que contienen datos reales
                 filas_cargadas = 0
                 if not df_ed.empty:
                     for _, r in df_ed.iterrows():
@@ -326,11 +326,11 @@ def mostrar(supervisor_id=None):
                         rows_pdf.append(fila)
                         filas_cargadas += 1
                 
-                # 2. CORREGIDO: Forzar a que las filas de relleno tengan exactamente la misma cantidad de celdas
-                # Esto garantiza que las líneas verticales divisorias se mantengan rectas de arriba a abajo
+                # 2. Rellenar con filas vacías estructuradas idénticamente
                 filas_restantes = max(0, 7 - filas_cargadas)
                 for _ in range(filas_restantes):
-                    fila_vacia = [Paragraph("", style_normal) for _ in range(len(cabeceras))]
+                    # Usamos un Spacer sutil dentro de cada celda vacía para forzar volumen constante
+                    fila_vacia = [Table([[Spacer(1, 9)]], colWidths=[40], rowHeights=[9]) for _ in range(len(cabeceras))]
                     rows_pdf.append(fila_vacia)
                         
                 # Definición estricta de anchos por columnas (Suma exacta: 555 puntos)
@@ -341,30 +341,36 @@ def mostrar(supervisor_id=None):
                 
                 ancho_cols = ancho_cols[:len(cabeceras)]
                 
-                t_block = Table(rows_pdf, colWidths=ancho_cols)
+                # CORREGIDO: Definimos la altura fija exacta para cada fila (14pt para cabecera, 18pt para las 7 filas)
+                alturas_filas = [14] + [18] * 7
+                
+                t_block = Table(rows_pdf, colWidths=ancho_cols, rowHeights=alturas_filas)
                 t_block.setStyle(TableStyle([
                     ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
                     ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+                    ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+                    ('TOPPADDING', (0,0), (-1,-1), 2), 
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 2),
                 ]))
                 story.append(t_block)
                 
                 # Fila unificada horizontal para firmas
-                txt_ops = op_nom1 if op_nom1 else "........................"
+                txt_ops = op_nom1 if op_nom1 else ""
                 if op_nom2:
                     txt_ops += f" / {op_nom2}"
                 
-                txt_responsables = f"<b>RESPONSABLE (S):</b> {txt_ops} __________________________"
+                txt_responsables = f"<b>RESPONSABLE (S):</b> {txt_ops} "
                 
                 data_firmas = [
-                    [Paragraph(txt_responsables, style_normal), Paragraph("<b>V°B° SUP PROD:</b> ________________________", style_normal)]
+                    [Paragraph(txt_responsables, style_normal), Paragraph("<b>V°B° SUP PROD:</b> ", style_normal)]
                 ]
-                t_firmas = Table(data_firmas, colWidths=[365, 190])
+                t_firmas = Table(data_firmas, colWidths=[365, 190], rowHeights=[24])
                 t_firmas.setStyle(TableStyle([
                     ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('TOPPADDING', (0,0), (-1,-1), 8), ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                    ('TOPPADDING', (0,0), (-1,-1), 4), 
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 4),
                 ]))
                 story.append(t_firmas)
                 story.append(Spacer(1, 4))
