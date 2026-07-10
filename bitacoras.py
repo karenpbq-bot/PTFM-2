@@ -162,7 +162,7 @@ def mostrar(supervisor_id=None):
         ed_cant, op_cant = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "CANTO USADO")
 
         # SECCIÓN 5: LOGÍSTICA (Réplica exacta de la distribución de la imagen física)
-        st.markdown('<div class="section-header">CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">🚚 SECCIÓN 5: ARMADO Y DESPACHO</div>', unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("**1. ENRUTAMIENTO DE PIEZAS (CONTROL DE DESTINO)**")
             c_arm, c_des = st.columns(2)
@@ -265,12 +265,16 @@ def mostrar(supervisor_id=None):
             story = []
             
             styles = getSampleStyleSheet()
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=7, leading=9)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=7, leading=9)
-            style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
+            # MODIFICADO: Campos de texto un 60% más grandes (de 7pt a 11pt)
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=11, leading=14)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=11, leading=14)
+            style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=11, leading=14, alignment=1)
             
-            # NUEVO: Estilo para el título principal exclusivo del PDF impreso
-            style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
+            # MODIFICADO: Título principal un 45% más grande (de 14pt a 20pt)
+            style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=20, leading=24, alignment=1)
+            
+            # NUEVO ESTILO: Títulos de sección un 95% más grandes (de 7pt a 14pt) para aislar del texto común
+            style_section_title = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=14, leading=18)
             
             # NUEVO: Inyectar título superior en el documento PDF
             story.append(Paragraph("BITÁCORA DE PRODUCCIÓN", style_main_title))
