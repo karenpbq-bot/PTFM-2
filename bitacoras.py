@@ -64,7 +64,7 @@ def mostrar(supervisor_id=None):
             u_cliente = c1.text_input("CLIENTE:", value=cab['cliente'] or "")
             u_proyecto = c2.text_input("PROYECTO:", value=cab['proyecto'] or "")
             u_sol_por = c1.text_input("SOLICITADO POR:", value=cab['solicitado_por'] or "")
-            u_sup_prod = c2.text_input("SUP. PRODUC.:", value=cab['sup_production'] or "")
+            u_sup_prod = c2.text_input("SUP. DE PRODUCCION:", value=cab['sup_production'] or "")
             u_estado = st.selectbox("ESTADO DE LA BITÁCORA:", ["Pendiente", "En Proceso", "Cerrada"], index=["Pendiente", "En Proceso", "Cerrada"].index(cab['estado']))
 
         # Carga y normalización de líneas operativas desde Supabase
@@ -97,7 +97,7 @@ def mostrar(supervisor_id=None):
                     op_actual2 = df_bloque['nombre_firma_operario2'].iloc[0] or ""
                 
             cx1, cx2, cx3 = st.columns([2, 2.5, 2.5])
-            btn_ins = cx1.button(f"➕ Insertar Registro a {titulo.split(': ')[1] if ': ' in titulo else titulo}", key=f"btn_ins_{bloque_id}")
+            btn_ins = cx1.button(f"➕ Insertar Registro", key=f"btn_ins_{bloque_id}")
             
             idx_op1 = lista_ops.index(op_actual1) if op_actual1 in lista_ops else None
             idx_op2 = lista_ops.index(op_actual2) if op_actual2 in lista_ops else None
@@ -112,11 +112,12 @@ def mostrar(supervisor_id=None):
                 }).execute()
                 st.rerun()
             
+            # Reordenamiento horizontal: Resultados van después de F.T. y nombres reducidos
             if bloque_id == 'CANTEO':
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("#", format="%.2f"),
+                    "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
                     "descripcion": st.column_config.SelectboxColumn("DESCRIPCION", options=lista_descs, required=True),
                     "tipo_canto": st.column_config.SelectboxColumn("TIPO DE CANTO", options=lista_cantos, required=True),
                     "fecha_inicio": st.column_config.TextColumn("F.I."),
@@ -130,7 +131,7 @@ def mostrar(supervisor_id=None):
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("#", format="%.2f"),
+                    "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
                     "descripcion": st.column_config.SelectboxColumn("DESCRIPCION", options=lista_descs, required=True),
                     "fecha_inicio": st.column_config.TextColumn("F.I."),
                     "hora_inicio": st.column_config.TextColumn("H.I."),
@@ -148,6 +149,7 @@ def mostrar(supervisor_id=None):
             else:
                 df_limpio = pd.DataFrame(columns=columnas_visibles)
 
+            # Blindaje automático de tipos
             for col_c in df_limpio.columns:
                 if col_c == "cantidad":
                     df_limpio[col_c] = pd.to_numeric(df_limpio[col_c]).fillna(0.0)
@@ -163,11 +165,12 @@ def mostrar(supervisor_id=None):
             )
             return res_ed, op_val1, op_val2
 
+        # Despliegue secuencial de las tablas de manufactura (Secciones 2, 3 y 4)
         ed_secc, op_secc, op2_secc = generar_bloque_interfaz("🪚 SECCIÓN 2: CORTE SECCIONADORA", "SECCIONADORA", df_secc, "CANT. PL.")
         ed_escu, op_escu, op2_escu = generar_bloque_interfaz("📐 SECCIÓN 3: CORTE ESCUADRADORA", "ESCUADRADORA", df_escu, "CANT. PIEZAS")
         ed_cant, op_cant, op2_cant = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "CANTO USADO")
 
-        # SECCIÓN 5: LOGÍSTICA
+        # SECCIÓN 5: LOGÍSTICA (Réplica exacta de la distribución de la imagen física)
         st.markdown('<div class="section-header">🚚 SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</div>', unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("**1. ENRUTAMIENTO DE PIEZAS (CONTROL DE DESTINO)**")
@@ -211,6 +214,7 @@ def mostrar(supervisor_id=None):
             st.markdown("**3. OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA**")
             u_log_observaciones = st.text_area("Registre novedades del flete, embalaje o despacho general:", value=str(cab.get('log_observaciones') or ""), height=80, label_visibility="collapsed")
 
+        # Guardado unificado y procesamiento inteligente de fechas cortas
         st.divider()
         c_save, c_pdf = st.columns(2)
         
@@ -260,9 +264,9 @@ def mostrar(supervisor_id=None):
                 st.success("🎉 Cambios guardados con éxito."); st.rerun()
             except Exception as e:
                 st.error(f"Falla de sincronización: {e}")
-
+        
         # =========================================================================
-        # MOTOR DE COMPILACIÓN NATIVA PDF (7 FILAS SIMÉTRICAS FIJAS)
+        # MOTOR DE COMPILACIÓN NATIVA PDF
         # =========================================================================
         try:
             buffer_pdf = io.BytesIO()
@@ -270,41 +274,35 @@ def mostrar(supervisor_id=None):
             story = []
             
             styles = getSampleStyleSheet()
-            
-            style_s1 = ParagraphStyle('Sec1', fontName='Helvetica', fontSize=8.5, leading=10.5)
-            style_s1_bld = ParagraphStyle('Sec1Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=10.5)
-            
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=9, leading=11)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=9, leading=11)
-            style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=16, leading=19, alignment=1)
-            style_section_title = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=11, leading=13)
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=11, leading=14)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=11, leading=14)
+            style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=11, leading=14, alignment=1)
+            style_main_title = ParagraphStyle('MainTit', fontName='Helvetica-Bold', fontSize=20, leading=24, alignment=1)
+            style_section_title = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=14, leading=18)
             
             story.append(Paragraph("BITÁCORA DE PRODUCCIÓN", style_main_title))
-            story.append(Spacer(1, 6))
+            story.append(Spacer(1, 10))
             
-            fecha_str = u_fecha.strftime("%d/%m/%Y") if u_fecha else ""
+            fecha_str = u_fecha.strftime("%d/%m/%Y")
             data_s1 = [
-                [Paragraph("<b>FECHA:</b>", style_s1_bld), Paragraph(fecha_str, style_s1), Paragraph("<b>Nº ORDEN:</b>", style_s1_bld), Paragraph(u_n_orden, style_s1)],
-                [Paragraph("<b>TIPO DE MUEBLE:</b>", style_s1_bld), Paragraph(u_tipo_mueble, style_s1), Paragraph("<b>MOTIVO:</b>", style_s1_bld), Paragraph(u_motivo, style_s1)],
-                [Paragraph("<b>CLIENTE:</b>", style_s1_bld), Paragraph(u_cliente, style_s1), Paragraph("<b>PROYECTO:</b>", style_s1_bld), Paragraph(u_proyecto, style_s1)],
-                [Paragraph("<b>SOLICITADO POR:</b>", style_s1_bld), Paragraph(u_sol_por, style_s1), Paragraph("<b>SUP. PRODUC.:</b>", style_s1_bld), Paragraph(u_sup_prod, style_s1)]
+                [Paragraph("<b>FECHA:</b>", style_normal), Paragraph(fecha_str, style_normal), Paragraph("<b>Nº ORDEN:</b>", style_normal), Paragraph(u_n_orden, style_normal)],
+                [Paragraph("<b>TIPO DE MUEBLE:</b>", style_normal), Paragraph(u_tipo_mueble, style_normal), Paragraph("<b>MOTIVO:</b>", style_normal), Paragraph(u_motivo, style_normal)],
+                [Paragraph("<b>CLIENTE:</b>", style_normal), Paragraph(u_cliente, style_normal), Paragraph("<b>PROYECTO:</b>", style_normal), Paragraph(u_proyecto, style_normal)],
+                [Paragraph("<b>SOLICITADO POR:</b>", style_normal), Paragraph(u_sol_por, style_normal), Paragraph("<b>SUP. DE PRODUCCIÓN:</b>", style_normal), Paragraph(u_sup_prod, style_normal)]
             ]
-            t_s1 = Table(data_s1, colWidths=[90, 185, 95, 185])
+            t_s1 = Table(data_s1, colWidths=[100, 180, 100, 175])
             t_s1.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (0,3), colors.lightgrey), ('BACKGROUND', (2,0), (2,3), colors.lightgrey),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2),
             ]))
             story.append(t_s1)
-            story.append(Spacer(1, 4))
+            story.append(Spacer(1, 8))
             
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op_nom1, op_nom2, es_canteo=False):
                 story.append(Paragraph(f"<b>{titulo}</b>", style_section_title))
-                story.append(Spacer(1, 1))
+                story.append(Spacer(1, 2))
                 
                 rows_pdf = [[Paragraph(f"<b>{h}</b>", style_bold) for h in cabeceras]]
-                
-                filas_cargadas = 0
                 if not df_ed.empty:
                     for _, r in df_ed.iterrows():
                         fila = []
@@ -313,57 +311,46 @@ def mostrar(supervisor_id=None):
                                 val_t = str(r[col_id]) if (r[col_id] is not None and not pd.isna(r[col_id])) else ""
                                 fila.append(Paragraph(val_t, style_normal))
                         rows_pdf.append(fila)
-                        filas_cargadas += 1
-                
-                filas_restantes = max(0, 7 - filas_cargadas)
-                for _ in range(filas_restantes):
-                    fila_vacia = [Table([[Spacer(1, 9)]], colWidths=[40], rowHeights=[9]) for _ in range(len(cabeceras))]
-                    rows_pdf.append(fila_vacia)
+                else:
+                    for _ in range(2):
+                        rows_pdf.append([Paragraph("", style_normal) for _ in cabeceras])
                         
                 if not es_canteo:
-                    ancho_cols = [40, 215, 40, 40, 40, 40, 60, 80]
+                    ancho_cols = [35, 165, 45, 45, 45, 45, 120, 55]
                 else:
-                    ancho_cols = [35, 160, 60, 40, 40, 40, 40, 60, 80]
+                    ancho_cols = [35, 120, 90, 40, 40, 40, 40, 95, 55]
                 
                 ancho_cols = ancho_cols[:len(cabeceras)]
-                alturas_filas = [14] + [18] * 7
-                
-                t_block = Table(rows_pdf, colWidths=ancho_cols, rowHeights=alturas_filas)
+                t_block = Table(rows_pdf, colWidths=ancho_cols)
                 t_block.setStyle(TableStyle([
                     ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
                     ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-                    ('TOPPADDING', (0,0), (-1,-1), 2), 
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+                    ('TOPPADDING', (0,0), (-1,-1), 5), ('BOTTOMPADDING', (0,0), (-1,-1), 5),
                 ]))
                 story.append(t_block)
+                story.append(Spacer(1, 4))
                 
-                txt_ops = op_nom1 if op_nom1 else "........................"
-                if op_nom2:
-                    txt_ops += f" / {op_nom2}"
-                
-                txt_responsables = f"<b>RESPONSABLE (S):</b> {txt_ops} __________________________"
-                
+                txt_op1 = op_nom1 if op_nom1 else "........................"
+                txt_op2 = op_nom2 if op_nom2 else "........................"
                 data_firmas = [
-                    [Paragraph(txt_responsables, style_normal), Paragraph("<b>V°B° SUP PROD:</b> ________________________", style_normal)]
+                    [Paragraph(f"Responsable 1: {txt_op1}", style_normal), Paragraph(f"Responsable 2: {txt_op2}", style_normal)],
+                    [Paragraph("Firma: _______________________", style_normal), Paragraph("Firma: _______________________", style_normal)]
                 ]
-                t_firmas = Table(data_firmas, colWidths=[365, 190], rowHeights=[24])
+                t_firmas = Table(data_firmas, colWidths=[277, 278])
                 t_firmas.setStyle(TableStyle([
-                    ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                    ('TOPPADDING', (0,0), (-1,-1), 4), 
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                    ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,1), (-1,1), 10),
                 ]))
                 story.append(t_firmas)
-                story.append(Spacer(1, 4))
+                story.append(Spacer(1, 6))
 
-            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PL.", "OBS."], ed_secc, op_secc, op2_secc)
-            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PIEZAS", "OBS."], ed_escu, op_escu, op2_escu)
-            inyectar_tabla_pdf("CANTEO", ["#", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "CANTO USADO", "OBS."], ed_cant, op_cant, op2_cant, es_canteo=True)
+            inyectar_tabla_pdf("CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PL.", "OBS."], ed_secc, op_secc, op2_secc)
+            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PIEZAS", "OBS."], ed_escu, op_escu, op2_escu)
+            inyectar_tabla_pdf("CANTEO", ["CANT.", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "CANTO USADO", "OBS."], ed_cant, op_cant, op2_cant, es_canteo=True)
 
             story.append(Paragraph("<b>🚚 SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</b>", style_section_title))
-            story.append(Spacer(1, 2))
+            story.append(Spacer(1, 3))
             
             f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
             f_des_p = u_log_despacho_fecha.strftime("%d/%m/%Y") if u_log_despacho_fecha else ""
@@ -378,8 +365,7 @@ def mostrar(supervisor_id=None):
             t_log = Table(data_log_tab, colWidths=[277, 278])
             t_log.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-                ('TOPPADDING', (0,0), (-1,-1), 7), ('BOTTOMPADDING', (0,0), (-1,-1), 7),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('TOPPADDING', (0,0), (-1,-1), 5), ('BOTTOMPADDING', (0,0), (-1,-1), 5),
             ]))
             story.append(t_log)
             story.append(Spacer(1, 4))
@@ -390,7 +376,7 @@ def mostrar(supervisor_id=None):
             t_sal = Table(data_salida, colWidths=[150, 250, 155])
             t_sal.setStyle(TableStyle([
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 7), ('BOTTOMPADDING', (0,0), (-1,-1), 7),
+                ('TOPPADDING', (0,0), (-1,-1), 5), ('BOTTOMPADDING', (0,0), (-1,-1), 5),
             ]))
             story.append(t_sal)
             story.append(Spacer(1, 4))
@@ -402,7 +388,7 @@ def mostrar(supervisor_id=None):
             t_obs = Table(data_obs, colWidths=[555])
             t_obs.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (0,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-                ('TOPPADDING', (0,0), (-1,-1), 5), ('BOTTOMPADDING', (0,1), (0,1), 35), ('LEFTPADDING', (0,1), (0,1), 6), ('VALIGN', (0,1), (0,1), 'TOP'),
+                ('TOPPADDING', (0,0), (-1,-1), 4), ('BOTTOMPADDING', (0,1), (0,1), 40), ('LEFTPADDING', (0,1), (0,1), 6), ('VALIGN', (0,1), (0,1), 'TOP'),
             ]))
             story.append(t_obs)
             
