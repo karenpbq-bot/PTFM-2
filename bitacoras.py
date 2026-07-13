@@ -27,19 +27,6 @@ def mostrar(supervisor_id=None):
     if 'id_bitacora_activa' not in st.session_state:
         st.session_state.id_bitacora_activa = None
 
-    # CORREGIDO: EXTRACCIÓN MAESTRA DESDE LAS 3 TABLAS DE CONFIGURACIÓN QUE MOSTRÓ TU IMAGEN
-    try:
-        lista_ops = [r['nombre'] for r in supabase.table("cfg_operarios").select("nombre").order("nombre").execute().data]
-        lista_descs = [r['detalle'] for r in supabase.table("cfg_descripciones").select("detalle").order("detalle").execute().data]
-        lista_cantos = [r['tipo'] for r in supabase.table("cfg_cantos").select("tipo").order("tipo").execute().data]
-    except Exception:
-        lista_ops, lista_descs, lista_cantos = [], [], []
-
-    # Añadir opción de respaldo si las tablas están vacías para evitar que falle el selectbox
-    if not lista_ops: lista_ops = ["Sin Asignar"]
-    if not lista_descs: lista_descs = ["General"]
-    if not lista_cantos: lista_cantos = ["Delgado 0.4mm"]
-
     # =========================================================================
     # VISTA DE EDICIÓN / APERTURA SIMÉTRICA (4 SECCIONES ORIGINALES + 5TA SECCIÓN)
     # =========================================================================
@@ -89,11 +76,13 @@ def mostrar(supervisor_id=None):
         df_secc = filtrar_bloque(df_l, 'SECCIONADORA')
         df_escu = filtrar_bloque(df_l, 'ESCUADRADORA')
         df_cant = filtrar_bloque(df_l, 'CANTEO')
+        df_sec5 = filtrar_bloque(df_l, 'SECCION5')
 
         # Procesador para inyectar filas y capturar el operario en la cabecera del bloque
         def generar_bloque_interfaz(titulo, bloque_id, df_bloque, col_cant_nom):
             st.markdown(f'<div class="section-header">{titulo}</div>', unsafe_allow_html=True)
             
+            # Recuperar operarios asignados previamente
             op_actual1 = ""
             op_actual2 = ""
             if not df_bloque.empty:
@@ -104,13 +93,8 @@ def mostrar(supervisor_id=None):
                 
             cx1, cx2, cx3 = st.columns([2, 2, 2])
             btn_ins = cx1.button(f"➕ Registro a {titulo.split(': ')[1]}", key=f"btn_ins_{bloque_id}")
-            
-            # Asegurar indexación correcta de los desplegables de operarios según tus tablas maestras
-            idx_op1 = lista_ops.index(op_actual1) if op_actual1 in lista_ops else 0
-            idx_op2 = lista_ops.index(op_actual2) if op_actual2 in lista_ops else 0
-            
-            op_val1 = cx2.selectbox("👨‍🔧 RESPONSABLE 1:", options=lista_ops, index=idx_op1, key=f"op_val1_{bloque_id}")
-            op_val2 = cx3.selectbox("👥 RESPONSABLE 2:", options=lista_ops, index=idx_op2, key=f"op_val2_{bloque_id}")
+            op_val1 = cx2.text_input("👨‍🔧 RESPONSABLE 1:", value=op_actual1, key=f"op_val1_{bloque_id}")
+            op_val2 = cx3.text_input("👨‍🔧 RESPONSABLE 2:", value=op_actual2, key=f"op_val2_{bloque_id}")
             
             if btn_ins:
                 supabase.table("bitacoras_lineas").insert({
@@ -121,11 +105,10 @@ def mostrar(supervisor_id=None):
             
             columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias']
             
-            # CORREGIDO: "descripcion" ahora es un desplegable Selectbox con tus materiales reales de la imagen
             config_columnas = {
                 "id": None,
                 "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
-                "descripcion": st.column_config.SelectboxColumn("DESCRIPCION", options=lista_descs, required=True),
+                "descripcion": st.column_config.TextColumn("DESCRIPCION"),
                 "fecha_inicio": st.column_config.TextColumn("F. INICIO (DD/MM)"),
                 "hora_inicio": st.column_config.TextColumn("H. INICIO"),
                 "cant_final_pl_pzs": st.column_config.TextColumn(col_cant_nom),
@@ -134,14 +117,13 @@ def mostrar(supervisor_id=None):
                 "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS")
             }
             
-            # CORREGIDO: "tipo_canto" ahora es un desplegable Selectbox con tus cantos reales de la imagen
             if bloque_id == 'CANTEO':
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'fecha_termino', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
                     "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
-                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCION", options=lista_descs, required=True),
-                    "tipo_canto": st.column_config.SelectboxColumn("TIPO DE CANTO", options=lista_cantos, required=True),
+                    "descripcion": st.column_config.TextColumn("DESCRIPCION"),
+                    "tipo_canto": st.column_config.TextColumn("TIPO DE CANTO"),
                     "fecha_inicio": st.column_config.TextColumn("F. INICIO (DD/MM)"),
                     "hora_inicio": st.column_config.TextColumn("H. INICIAL"),
                     "cant_final_pl_pzs": st.column_config.TextColumn("CANTO USADO"),
@@ -378,11 +360,10 @@ def mostrar(supervisor_id=None):
             c_pdf.error(f"Alerta en motor PDF: {e_pdf}")
 
     # =========================================================================
-    # ENTORNO INICIAL: HISTORIAL Y LISTADOS + NUEVA PESTAÑA DE CONFIGURACIÓN
+    # ENTORNO INICIAL: HISTORIAL Y LISTADOS
     # =========================================================================
     else:
-        # CORREGIDO: SE AGREGÓ LA TERCERA PESTAÑA SOLICITADA PARA CONFIGURACIÓN MAESTRA
-        tab_listado, tab_alta_nueva, tab_config = st.tabs(["🗂️ Listado de Bitácoras", "➕ Nueva Bitácora", "⚙️ Configuración de Datos"])
+        tab_listado, tab_alta_nueva = st.tabs(["🗂️ Listado de Bitácoras", "➕ Nueva Bitácora"])
         
         with tab_listado:
             filtro = st.text_input("🔍 Filtro rápido de búsqueda:", placeholder="Escriba el número de OP, cliente o mueble...")
@@ -446,43 +427,7 @@ def mostrar(supervisor_id=None):
                             lineas_iniciales.append({"bitacora_id": b_id, "proceso_bloque": "SECCIONADORA", "cantidad": 0.0})
                             lineas_iniciales.append({"bitacora_id": b_id, "proceso_bloque": "ESCUADRADORA", "cantidad": 0.0})
                             lineas_iniciales.append({"bitacora_id": b_id, "proceso_bloque": "CANTEO", "cantidad": 0.0})
+                            lineas_iniciales.append({"bitacora_id": b_id, "proceso_bloque": "SECCION5", "cantidad": 0.0})
                         supabase.table("bitacoras_lineas").insert(lineas_iniciales).execute()
                         st.session_state.id_bitacora_activa = b_id
                         st.rerun()
-
-        with tab_config:
-            st.markdown("### 🛠️ Panel de Gestión para Listas Desplegables")
-            c_cfg1, c_cfg2, c_cfg3 = st.columns(3)
-            
-            with c_cfg1:
-                st.markdown("**👤 OPERARIOS**")
-                n_op = st.text_input("Nuevo Operario:", placeholder="Ej: JUAN PÉREZ", key="add_op_input")
-                if st.button("➕ Agregar Operario", use_container_width=True):
-                    if n_op.strip():
-                        supabase.table("cfg_operarios").insert({"nombre": n_op.strip().upper()}).execute()
-                        st.success("Registrado"); st.rerun()
-                ops_data = supabase.table("cfg_operarios").select("*").order("nombre").execute().data
-                if ops_data:
-                    st.data_editor(pd.DataFrame(ops_data)[['nombre']], hide_index=True, use_container_width=True, disabled=True, key="view_ops")
-
-            with c_cfg2:
-                st.markdown("**📄 DESCRIPCIONES**")
-                n_desc = st.text_input("Nueva Descripción:", placeholder="Ej: Melamina 18mm", key="add_desc_input")
-                if st.button("➕ Agregar Descripción", use_container_width=True):
-                    if n_desc.strip():
-                        supabase.table("cfg_descripciones").insert({"detalle": n_desc.strip()}).execute()
-                        st.success("Registrada"); st.rerun()
-                desc_data = supabase.table("cfg_descripciones").select("*").order("detalle").execute().data
-                if desc_data:
-                    st.data_editor(pd.DataFrame(desc_data)[['detalle']], hide_index=True, use_container_width=True, disabled=True, key="view_descs")
-
-            with c_cfg3:
-                st.markdown("**⚙️ TIPOS DE CANTO**")
-                n_canto = st.text_input("Nuevo Canto:", placeholder="Ej: Delgado 0.4mm", key="add_canto_input")
-                if st.button("➕ Agregar Canto", use_container_width=True):
-                    if n_canto.strip():
-                        supabase.table("cfg_cantos").insert({"tipo": n_canto.strip()}).execute()
-                        st.success("Registrado"); st.rerun()
-                cantos_data = supabase.table("cfg_cantos").select("*").order("tipo").execute().data
-                if cantos_data:
-                    st.data_editor(pd.DataFrame(cantos_data)[['tipo']], hide_index=True, use_container_width=True, disabled=True, key="view_cantos")
