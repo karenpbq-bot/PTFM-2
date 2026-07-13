@@ -16,9 +16,56 @@ except ImportError:
 def mostrar(supervisor_id=None):
     st.markdown("""
         <style>
-        .section-header { background-color: #E5E7EB; padding: 5px 10px; font-weight: bold; color: #1F2937; border-left: 5px solid #1E3A8A; margin-top: 12px; margin-bottom: 4px; font-size: 13px; }
-        .stDataEditor { font-size: 11px; }
-        div[data-testid="stForm"] { padding: 10px; }
+        /* Estilo base de los encabezados de sección */
+        .section-header { 
+            background-color: #E5E7EB; 
+            padding: 4px 10px; 
+            font-weight: bold; 
+            color: #1F2937; 
+            border-left: 5px solid #1E3A8A; 
+            margin-top: 6px; 
+            margin-bottom: 2px; 
+            font-size: 12px; 
+        }
+
+        /* Forzar a que las grillas de datos compartan la misma altura proporcional */
+        div[data-testid="stDataEditor"] {
+            font-size: 11px !important;
+            height: auto !important;
+            max-height: 18vh !important; /* Limita el alto máximo de cada tabla al 18% del alto de la pantalla/hoja */
+            margin-bottom: 4px !important;
+        }
+
+        /* Asegurar que las filas internas tengan la misma altura distribuida equitativamente */
+        div[data-testid="stDataEditor"] div[role="rowgroup"] div[role="row"] {
+            height: calc(100% / 6) !important; /* Divide el espacio total de la tabla simétricamente entre las 6 filas */
+            min-height: 22px !important;       /* Límite mínimo seguro para que la letra de 11px sea legible */
+            display: flex;
+            align-items: center;
+        }
+
+        /* Compactación extrema de márgenes para prevenir el salto de página */
+        div[data-testid="stForm"] { 
+            padding: 4px 8px !important; 
+        }
+        .stMarkdown div p { 
+            margin-bottom: 1px !important; 
+        }
+        div[data-testid="stVerticalBlock"] > div { 
+            padding-bottom: 1px !important; 
+            padding-top: 1px !important; 
+        }
+
+        /* Regla de impresión: Ajuste dinámico si el operador manda a imprimir a PDF (Ctrl + P) */
+        @media print {
+            html, body {
+                height: 100%;
+                overflow: hidden;
+            }
+            div[data-testid="stDataEditor"] {
+                max-height: 15vh !important; /* Se vuelve aún más estricto en la hoja física */
+            }
+        }
         </style>
     """, unsafe_allow_html=True)
 
