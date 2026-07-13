@@ -13,10 +13,9 @@ except ImportError:
     st.error("Por favor ejecute 'pip install reportlab' en la terminal para habilitar la exportación a PDF.")
 
 def mostrar(supervisor_id=None):
-    # AJUSTE DE MÁRGENES UNIFICADOS Y AMPLIACIÓN DE FUENTE PARA OPERARIOS
+    # COMPACTACIÓN EXTREMA CSS PARA INTERFAZ DE PLANTA
     st.markdown("""
         <style>
-        /* Unificación de márgenes externos e internos al 100% */
         .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
         
         .section-header { 
@@ -30,7 +29,6 @@ def mostrar(supervisor_id=None):
             font-size: 13px; 
         }
         
-        /* Alineación exacta de márgenes para las secciones 2, 3 y 4 con la 1 y 5 */
         div[data-testid="stDataEditor"] {
             font-size: 12.5px !important;
             font-family: monospace !important;
@@ -39,7 +37,6 @@ def mostrar(supervisor_id=None):
             width: 100% !important;
         }
         
-        /* Forzar simetría y altura idéntica en las 6 filas sin deformaciones */
         div[data-testid="stDataEditor"] div[role="rowgroup"] div[role="row"] {
             min-height: 24px !important;
             height: 24px !important;
@@ -49,11 +46,6 @@ def mostrar(supervisor_id=None):
         
         div[data-testid="stForm"] { padding: 4px 6px !important; }
         div[data-testid="stVerticalBlock"] > div { padding-bottom: 2px !important; padding-top: 2px !important; }
-        
-        @media print {
-            html, body { height: 100%; overflow: hidden; }
-            div[data-testid="stDataEditor"] { font-size: 12px !important; }
-        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -62,9 +54,6 @@ def mostrar(supervisor_id=None):
     if 'id_bitacora_activa' not in st.session_state:
         st.session_state.id_bitacora_activa = None
 
-    # =========================================================================
-    # VISTA DE EDICIÓN / APERTURA SIMÉTRICA
-    # =========================================================================
     if st.session_state.id_bitacora_activa:
         id_act = st.session_state.id_bitacora_activa
         
@@ -74,7 +63,6 @@ def mostrar(supervisor_id=None):
             
         cab = supabase.table("bitacoras_taller").select("*").eq("id", id_act).execute().data[0]
         
-        # SECCIÓN 1: DATOS GENERALES DEL FORMATO
         st.markdown('<div class="section-header">📄 SECCIÓN 1: DATOS GENERALES DEL FORMATO</div>', unsafe_allow_html=True)
         with st.container(border=True):
             c1, c2 = st.columns(2)
@@ -108,14 +96,11 @@ def mostrar(supervisor_id=None):
                     sub_df[col_f] = sub_df[col_f].apply(lambda x: f"{x[5:7]}/{x[8:10]}" if (x and len(str(x)) >= 10 and str(x)[4] == '-') else x)
             return sub_df
 
-        # CORRECCIÓN ESTRUCTURAL DE ANCHO PARA FILAS 4, 5 Y 6 (DATAFRAME HOMOGÉNEO)
         def garantizar_6_filas_limpias(df_bloque, bloque_id):
             columnas_base = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
-            
             if df_bloque.empty:
                 df_bloque = pd.DataFrame(columns=columnas_base)
             
-            # Asegurar que todas las columnas existan con tipos consistentes
             for col in columnas_base:
                 if col not in df_bloque.columns:
                     df_bloque[col] = None
@@ -133,17 +118,14 @@ def mostrar(supervisor_id=None):
                     })
                 df_bloque = pd.concat([df_bloque, pd.DataFrame(nuevas_filas)], ignore_index=True)
             
-            # REQUERIMIENTO: Limpieza absoluta de campos para impresión limpia en campo
             df_bloque['id'] = df_bloque['id'].fillna("")
             df_bloque['descripcion'] = df_bloque['descripcion'].fillna("")
             df_bloque['tipo_canto'] = df_bloque['tipo_canto'].fillna("")
             
-            # Si la fila es una fila vacía de contingencia, removemos cualquier residuo numérico
             for idx, row in df_bloque.iterrows():
                 if row['id'] == "":
                     df_bloque.at[idx, 'cantidad'] = None
                     df_bloque.at[idx, 'cant_final_pl_pzs'] = ""
-                    
             return df_bloque.head(6)
 
         df_secc = garantizar_6_filas_limpias(filtrar_bloque(df_l, 'SECCIONADORA'), 'SECCIONADORA')
@@ -152,7 +134,6 @@ def mostrar(supervisor_id=None):
 
         def generar_bloque_interfaz(titulo, bloque_id, df_bloque, col_salida_label):
             st.markdown(f'<div class="section-header">{titulo}</div>', unsafe_allow_html=True)
-            
             op_actual1, op_actual2 = "", ""
             df_con_datos = df_bloque[df_bloque['id'] != ""]
             if not df_con_datos.empty:
@@ -175,7 +156,6 @@ def mostrar(supervisor_id=None):
                 }).execute()
                 st.rerun()
             
-            # REORDENADO CON SALIDA POSTERIOR A F.T. Y AMPLIACIÓN DE DESCRIPCIÓN
             if bloque_id == 'CANTEO':
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
@@ -214,7 +194,6 @@ def mostrar(supervisor_id=None):
         ed_escu, op_escu1, op_escu2 = generar_bloque_interfaz("📐 SECCIÓN 3: CORTE ESCUADRADORA", "ESCUADRADORA", df_escu, "N° PZAS")
         ed_cant, op_cant1, op_cant2 = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "ML CANTO")
 
-        # SECCIÓN 5: LOGÍSTICA
         st.markdown('<div class="section-header">🚚 SECCIÓN 5: ARMADO Y DESPACHO</div>', unsafe_allow_html=True)
         with st.container(border=True):
             c_arm, c_des = st.columns(2)
@@ -288,38 +267,48 @@ def mostrar(supervisor_id=None):
                 procesar_lote_guardado(ed_secc, "SECCIONADORA", op_secc1, op_secc2)
                 procesar_lote_guardado(ed_escu, "ESCUADRADORA", op_escu1, op_escu2)
                 procesar_lote_guardado(ed_cant, "CANTEO", op_cant1, op_cant2)
-                st.success("🎉 Cambios de alineación y datos de campo guardados."); st.rerun()
+                st.success("🎉 Trazabilidad y ordenación guardados."); st.rerun()
             except Exception as e:
                 st.error(f"Falla de sincronización: {e}")
         
-        # MOTOR REPORTLAB OPTIMIZADO - INCREMENTO DE LETRA Y REDUCCIÓN DE MÁRGENES ESTÉRILES
+        # =========================================================================
+        # MOTOR PDF OPTIMIZADO: FUERZA LA SECCIÓN 5 AL FINAL DEL FOLIO ÚNICO
+        # =========================================================================
         try:
             buffer_pdf = io.BytesIO()
-            # Bajamos los márgenes a 8 para ganar espacio útil y poder subir la letra a 9pt
-            doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=8, leftMargin=8, topMargin=8, bottomMargin=8)
+            # Márgenes de 12 puntos para ganar ancho exacto y evitar saltos de línea internos en celdas
+            doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=12, leftMargin=12, topMargin=12, bottomMargin=12)
             story = []
-            styles = getSampleStyleSheet()
             
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=9, leading=11)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=9, leading=11)
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=8.5, leading=10)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=10)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
             
-            story.append(Paragraph("<b>BITÁCORA UNIFICADA DE PRODUCCIÓN</b>", style_title))
-            story.append(Spacer(1, 2))
+            story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
+            story.append(Spacer(1, 4))
             
+            # Cabecera Sección 1
             data_s1 = [
                 [Paragraph("<b>FECHA:</b>", style_normal), Paragraph(u_fecha.strftime("%d/%m/%Y"), style_normal), Paragraph("<b>Nº ORDEN:</b>", style_normal), Paragraph(u_n_orden, style_normal)],
-                [Paragraph("<b>MUEBLE:</b>", style_normal), Paragraph(u_tipo_mueble, style_normal), Paragraph("<b>MOTIVO:</b>", style_normal), Paragraph(u_motivo, style_normal)],
-                [Paragraph("<b>CLIENTE:</b>", style_normal), Paragraph(u_cliente, style_normal), Paragraph("<b>PROYECTO:</b>", style_normal), Paragraph(u_proyecto, style_normal)]
+                [Paragraph("<b>TIPO DE MUEBLE:</b>", style_normal), Paragraph(u_tipo_mueble, style_normal), Paragraph("<b>MOTIVO:</b>", style_normal), Paragraph(u_motivo, style_normal)],
+                [Paragraph("<b>CLIENTE:</b>", style_normal), Paragraph(u_cliente, style_normal), Paragraph("<b>PROYECTO:</b>", style_normal), Paragraph(u_proyecto, style_normal)],
+                [Paragraph("<b>SOLICITADO POR:</b>", style_normal), Paragraph(u_sol_por, style_normal), Paragraph("<b>SUP. DE PRODUCCIÓN:</b>", style_normal), Paragraph(u_sup_prod, style_normal)]
             ]
-            t_s1 = Table(data_s1, colWidths=[75, 210, 75, 219])
-            t_s1.setStyle(TableStyle([('BACKGROUND', (0,0), (0,2), colors.lightgrey), ('BACKGROUND', (2,0), (2,2), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2)]))
+            t_s1 = Table(data_s1, colWidths=[110, 175, 110, 175])
+            t_s1.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (0,3), colors.lightgrey), 
+                ('BACKGROUND', (2,0), (2,3), colors.lightgrey), 
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('TOPPADDING', (0,0), (-1,-1), 2),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2)
+            ]))
             story.append(t_s1)
-            story.append(Spacer(1, 2))
+            story.append(Spacer(1, 4))
             
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op1, op2, ancho_cols):
                 op_text = f"{op1} / {op2}".strip(" / ")
-                story.append(Paragraph(f"<b>{titulo}</b> | <font size=7.5>Responsables: {op_text}</font>", style_bold))
+                story.append(Paragraph(f"<b>{titulo}</b>", style_bold))
                 rows_pdf = [[Paragraph(f"<b>{h}</b>", style_bold) for h in cabeceras]]
                 
                 for _, r in df_ed.iterrows():
@@ -328,34 +317,91 @@ def mostrar(supervisor_id=None):
                     for col_id in df_ed.columns:
                         if col_id != 'id':
                             val_t = "" if es_vacia else str(r[col_id])
-                            if val_t == "None" or val_t == "0.0": val_t = ""
+                            # Saneado estricto contra residuos NaN de la base de datos
+                            if val_t.lower() == "nan" or val_t == "None" or val_t == "0.0": 
+                                val_t = ""
                             fila.append(Paragraph(val_t, style_normal))
                     rows_pdf.append(fila)
+                
+                # Fila de firma integrada por sección
+                rows_pdf.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_text}", style_normal), "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
                         
                 t_block = Table(rows_pdf, colWidths=ancho_cols)
-                t_block.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2)]))
+                t_block.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), 
+                    ('GRID', (0,0), (-1,-2), 0.5, colors.black),
+                    ('BOX', (0,-1), (-1,-1), 0.5, colors.black),
+                    ('LINEBEFORE', (6,-1), (6,-1), 0.5, colors.black),
+                    ('SPAN', (0,-1), (5,-1)),
+                    ('SPAN', (6,-1), (7,-1)),
+                    ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
+                    ('TOPPADDING', (0,0), (-1,-1), 2), 
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 2)
+                ]))
                 story.append(t_block)
-                story.append(Spacer(1, 2))
+                story.append(Spacer(1, 4))
 
-            # ANCHOS RECALCULADOS AL 100% (DESCRIPCIÓN MAXIMIZADA, OBS REDUCIDA)
-            inyectar_tabla_pdf("🪚 SECCIÓN 2: CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS."], ed_secc, op_secc1, op_secc2, [35, 239, 36, 36, 36, 36, 46, 75])
-            inyectar_tabla_pdf("📐 SECCIÓN 3: CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS."], ed_escu, op_escu1, op_escu2, [35, 239, 36, 36, 36, 36, 46, 75])
-            inyectar_tabla_pdf("⚙️ SECCIÓN 4: CANTEO", ["CANT.", "DESCRIPCIÓN", "TIPO CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS."], ed_cant, op_cant1, op_cant2, [30, 184, 65, 36, 36, 36, 36, 51, 105])
+            # ANCHOS RECALCULADOS (TOTAL EXACTO DE 570 PUNTOS CORRESPONDIENTES A LA IMAGEN 1)
+            inyectar_tabla_pdf("CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PL.", "OBS."], ed_secc, op_secc1, op_secc2, [35, 235, 40, 40, 40, 40, 55, 85])
+            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PIEZAS", "OBS."], ed_escu, op_escu1, op_escu2, [35, 235, 40, 40, 40, 40, 55, 85])
+            
+            # Ajuste específico de Canteo eliminando la columna fantasma y cuadrando anchos simétricos
+            op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
+            story.append(Paragraph("<b>CANTEO</b>", style_bold))
+            rows_canteo = [[Paragraph(f"<b>{h}</b>", style_bold) for h in ["CANT.", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "CANTO USADO", "OBS."]]]
+            for _, r in ed_cant.iterrows():
+                fila_c = []
+                es_vacia = (r['id'] == "")
+                columnas_canteo_mapeo = ['cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
+                for col_id in columnas_canteo_mapeo:
+                    val_t = "" if es_vacia else str(r[col_id])
+                    if val_t.lower() == "nan" or val_t == "None" or val_t == "0.0": 
+                        val_t = ""
+                    fila_c.append(Paragraph(val_t, style_normal))
+                rows_canteo.append(fila_c)
+            rows_canteo.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_cant_text}", style_normal), "", "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
+            
+            t_cant = Table(rows_canteo, colWidths=[35, 160, 65, 35, 35, 35, 35, 55, 115])
+            t_cant.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+                ('GRID', (0,0), (-1,-2), 0.5, colors.black),
+                ('BOX', (0,-1), (-1,-1), 0.5, colors.black),
+                ('LINEBEFORE', (7,-1), (7,-1), 0.5, colors.black),
+                ('SPAN', (0,-1), (6,-1)),
+                ('SPAN', (7,-1), (8,-1)),
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+                ('TOPPADDING', (0,0), (-1,-1), 2),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2)
+            ]))
+            story.append(t_cant)
+            story.append(Spacer(1, 4))
 
-            story.append(Paragraph("<b>🚚 SECCIÓN 5: ARMADO Y DESPACHO</b>", style_bold))
+            # SECCIÓN 5 COMPACTA CON RECUADRO DE OBSERVACIONES INTEGRADO EN LA MISMA HOJA
+            story.append(Paragraph("<b>■ SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</b>", style_bold))
             f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
             f_des_p = u_log_despacho_fecha.strftime("%d/%m/%Y") if u_log_despacho_fecha else ""
             f_sal_p = u_log_salida_fecha.strftime("%d/%m/%Y") if u_log_salida_fecha else ""
 
             data_log_tab = [
-                [Paragraph("<b>ZONA DE ARMADO (Taller)</b>", style_bold), Paragraph("<b>ZONA DE DESPACHO (Obra)</b>", style_bold)],
-                [Paragraph(f"F. RECEPCIÓN: {f_arm_p} | PALLETS: {u_log_armado_cant} | VºBº: {u_log_armado_vob}", style_normal),
-                 Paragraph(f"F. RECEPCIÓN: {f_des_p} | PALLETS: {u_log_despacho_cant} | VºBº: {u_log_despacho_vob}", style_normal)],
-                [Paragraph(f"<b>DESPACHO A OBRA:</b> F. SALIDA: {f_sal_p} | CHOFER: {u_log_salida_conductor} | VºBº: {u_log_salida_vob}", style_normal),
-                 Paragraph(f"<b>OBSERVACIONES:</b> {u_log_observaciones}", style_normal)]
+                [Paragraph("<b>ZONA DE ARMADO (Piezas en Planta)</b>", style_bold), Paragraph("<b>ZONA DE DESPACHO (Directo a Obra)</b>", style_bold)],
+                [Paragraph(f"FECHA RECEPCIÓN: {f_arm_p}", style_normal), Paragraph(f"FECHA RECEPCIÓN: {f_des_p}", style_normal)],
+                [Paragraph(f"Nº PALLETS / PIEZAS: {u_log_armado_cant}", style_normal), Paragraph(f"Nº PALLETS / PIEZAS: {u_log_despacho_cant}", style_normal)],
+                [Paragraph(f"VºBº SUP. PRODUCCIÓN: {u_log_armado_vob}", style_normal), Paragraph(f"VºBº ALMACÉN / DESPACHO: {u_log_despacho_vob}", style_normal)],
+                [Paragraph(f"<b>FECHA SALIDA A OBRA:</b> {f_sal_p}", style_normal), Paragraph(f"<b>CONDUCTOR:</b> {u_log_salida_conductor}", style_normal)],
+                [Paragraph(f"<b>OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA:</b><br/>{u_log_observaciones}", style_normal), Paragraph("<b>V°B° ALMACÉN:</b>", style_normal)]
             ]
-            t_log = Table(data_log_tab, colWidths=[289, 290])
-            t_log.setStyle(TableStyle([('BACKGROUND', (0,0), (1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2)]))
+            
+            t_log = Table(data_log_tab, colWidths=[285, 285])
+            t_log.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (1,0), colors.lightgrey), 
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
+                ('SPAN', (0,4), (0,4)),
+                ('SPAN', (1,4), (1,4)),
+                ('SPAN', (1,4), (1,5)), # V°B° Almacén integrado de forma compacta
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
+                ('TOPPADDING', (0,0), (-1,-1), 2), 
+                ('BOTTOMPADDING', (0,0), (-1,-1), 2)
+            ]))
             story.append(t_log)
             
             doc_pdf.build(story)
