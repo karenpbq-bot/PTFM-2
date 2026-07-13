@@ -13,39 +13,46 @@ except ImportError:
     st.error("Por favor ejecute 'pip install reportlab' en la terminal para habilitar la exportación a PDF.")
 
 def mostrar(supervisor_id=None):
-    # COMPACTACIÓN EXTREMA Y CORRECCIÓN DE DISTRIBUCIÓN
+    # AJUSTE DE MÁRGENES UNIFICADOS Y AMPLIACIÓN DE FUENTE PARA OPERARIOS
     st.markdown("""
         <style>
+        /* Unificación de márgenes externos e internos al 100% */
+        .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+        
         .section-header { 
             background-color: #E5E7EB; 
-            padding: 2px 8px; 
+            padding: 4px 8px; 
             font-weight: bold; 
             color: #1F2937; 
             border-left: 5px solid #1E3A8A; 
-            margin-top: 3px; 
-            margin-bottom: 1px; 
-            font-size: 11px; 
+            margin-top: 6px; 
+            margin-bottom: 2px; 
+            font-size: 13px; 
         }
+        
+        /* Alineación exacta de márgenes para las secciones 2, 3 y 4 con la 1 y 5 */
         div[data-testid="stDataEditor"] {
-            font-size: 10.5px !important;
-            height: auto !important;
-            max-height: 14.5vh !important;
-            margin-bottom: 1px !important;
+            font-size: 12.5px !important;
+            font-family: monospace !important;
+            margin-bottom: 2px !important;
             padding: 0px !important;
+            width: 100% !important;
         }
+        
+        /* Forzar simetría y altura idéntica en las 6 filas sin deformaciones */
         div[data-testid="stDataEditor"] div[role="rowgroup"] div[role="row"] {
-            height: calc(100% / 6) !important;
-            min-height: 19px !important;
+            min-height: 24px !important;
+            height: 24px !important;
             display: flex;
             align-items: center;
         }
-        div[data-testid="stForm"] { padding: 2px 4px !important; }
-        .stMarkdown div p { margin-bottom: 1px !important; }
-        div[data-testid="stVerticalBlock"] > div { padding-bottom: 1px !important; padding-top: 1px !important; }
+        
+        div[data-testid="stForm"] { padding: 4px 6px !important; }
+        div[data-testid="stVerticalBlock"] > div { padding-bottom: 2px !important; padding-top: 2px !important; }
         
         @media print {
             html, body { height: 100%; overflow: hidden; }
-            div[data-testid="stDataEditor"] { max-height: 13.5vh !important; }
+            div[data-testid="stDataEditor"] { font-size: 12px !important; }
         }
         </style>
     """, unsafe_allow_html=True)
@@ -101,9 +108,18 @@ def mostrar(supervisor_id=None):
                     sub_df[col_f] = sub_df[col_f].apply(lambda x: f"{x[5:7]}/{x[8:10]}" if (x and len(str(x)) >= 10 and str(x)[4] == '-') else x)
             return sub_df
 
-        def garantizar_6_filas(df_bloque, bloque_id):
+        # CORRECCIÓN ESTRUCTURAL DE ANCHO PARA FILAS 4, 5 Y 6 (DATAFRAME HOMOGÉNEO)
+        def garantizar_6_filas_limpias(df_bloque, bloque_id):
+            columnas_base = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
+            
             if df_bloque.empty:
-                df_bloque = pd.DataFrame(columns=['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias'])
+                df_bloque = pd.DataFrame(columns=columnas_base)
+            
+            # Asegurar que todas las columnas existan con tipos consistentes
+            for col in columnas_base:
+                if col not in df_bloque.columns:
+                    df_bloque[col] = None
+            
             actuales = len(df_bloque)
             if actuales < 6:
                 filas_faltantes = 6 - actuales
@@ -112,17 +128,29 @@ def mostrar(supervisor_id=None):
                     nuevas_filas.append({
                         "id": "", "bitacora_id": id_act, "proceso_bloque": bloque_id,
                         "cantidad": None, "descripcion": "", "tipo_canto": "",
-                        "fecha_inicio": "", "hora_inicio": "", "cant_final_pl_pzs": "",
-                        "hora_termino": "", "fecha_termino": "", "obs_incidencias": ""
+                        "fecha_inicio": "", "hora_inicio": "", "hora_termino": "",
+                        "fecha_termino": "", "cant_final_pl_pzs": "", "obs_incidencias": ""
                     })
                 df_bloque = pd.concat([df_bloque, pd.DataFrame(nuevas_filas)], ignore_index=True)
+            
+            # REQUERIMIENTO: Limpieza absoluta de campos para impresión limpia en campo
+            df_bloque['id'] = df_bloque['id'].fillna("")
+            df_bloque['descripcion'] = df_bloque['descripcion'].fillna("")
+            df_bloque['tipo_canto'] = df_bloque['tipo_canto'].fillna("")
+            
+            # Si la fila es una fila vacía de contingencia, removemos cualquier residuo numérico
+            for idx, row in df_bloque.iterrows():
+                if row['id'] == "":
+                    df_bloque.at[idx, 'cantidad'] = None
+                    df_bloque.at[idx, 'cant_final_pl_pzs'] = ""
+                    
             return df_bloque.head(6)
 
-        df_secc = garantizar_6_filas(filtrar_bloque(df_l, 'SECCIONADORA'), 'SECCIONADORA')
-        df_escu = garantizar_6_filas(filtrar_bloque(df_l, 'ESCUADRADORA'), 'ESCUADRADORA')
-        df_cant = garantizar_6_filas(filtrar_bloque(df_l, 'CANTEO'), 'CANTEO')
+        df_secc = garantizar_6_filas_limpias(filtrar_bloque(df_l, 'SECCIONADORA'), 'SECCIONADORA')
+        df_escu = garantizar_6_filas_limpias(filtrar_bloque(df_l, 'ESCUADRADORA'), 'ESCUADRADORA')
+        df_cant = garantizar_6_filas_limpias(filtrar_bloque(df_l, 'CANTEO'), 'CANTEO')
 
-        def generar_bloque_interfaz(titulo, bloque_id, df_bloque, col_salida_key, col_salida_label):
+        def generar_bloque_interfaz(titulo, bloque_id, df_bloque, col_salida_label):
             st.markdown(f'<div class="section-header">{titulo}</div>', unsafe_allow_html=True)
             
             op_actual1, op_actual2 = "", ""
@@ -147,7 +175,7 @@ def mostrar(supervisor_id=None):
                 }).execute()
                 st.rerun()
             
-            # REORDENAMIENTO, ANCHOS MODIFICADOS Y CABECERAS ABREVIADAS
+            # REORDENADO CON SALIDA POSTERIOR A F.T. Y AMPLIACIÓN DE DESCRIPCIÓN
             if bloque_id == 'CANTEO':
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
@@ -182,9 +210,9 @@ def mostrar(supervisor_id=None):
             )
             return res_ed, op_val1, op_val2
 
-        ed_secc, op_secc1, op_secc2 = generar_bloque_interfaz("🪚 SECCIÓN 2: CORTE SECCIONADORA", "SECCIONADORA", df_secc, "cant_final_pl_pzs", "N° PL.")
-        ed_escu, op_escu1, op_escu2 = generar_bloque_interfaz("📐 SECCIÓN 3: CORTE ESCUADRADORA", "ESCUADRADORA", df_escu, "cant_final_pl_pzs", "N° PZAS")
-        ed_cant, op_cant1, op_cant2 = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "cant_final_pl_pzs", "ML CANTO")
+        ed_secc, op_secc1, op_secc2 = generar_bloque_interfaz("🪚 SECCIÓN 2: CORTE SECCIONADORA", "SECCIONADORA", df_secc, "N° PL.")
+        ed_escu, op_escu1, op_escu2 = generar_bloque_interfaz("📐 SECCIÓN 3: CORTE ESCUADRADORA", "ESCUADRADORA", df_escu, "N° PZAS")
+        ed_cant, op_cant1, op_cant2 = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "ML CANTO")
 
         # SECCIÓN 5: LOGÍSTICA
         st.markdown('<div class="section-header">🚚 SECCIÓN 5: ARMADO Y DESPACHO</div>', unsafe_allow_html=True)
@@ -260,37 +288,38 @@ def mostrar(supervisor_id=None):
                 procesar_lote_guardado(ed_secc, "SECCIONADORA", op_secc1, op_secc2)
                 procesar_lote_guardado(ed_escu, "ESCUADRADORA", op_escu1, op_escu2)
                 procesar_lote_guardado(ed_cant, "CANTEO", op_cant1, op_cant2)
-                st.success("🎉 Trazabilidad y ordenación guardados."); st.rerun()
+                st.success("🎉 Cambios de alineación y datos de campo guardados."); st.rerun()
             except Exception as e:
                 st.error(f"Falla de sincronización: {e}")
         
-        # MOTOR REPORTLAB COMPACTO - UN SOLO FOLIO MILIMÉTRICO
+        # MOTOR REPORTLAB OPTIMIZADO - INCREMENTO DE LETRA Y REDUCCIÓN DE MÁRGENES ESTÉRILES
         try:
             buffer_pdf = io.BytesIO()
-            doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=12, leftMargin=12, topMargin=10, bottomMargin=10)
+            # Bajamos los márgenes a 8 para ganar espacio útil y poder subir la letra a 9pt
+            doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=8, leftMargin=8, topMargin=8, bottomMargin=8)
             story = []
             styles = getSampleStyleSheet()
             
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=7.5, leading=9)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=7.5, leading=9)
-            style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=13, leading=15, alignment=1)
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=9, leading=11)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=9, leading=11)
+            style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA UNIFICADA DE PRODUCCIÓN</b>", style_title))
-            story.append(Spacer(1, 3))
+            story.append(Spacer(1, 2))
             
             data_s1 = [
                 [Paragraph("<b>FECHA:</b>", style_normal), Paragraph(u_fecha.strftime("%d/%m/%Y"), style_normal), Paragraph("<b>Nº ORDEN:</b>", style_normal), Paragraph(u_n_orden, style_normal)],
                 [Paragraph("<b>MUEBLE:</b>", style_normal), Paragraph(u_tipo_mueble, style_normal), Paragraph("<b>MOTIVO:</b>", style_normal), Paragraph(u_motivo, style_normal)],
                 [Paragraph("<b>CLIENTE:</b>", style_normal), Paragraph(u_cliente, style_normal), Paragraph("<b>PROYECTO:</b>", style_normal), Paragraph(u_proyecto, style_normal)]
             ]
-            t_s1 = Table(data_s1, colWidths=[75, 205, 75, 215])
+            t_s1 = Table(data_s1, colWidths=[75, 210, 75, 219])
             t_s1.setStyle(TableStyle([('BACKGROUND', (0,0), (0,2), colors.lightgrey), ('BACKGROUND', (2,0), (2,2), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2)]))
             story.append(t_s1)
-            story.append(Spacer(1, 3))
+            story.append(Spacer(1, 2))
             
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op1, op2, ancho_cols):
                 op_text = f"{op1} / {op2}".strip(" / ")
-                story.append(Paragraph(f"<b>{titulo}</b> | <font size=6.5>Responsables: {op_text}</font>", style_bold))
+                story.append(Paragraph(f"<b>{titulo}</b> | <font size=7.5>Responsables: {op_text}</font>", style_bold))
                 rows_pdf = [[Paragraph(f"<b>{h}</b>", style_bold) for h in cabeceras]]
                 
                 for _, r in df_ed.iterrows():
@@ -304,14 +333,14 @@ def mostrar(supervisor_id=None):
                     rows_pdf.append(fila)
                         
                 t_block = Table(rows_pdf, colWidths=ancho_cols)
-                t_block.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('TOPPADDING', (0,0), (-1,-1), 1.5), ('BOTTOMPADDING', (0,0), (-1,-1), 1.5)]))
+                t_block.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2)]))
                 story.append(t_block)
                 story.append(Spacer(1, 2))
 
-            # ANCHOS EXACTOS: DESCRIPCIÓN ANCHA, OBS DELGADA, REORDENADO CON SALIDA AL FINAL
-            inyectar_tabla_pdf("🪚 SECCIÓN 2: CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS."], ed_secc, op_secc1, op_secc2, [30, 210, 35, 35, 35, 35, 45, 45])
-            inyectar_tabla_pdf("📐 SECCIÓN 3: CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS."], ed_escu, op_escu1, op_escu2, [30, 210, 35, 35, 35, 35, 45, 45])
-            inyectar_tabla_pdf("⚙️ SECCIÓN 4: CANTEO", ["CANT.", "DESCRIPCIÓN", "TIPO CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS."], ed_cant, op_cant1, op_cant2, [25, 165, 55, 35, 35, 35, 35, 45, 40])
+            # ANCHOS RECALCULADOS AL 100% (DESCRIPCIÓN MAXIMIZADA, OBS REDUCIDA)
+            inyectar_tabla_pdf("🪚 SECCIÓN 2: CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS."], ed_secc, op_secc1, op_secc2, [35, 239, 36, 36, 36, 36, 46, 75])
+            inyectar_tabla_pdf("📐 SECCIÓN 3: CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS."], ed_escu, op_escu1, op_escu2, [35, 239, 36, 36, 36, 36, 46, 75])
+            inyectar_tabla_pdf("⚙️ SECCIÓN 4: CANTEO", ["CANT.", "DESCRIPCIÓN", "TIPO CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS."], ed_cant, op_cant1, op_cant2, [30, 184, 65, 36, 36, 36, 36, 51, 105])
 
             story.append(Paragraph("<b>🚚 SECCIÓN 5: ARMADO Y DESPACHO</b>", style_bold))
             f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
@@ -325,8 +354,8 @@ def mostrar(supervisor_id=None):
                 [Paragraph(f"<b>DESPACHO A OBRA:</b> F. SALIDA: {f_sal_p} | CHOFER: {u_log_salida_conductor} | VºBº: {u_log_salida_vob}", style_normal),
                  Paragraph(f"<b>OBSERVACIONES:</b> {u_log_observaciones}", style_normal)]
             ]
-            t_log = Table(data_log_tab, colWidths=[285, 285])
-            t_log.setStyle(TableStyle([('BACKGROUND', (0,0), (1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('TOPPADDING', (0,0), (-1,-1), 1.5), ('BOTTOMPADDING', (0,0), (-1,-1), 1.5)]))
+            t_log = Table(data_log_tab, colWidths=[289, 290])
+            t_log.setStyle(TableStyle([('BACKGROUND', (0,0), (1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('TOPPADDING', (0,0), (-1,-1), 2), ('BOTTOMPADDING', (0,0), (-1,-1), 2)]))
             story.append(t_log)
             
             doc_pdf.build(story)
