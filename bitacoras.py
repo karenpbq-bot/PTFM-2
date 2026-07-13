@@ -109,7 +109,31 @@ def mostrar(supervisor_id=None):
         # Carga y normalización de líneas operativas desde Supabase
         res_l = supabase.table("bitacoras_lineas").select("*").eq("bitacora_id", id_act).order("id").execute()
         df_l = pd.DataFrame(res_l.data) if res_l.data else pd.DataFrame()
-        
+
+        # 1. Recuperar catálogos para los selectores interactivos
+        lista_ops = [op['nombre'] for op in supabase.table("cfg_operarios").select("nombre").eq("activo", True).execute().data] or ["Sin Asignar"]
+        lista_mats = [mat['descripcion'] for mat in supabase.table("cfg_materiales").select("descripcion").eq("activo", True).execute().data] or [""]
+        lista_cantos = ["DELGADO", "GRUESO", "DUAL", "SIN CANTO"]
+
+        # 2. Asegurar estructura rígida de 6 filas simétricas
+        def garantizar_6_filas(df_bloque, bloque_id):
+            if df_bloque.empty:
+                df_bloque = pd.DataFrame(columns=['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias'])
+            
+            actuales = len(df_bloque)
+            if actuales < 6:
+                filas_faltantes = 6 - actuales
+                nuevas_filas = []
+                for _ in range(filas_faltantes):
+                    nuevas_filas.append({
+                        "id": None, "bitacora_id": id_act, "proceso_bloque": bloque_id,
+                        "cantidad": 0.0, "descripcion": "", "tipo_canto": "SIN CANTO",
+                        "fecha_inicio": "", "hora_inicio": "", "cant_final_pl_pzs": "",
+                        "hora_termino": "", "fecha_termino": "", "obs_incidencias": ""
+                    })
+                df_bloque = pd.concat([df_bloque, pd.DataFrame(nuevas_filas)], ignore_index=True)
+            return df_bloque.head(6) # Cortar estrictamente en 6
+            
         # Auxiliar para separar los bloques de máquinas
         def filtrar_bloque(df, bloque_nom):
             if df.empty:
@@ -150,32 +174,35 @@ def mostrar(supervisor_id=None):
                 }).execute()
                 st.rerun()
             
+            # Configuración de orden y tipos de datos para SECCIONAL / ESCUADRADORA
             columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias']
             
             config_columnas = {
-                "id": None,
-                "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
-                "descripcion": st.column_config.TextColumn("DESCRIPCION"),
-                "fecha_inicio": st.column_config.TextColumn("F. INICIO (DD/MM)"),
-                "hora_inicio": st.column_config.TextColumn("H. INICIO"),
-                "cant_final_pl_pzs": st.column_config.TextColumn(col_cant_nom),
-                "hora_termino": st.column_config.TextColumn("H. TERMINO"),
-                "fecha_termino": st.column_config.TextColumn("F. TERMINO (DD/MM)"),
-                "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS")
+                "id": None, # Oculto
+                "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f", width="small"),
+                "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=True, width="medium"),
+                "fecha_inicio": st.column_config.TextColumn("F. INICIO (DD/MM)", width="small"),
+                "hora_inicio": st.column_config.TextColumn("H. INICIO", width="small"),
+                "cant_final_pl_pzs": st.column_config.TextColumn(col_cant_nom, width="small"),
+                "hora_termino": st.column_config.TextColumn("H. TERMINO", width="small"),
+                "fecha_termino": st.column_config.TextColumn("F. TERMINO (DD/MM)", width="small"),
+                "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS", width="medium")
             }
             
+            # Ajuste de orden y estructura específica para CANTEO
             if bloque_id == 'CANTEO':
-                columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'fecha_termino', 'obs_incidencias']
+                columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f"),
-                    "descripcion": st.column_config.TextColumn("DESCRIPCION"),
-                    "tipo_canto": st.column_config.TextColumn("TIPO DE CANTO"),
-                    "fecha_inicio": st.column_config.TextColumn("F. INICIO (DD/MM)"),
-                    "hora_inicio": st.column_config.TextColumn("H. INICIAL"),
-                    "cant_final_pl_pzs": st.column_config.TextColumn("CANTO USADO"),
-                    "fecha_termino": st.column_config.TextColumn("F. FINAL (DD/MM)"),
-                    "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS")
+                    "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f", width="small"),
+                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=True, width="medium"),
+                    "tipo_canto": st.column_config.SelectboxColumn("TIPO DE CANTO", options=lista_cantos, required=True, width="small"),
+                    "fecha_inicio": st.column_config.TextColumn("F. INICIO (DD/MM)", width="small"),
+                    "hora_inicio": st.column_config.TextColumn("H. INICIO", width="small"),
+                    "cant_final_pl_pzs": st.column_config.TextColumn("CANTO USADO", width="small"),
+                    "hora_termino": st.column_config.TextColumn("H. TERMINO", width="small"),
+                    "fecha_termino": st.column_config.TextColumn("F. TERMINO (DD/MM)", width="small"),
+                    "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS", width="medium")
                 }
 
             if not df_bloque.empty:
@@ -263,16 +290,23 @@ def mostrar(supervisor_id=None):
                 
                 def procesar_lote_guardado(df_editor, bloque_id, op1, op2):
                     for _, r in df_editor.iterrows():
+                        # Si la fila está completamente vacía (sin descripción), la ignoramos para no saturar la BD
+                        if not r['descripcion'] or pd.isna(r['descripcion']) or str(r['descripcion']).strip() == "":
+                            continue
+
+                        # Función interna necesaria para empaquetar y formatear las fechas del taller a ISO
                         def normalizar_fecha_iso(valor_celda):
                             if not valor_celda or pd.isna(valor_celda): return None
                             texto = str(valor_celda).strip()
-                            if len(texto) == 5 and "/" in texto:
+                            if len(texto) == 5 and "/" in texto: # Formato DD/MM
                                 return f"2026-{texto[3:5]}-{texto[0:2]}"
                             return texto
                         
                         payload = {
+                            "bitacora_id": id_act,
+                            "proceso_bloque": bloque_id,
                             "cantidad": float(r['cantidad']) if r['cantidad'] else 0.0,
-                            "descripcion": str(r['descripcion']).strip() if r['descripcion'] else None,
+                            "descripcion": str(r['descripcion']).strip(),
                             "tipo_canto": str(r['tipo_canto']).strip() if 'tipo_canto' in r and r['tipo_canto'] else None,
                             "fecha_inicio": normalizar_fecha_iso(r['fecha_inicio']),
                             "hora_inicio": str(r['hora_inicio']).strip() if r['hora_inicio'] else None,
@@ -283,7 +317,12 @@ def mostrar(supervisor_id=None):
                             "nombre_firma_operario": op1,
                             "nombre_firma_operario2": op2
                         }
-                        supabase.table("bitacoras_lineas").update(payload).eq("id", int(r['id'])).execute()
+                        
+                        # Guardado adaptativo según el origen de la fila
+                        if pd.notna(r['id']) and r['id'] != "" and r['id'] is not None:
+                            supabase.table("bitacoras_lineas").update(payload).eq("id", int(r['id'])).execute()
+                        else:
+                            supabase.table("bitacoras_lineas").insert(payload).execute()
 
                 procesar_lote_guardado(ed_secc, "SECCIONADORA", op_secc1, op_secc2)
                 procesar_lote_guardado(ed_escu, "ESCUADRADORA", op_escu1, op_escu2)
