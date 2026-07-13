@@ -4,7 +4,7 @@ from datetime import datetime, date
 import io
 from base_datos import conectar
 
-# Intentar importar ReportLab para la compilación del PDF nativo de una página
+# Intentar importar ReportLab para la de un solo folio
 try:
     from reportlab.lib.pagesizes import letter, A4
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -32,14 +32,14 @@ def mostrar(supervisor_id=None):
         div[data-testid="stDataEditor"] {
             font-size: 11px !important;
             height: auto !important;
-            max-height: 18vh !important; /* Limita el alto máximo de cada tabla al 18% del alto de la pantalla/hoja */
+            max-height: 18vh !important; /* Ajuste proporcional al alto de pantalla */
             margin-bottom: 4px !important;
         }
 
-        /* Asegurar que las filas internas tengan la misma altura distribuida equitativamente */
+        /* Altura homogénea distribuida equitativamente para las 6 filas */
         div[data-testid="stDataEditor"] div[role="rowgroup"] div[role="row"] {
-            height: calc(100% / 6) !important; /* Divide el espacio total de la tabla simétricamente entre las 6 filas */
-            min-height: 22px !important;       /* Límite mínimo seguro para que la letra de 11px sea legible */
+            height: calc(100% / 6) !important;
+            min-height: 22px !important;
             display: flex;
             align-items: center;
         }
@@ -56,14 +56,13 @@ def mostrar(supervisor_id=None):
             padding-top: 1px !important; 
         }
 
-        /* Regla de impresión: Ajuste dinámico si el operador manda a imprimir a PDF (Ctrl + P) */
         @media print {
             html, body {
                 height: 100%;
                 overflow: hidden;
             }
             div[data-testid="stDataEditor"] {
-                max-height: 15vh !important; /* Se vuelve aún más estricto en la hoja física */
+                max-height: 15vh !important;
             }
         }
         </style>
@@ -106,16 +105,30 @@ def mostrar(supervisor_id=None):
             u_sup_prod = c2.text_input("SUP. DE PRODUCCION:", value=cab['sup_production'] or "")
             u_estado = st.selectbox("ESTADO DE LA BITÁCORA:", ["Pendiente", "En Proceso", "Cerrada"], index=["Pendiente", "En Proceso", "Cerrada"].index(cab['estado']))
 
-        # Carga y normalización de líneas operativas desde Supabase
+        # Carga de líneas operativas desde Supabase
         res_l = supabase.table("bitacoras_lineas").select("*").eq("bitacora_id", id_act).order("id").execute()
         df_l = pd.DataFrame(res_l.data) if res_l.data else pd.DataFrame()
 
-        # 1. Recuperar catálogos para los selectores interactivos
-        lista_ops = [op['nombre'] for op in supabase.table("cfg_operarios").select("nombre").eq("activo", True).execute().data] or ["Sin Asignar"]
-        lista_mats = [mat['descripcion'] for mat in supabase.table("cfg_materiales").select("descripcion").eq("activo", True).execute().data] or [""]
-        lista_cantos = ["DELGADO", "GRUESO", "DUAL", "SIN CANTO"]
+        # CORREGIDO: Mapeo real de tablas y columnas según tus imágenes (sin filtros ficticios)
+        try:
+            lista_ops = [op['nombre'] for op in supabase.table("cfg_operarios").select("nombre").order("nombre").execute().data] or ["Sin Asignar"]
+            lista_mats = [mat['detalle'] for mat in supabase.table("cfg_descripciones").select("detalle").order("detalle").execute().data] or [""]
+            lista_cantos = [can['tipo'] for can in supabase.table("cfg_cantos").select("tipo").order("tipo").execute().data] or ["SIN CANTO"]
+        except Exception as e:
+            st.error(f"Aviso de configuración de tablas maestro: {e}")
+            lista_ops, lista_mats, lista_cantos = ["Sin Asignar"], [""], ["SIN CANTO"]
 
-        # 2. Asegurar estructura rígida de 6 filas simétricas
+        # Auxiliar para separar los bloques de máquinas y normalizar fechas visuales
+        def filtrar_bloque(df, bloque_nom):
+            if df.empty:
+                return pd.DataFrame()
+            sub_df = df[df['proceso_bloque'] == bloque_nom].copy()
+            for col_f in ['fecha_inicio', 'fecha_termino']:
+                if col_f in sub_df.columns:
+                    sub_df[col_f] = sub_df[col_f].apply(lambda x: f"{x[5:7]}/{x[8:10]}" if (x and len(str(x)) >= 10 and str(x)[4] == '-') else x)
+            return sub_df
+
+        # Asegurar estructura rígida de 6 filas simétricas para encajar en la hoja proporcional
         def garantizar_6_filas(df_bloque, bloque_id):
             if df_bloque.empty:
                 df_bloque = pd.DataFrame(columns=['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias'])
@@ -132,28 +145,17 @@ def mostrar(supervisor_id=None):
                         "hora_termino": "", "fecha_termino": "", "obs_incidencias": ""
                     })
                 df_bloque = pd.concat([df_bloque, pd.DataFrame(nuevas_filas)], ignore_index=True)
-            return df_bloque.head(6) # Cortar estrictamente en 6
-            
-        # Auxiliar para separar los bloques de máquinas
-        def filtrar_bloque(df, bloque_nom):
-            if df.empty:
-                return pd.DataFrame()
-            sub_df = df[df['proceso_bloque'] == bloque_nom].copy()
-            for col_f in ['fecha_inicio', 'fecha_termino']:
-                if col_f in sub_df.columns:
-                    sub_df[col_f] = sub_df[col_f].apply(lambda x: f"{x[5:7]}/{x[8:10]}" if (x and len(str(x)) >= 10 and str(x)[4] == '-') else x)
-            return sub_df
+            return df_bloque.head(6)
 
-        df_secc = filtrar_bloque(df_l, 'SECCIONADORA')
-        df_escu = filtrar_bloque(df_l, 'ESCUADRADORA')
-        df_cant = filtrar_bloque(df_l, 'CANTEO')
-        df_sec5 = filtrar_bloque(df_l, 'SECCION5')
+        df_secc = garantizar_6_filas(filtrar_bloque(df_l, 'SECCIONADORA'), 'SECCIONADORA')
+        df_escu = garantizar_6_filas(filtrar_bloque(df_l, 'ESCUADRADORA'), 'ESCUADRADORA')
+        df_cant = garantizar_6_filas(filtrar_bloque(df_l, 'CANTEO'), 'CANTEO')
+        df_sec5 = garantizar_6_filas(filtrar_bloque(df_l, 'SECCION5'), 'SECCION5')
 
         # Procesador para inyectar filas y capturar el operario en la cabecera del bloque
         def generar_bloque_interfaz(titulo, bloque_id, df_bloque, col_cant_nom):
             st.markdown(f'<div class="section-header">{titulo}</div>', unsafe_allow_html=True)
             
-            # Recuperar operarios asignados previamente
             op_actual1 = ""
             op_actual2 = ""
             if not df_bloque.empty:
@@ -164,8 +166,13 @@ def mostrar(supervisor_id=None):
                 
             cx1, cx2, cx3 = st.columns([2, 2, 2])
             btn_ins = cx1.button(f"➕ Registro a {titulo.split(': ')[1]}", key=f"btn_ins_{bloque_id}")
-            op_val1 = cx2.text_input("👨‍🔧 RESPONSABLE 1:", value=op_actual1, key=f"op_val1_{bloque_id}")
-            op_val2 = cx3.text_input("👨‍🔧 RESPONSABLE 2:", value=op_actual2, key=f"op_val2_{bloque_id}")
+            
+            # Selectores predictivos de operarios conectados a la base de datos
+            idx_op1 = lista_ops.index(op_actual1) if op_actual1 in lista_ops else 0
+            idx_op2 = lista_ops.index(op_actual2) if op_actual2 in lista_ops else 0
+            
+            op_val1 = cx2.selectbox("👨‍🔧 RESPONSABLE 1:", options=lista_ops, index=idx_op1, key=f"op_val1_{bloque_id}")
+            op_val2 = cx3.selectbox("👥 RESPONSABLE 2:", options=lista_ops, index=idx_op2, key=f"op_val2_{bloque_id}")
             
             if btn_ins:
                 supabase.table("bitacoras_lineas").insert({
@@ -178,7 +185,7 @@ def mostrar(supervisor_id=None):
             columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias']
             
             config_columnas = {
-                "id": None, # Oculto
+                "id": None,
                 "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f", width="small"),
                 "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=True, width="medium"),
                 "fecha_inicio": st.column_config.TextColumn("F. INICIO (DD/MM)", width="small"),
@@ -189,7 +196,7 @@ def mostrar(supervisor_id=None):
                 "obs_incidencias": st.column_config.TextColumn("OBS/INCIDENCIAS", width="medium")
             }
             
-            # Ajuste de orden y estructura específica para CANTEO
+            # Ajuste de orden y estructura específica para CANTEO (Sección 4)
             if bloque_id == 'CANTEO':
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'cant_final_pl_pzs', 'hora_termino', 'fecha_termino', 'obs_incidencias']
                 config_columnas = {
@@ -290,15 +297,13 @@ def mostrar(supervisor_id=None):
                 
                 def procesar_lote_guardado(df_editor, bloque_id, op1, op2):
                     for _, r in df_editor.iterrows():
-                        # Si la fila está completamente vacía (sin descripción), la ignoramos para no saturar la BD
                         if not r['descripcion'] or pd.isna(r['descripcion']) or str(r['descripcion']).strip() == "":
                             continue
 
-                        # Función interna necesaria para empaquetar y formatear las fechas del taller a ISO
                         def normalizar_fecha_iso(valor_celda):
                             if not valor_celda or pd.isna(valor_celda): return None
                             texto = str(valor_celda).strip()
-                            if len(texto) == 5 and "/" in texto: # Formato DD/MM
+                            if len(texto) == 5 and "/" in texto:
                                 return f"2026-{texto[3:5]}-{texto[0:2]}"
                             return texto
                         
@@ -318,7 +323,6 @@ def mostrar(supervisor_id=None):
                             "nombre_firma_operario2": op2
                         }
                         
-                        # Guardado adaptativo según el origen de la fila
                         if pd.notna(r['id']) and r['id'] != "" and r['id'] is not None:
                             supabase.table("bitacoras_lineas").update(payload).eq("id", int(r['id'])).execute()
                         else:
