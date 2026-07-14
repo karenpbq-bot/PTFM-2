@@ -485,7 +485,7 @@ def mostrar(supervisor_id=None):
                 df_estados = st.data_editor(
                     df_t[['EDITAR', 'id', 'fecha', 'n_orden', 'proyecto', 'cliente', 'tipo_mueble', 'estado']],
                     column_config={
-                        "EDITAR": st.column_config.CheckboxColumn("🔓 ABRIR", help="Marque para abrir el formato inmediatamente", default=False),
+                        "EDITAR": st.column_config.CheckboxColumn("✏️", help="Marque para abrir el formato inmediatamente", default=False),
                         "id": st.column_config.TextColumn("ID", disabled=True),
                         "fecha": st.column_config.TextColumn("FECHA", disabled=True),
                         "estado": st.column_config.SelectboxColumn("ESTADO", options=["Pendiente", "En Proceso", "Cerrada"], required=True)
