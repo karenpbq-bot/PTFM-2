@@ -37,9 +37,10 @@ def mostrar(supervisor_id=None):
             width: 100% !important;
         }
         
+        /* Forzar simetría y altura incrementada un 40% en las 6 filas en pantalla */
         div[data-testid="stDataEditor"] div[role="rowgroup"] div[role="row"] {
-            min-height: 24px !important;
-            height: 24px !important;
+            min-height: 34px !important;
+            height: 34px !important;
             display: flex;
             align-items: center;
         }
@@ -284,11 +285,11 @@ def mostrar(supervisor_id=None):
             doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=12, leftMargin=12, topMargin=12, bottomMargin=12)
             story = []
             
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=9, leading=11)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=9, leading=11)
+           # Ajuste de interlineado (leading) un 40% más amplio para dar holgura a la fuente en impresión
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=8.5, leading=11.5)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=11.5)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
-            # NUEVO ESTILO CON EL DOBLE DE TAMAÑO Y CENTRADO:
-            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=18, leading=20, alignment=1)
+            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=18, leading=22, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
             story.append(Spacer(1, 3))
@@ -345,8 +346,9 @@ def mostrar(supervisor_id=None):
                     ('SPAN', (0,-1), (5,-1)),
                     ('SPAN', (6,-1), (7,-1)),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-                    ('TOPPADDING', (0,0), (-1,-1), 1.5), 
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 1.5)
+                    # AUMENTO DEL 40% DEL ESPACIO DE ESCRITURA EN CELDAS SECCIONADORA / ESCUADRADORA:
+                    ('TOPPADDING', (0,0), (-1,-1), 4.5), 
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 4.5)
                 ]))
                 story.append(t_block)
                 story.append(Spacer(1, 3))
@@ -387,8 +389,9 @@ def mostrar(supervisor_id=None):
                 ('SPAN', (0,-1), (6,-1)),
                 ('SPAN', (7,-1), (8,-1)),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 1.5),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 1.5)
+                # AUMENTO DEL 40% DEL ESPACIO DE ESCRITURA EN CELDAS CANTEO:
+                ('TOPPADDING', (0,0), (-1,-1), 4.5),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4.5)
             ]))
             story.append(t_cant)
             story.append(Spacer(1, 3))
@@ -411,8 +414,9 @@ def mostrar(supervisor_id=None):
                 ('BACKGROUND', (0,0), (1,0), colors.lightgrey), 
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-                ('TOPPADDING', (0,0), (-1,-1), 1.5), 
-                ('BOTTOMPADDING', (0,0), (-1,-1), 1.5)
+                # INCREMENTO EN LAS CELDAS DE LOGÍSTICA:
+                ('TOPPADDING', (0,0), (-1,-1), 4.0), 
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4.0)
             ]))
             story.append(t_log)
             story.append(Spacer(1, 2))
@@ -427,8 +431,24 @@ def mostrar(supervisor_id=None):
             t_sal.setStyle(TableStyle([
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 2), 
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2)
+                # INCREMENTO EN RUTA DE DESPACHO:
+                ('TOPPADDING', (0,0), (-1,-1), 4.0), 
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4.0)
+            ]))
+            story.append(Spacer(1, 2))
+
+            data_obs_final = [
+                [Paragraph("<b>OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA:</b>", style_bold)],
+                [Paragraph(u_log_observaciones if u_log_observaciones.strip() else "&nbsp;", style_normal)]
+            ]
+            t_obs_final = Table(data_obs_final, colWidths=[570])
+            t_obs_final.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (0,0), colors.lightgrey),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('TOPPADDING', (0,0), (-1,-1), 3.0),
+                # EXPANSIÓN DEL CUADRO DE NOTAS DE CAMPO SIN ROTURA DE HOJA UNICA:
+                ('BOTTOMPADDING', (0,1), (0,1), 18.0) 
             ]))
             story.append(t_sal)
             story.append(Spacer(1, 2))
