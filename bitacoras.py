@@ -287,8 +287,8 @@ def mostrar(supervisor_id=None):
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=9, leading=11)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=9, leading=11)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
-            # NUEVO ESTILO CON EL DOBLE DE TAMAÑO:
-            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=18, leading=20)
+            # NUEVO ESTILO CON EL DOBLE DE TAMAÑO Y CENTRADO:
+            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=18, leading=20, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
             story.append(Spacer(1, 3))
