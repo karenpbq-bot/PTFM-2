@@ -284,9 +284,11 @@ def mostrar(supervisor_id=None):
             doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=12, leftMargin=12, topMargin=12, bottomMargin=12)
             story = []
             
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=8, leading=9.5)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=8, leading=9.5)
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=9, leading=11)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=9, leading=11)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
+            # NUEVO ESTILO CON EL DOBLE DE TAMAÑO:
+            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=18, leading=20)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
             story.append(Spacer(1, 3))
@@ -312,7 +314,7 @@ def mostrar(supervisor_id=None):
             
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op1, op2, ancho_cols):
                 op_text = f"{op1} / {op2}".strip(" / ")
-                story.append(Paragraph(f"<b>{titulo}</b>", style_bold))
+                story.append(Paragraph(f"<b>{titulo}</b>", style_seccion_titulo)) # <-- CAMBIADO
                 rows_pdf = [[Paragraph(f"<b>{h}</b>", style_bold) for h in cabeceras]]
                 
                 for _, r in df_ed.iterrows():
@@ -354,8 +356,9 @@ def mostrar(supervisor_id=None):
             inyectar_tabla_pdf("CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS."], ed_escu, op_escu1, op_escu2, [30, 255, 35, 35, 35, 35, 60, 85])
             
             # SECCIÓN 4 (CANTEO): Columna OBS con exactamente 85 puntos (misma alineación vertical que secc 2 y 3)
+            # Ajuste específico de Canteo eliminando la columna fantasma y cuadrando anchos simétricos
             op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
-            story.append(Paragraph("<b>CANTEO</b>", style_bold))
+            story.append(Paragraph("<b>CANTEO</b>", style_seccion_titulo)) # <-- CAMBIADO
             rows_canteo = [[Paragraph(f"<b>{h}</b>", style_bold) for h in ["CANT.", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS."]]]
             for _, r in ed_cant.iterrows():
                 fila_c = []
