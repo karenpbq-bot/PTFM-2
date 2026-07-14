@@ -294,7 +294,7 @@ def mostrar(supervisor_id=None):
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=11.5)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
             # TITULOS DOBLES Y CENTRADOS EXCLUSIVAMENTE PARA EL PDF IMPRESO
-            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=18, leading=22, alignment=1)
+            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=17, leading=20, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
             story.append(Spacer(1, 3))
@@ -440,7 +440,7 @@ def mostrar(supervisor_id=None):
 
             # CORRECCIÓN DE LA DUPLICIDAD: Renderizado definitivo del bloque de notas en la base
             data_obs_final = [
-                [Paragraph("<b>OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA:</b>", style_bold)],
+                [Paragraph("<b>OBSERVACIONES / INCIDENCIAS:</b>", style_bold)],
                 [Paragraph(u_log_observaciones if u_log_observaciones.strip() else "&nbsp;", style_normal)]
             ]
             t_obs_final = Table(data_obs_final, colWidths=[570])
@@ -449,7 +449,7 @@ def mostrar(supervisor_id=None):
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
                 ('TOPPADDING', (0,0), (-1,-1), 3.0),
-                ('BOTTOMPADDING', (0,1), (0,1), 18.0) 
+                ('BOTTOMPADDING', (0,1), (0,1), 16.0) 
             ]))
             story.append(t_obs_final)
             
