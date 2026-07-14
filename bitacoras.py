@@ -438,18 +438,19 @@ def mostrar(supervisor_id=None):
             story.append(t_sal)
             story.append(Spacer(1, 2))
 
-            # CORRECCIÓN DE LA DUPLICIDAD: Renderizado definitivo del bloque de notas en la base
+            # REGISTRO UNIFICADO DE OBSERVACIONES (FILA ÚNICA SIN SOMBREADO Y CON +35% DE ESPACIO DE ALTURA)
+            texto_obs = u_log_observaciones.strip() if u_log_observaciones.strip() else "&nbsp;"
+            
             data_obs_final = [
-                [Paragraph("<b>OBSERVACIONES / INCIDENCIAS:</b>", style_bold)],
-                [Paragraph(u_log_observaciones if u_log_observaciones.strip() else "&nbsp;", style_normal)]
+                [Paragraph(f"<b>OBSERVACIONES / INCIDENCIAS:</b> {texto_obs}", style_normal)]
             ]
+            
             t_obs_final = Table(data_obs_final, colWidths=[570])
             t_obs_final.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (0,0), colors.lightgrey),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('TOPPADDING', (0,0), (-1,-1), 3.0),
-                ('BOTTOMPADDING', (0,1), (0,1), 10.0) 
+                ('TOPPADDING', (0,0), (-1,-1), 6.0),      # Incrementado para dar más margen superior
+                ('BOTTOMPADDING', (0,0), (-1,-1), 22.0)   # Incrementado un ~35% más para la altura interna útil
             ]))
             story.append(t_obs_final)
             
