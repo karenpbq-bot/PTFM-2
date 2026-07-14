@@ -401,7 +401,6 @@ def mostrar(supervisor_id=None):
             story.append(t_cant)
             story.append(Spacer(1, 3))
 
-            story.append(Paragraph("<b>■ SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</b>", style_bold))
             f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
             f_des_p = u_log_despacho_fecha.strftime("%d/%m/%Y") if u_log_despacho_fecha else ""
             f_sal_p = u_log_salida_fecha.strftime("%d/%m/%Y") if u_log_salida_fecha else ""
