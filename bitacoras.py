@@ -356,14 +356,14 @@ def mostrar(supervisor_id=None):
                 story.append(Spacer(1, 3))
 
             # ANCHOS REPARTIDOS AL 100% (TOTAL EXACTO 570): OBS ALINEADO A 85, DESCRIPCIÓN AMPLIADA
-            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS."], ed_secc, op_secc1, op_secc2, [30, 255, 35, 35, 35, 35, 60, 85])
-            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS."], ed_escu, op_escu1, op_escu2, [30, 255, 35, 35, 35, 35, 60, 85])
+            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, [30, 255, 35, 35, 35, 35, 60, 85])
+            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, [30, 255, 35, 35, 35, 35, 60, 85])
             
             # SECCIÓN 4 (CANTEO): Columna OBS con exactamente 85 puntos (misma alineación vertical que secc 2 y 3)
             # Ajuste específico de Canteo eliminando la columna fantasma y cuadrando anchos simétricos
             op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
             story.append(Paragraph("<b>CANTEO</b>", style_seccion_titulo)) # <-- CAMBIADO
-            rows_canteo = [[Paragraph(f"<b>{h}</b>", style_bold) for h in ["CANT.", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS."]]]
+            rows_canteo = [[Paragraph(f"<b>{h}</b>", style_bold) for h in ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS"]]]
             for _, r in ed_cant.iterrows():
                 fila_c = []
                 es_vacia = (r['id'] == "")
