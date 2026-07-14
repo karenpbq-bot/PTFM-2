@@ -449,7 +449,7 @@ def mostrar(supervisor_id=None):
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
                 ('TOPPADDING', (0,0), (-1,-1), 3.0),
-                ('BOTTOMPADDING', (0,1), (0,1), 14.0) 
+                ('BOTTOMPADDING', (0,1), (0,1), 10.0) 
             ]))
             story.append(t_obs_final)
             
