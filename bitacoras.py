@@ -91,6 +91,8 @@ def mostrar(supervisor_id=None):
         lista_ops = [""] + [op['nombre'] for op in supabase.table("cfg_operarios").select("nombre").order("nombre").execute().data]
         lista_mats = [""] + [mat['detalle'] for mat in supabase.table("cfg_descripciones").select("detalle").order("detalle").execute().data]
         lista_cantos = [""] + [can['tipo'] for can in supabase.table("cfg_cantos").select("tipo").order("tipo").execute().data]
+        # CARGA DEL NUEVO MAESTRO DINÁMICO DE SUPABASE (TABLERO / RETAZO)
+        lista_tipos_piezas = [""] + [opt['opcion'] for opt in supabase.table("cfg_tipo_pieza_corte").select("opcion").order("opcion").execute().data]
 
         def filtrar_bloque(df, bloque_nom):
             if df.empty: return pd.DataFrame()
@@ -101,7 +103,7 @@ def mostrar(supervisor_id=None):
             return sub_df
 
         def garantizar_6_filas_limpias(df_bloque, bloque_id):
-            columnas_base = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
+            columnas_base = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'tipo_tablero_retazo', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
             if df_bloque.empty:
                 df_bloque = pd.DataFrame(columns=columnas_base)
             
@@ -116,7 +118,7 @@ def mostrar(supervisor_id=None):
                 for _ in range(filas_faltantes):
                     nuevas_filas.append({
                         "id": "", "bitacora_id": id_act, "proceso_bloque": bloque_id,
-                        "cantidad": None, "descripcion": "", "tipo_canto": "",
+                        "cantidad": None, "descripcion": "", "tipo_canto": "", "tipo_tablero_retazo": "",
                         "fecha_inicio": "", "hora_inicio": "", "hora_termino": "",
                         "fecha_termino": "", "cant_final_pl_pzs": "", "obs_incidencias": ""
                     })
@@ -125,6 +127,7 @@ def mostrar(supervisor_id=None):
             df_bloque['id'] = df_bloque['id'].fillna("")
             df_bloque['descripcion'] = df_bloque['descripcion'].fillna("")
             df_bloque['tipo_canto'] = df_bloque['tipo_canto'].fillna("")
+            df_bloque['tipo_tablero_retazo'] = df_bloque['tipo_tablero_retazo'].fillna("")
             
             for idx, row in df_bloque.iterrows():
                 if row['id'] == "":
@@ -160,7 +163,6 @@ def mostrar(supervisor_id=None):
                 }).execute()
                 st.rerun()
             
-            # CONFIGURACIÓN DE INTERFAZ STREAMLIT CON LAS CONDICIONES DE ANCHO Y ORDEN
             if bloque_id == 'CANTEO':
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
@@ -176,11 +178,13 @@ def mostrar(supervisor_id=None):
                     "obs_incidencias": st.column_config.TextColumn("OBS", width="small")
                 }
             else:
-                columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
+                # INTEGRACIÓN HORIZONTAL DE LA COLUMNA TIPO MAESTRA EN SECCIONES 2 Y 3
+                columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_tablero_retazo', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
                     "cantidad": st.column_config.NumberColumn("#", format="%.2f", width="small"),
                     "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width="large"),
+                    "tipo_tablero_retazo": st.column_config.SelectboxColumn("TIPO", options=lista_tipos_piezas, required=False, width="medium"),
                     "fecha_inicio": st.column_config.TextColumn("F.I.", width="small"),
                     "hora_inicio": st.column_config.TextColumn("H.I.", width="small"),
                     "hora_termino": st.column_config.TextColumn("H.T.", width="small"),
@@ -210,7 +214,7 @@ def mostrar(supervisor_id=None):
                 u_log_armado_cant = st.text_input("Nº PALLETS / PIEZAS (ARMADO):", value=cab.get('log_armado_cant') or "")
                 u_log_armado_vob = st.text_input("VºBº SUP. PRODUCCIÓN:", value=cab.get('log_armado_vob') or "")
             with c_des:
-                st.markdown("<b>📦 ZONA DE DESPACHO (Obra)</b>", unsafe_allow_html=True)
+                st.markdown("<b>📦 ZONA DE DESPACHO (Directo a Obra)</b>", unsafe_allow_html=True)
                 f_des_val = cab.get('log_despacho_fecha')
                 f_des_dt = datetime.strptime(f_des_val, "%Y-%m-%d").date() if f_des_val else None
                 u_log_despacho_fecha = st.date_input("FECHA RECEPCIÓN (DESPACHO):", value=f_des_dt, format="DD/MM/YYYY", key="f_des_log")
@@ -256,12 +260,14 @@ def mostrar(supervisor_id=None):
                             "cantidad": float(r['cantidad']) if r['cantidad'] else 0.0,
                             "descripcion": str(r['descripcion']).strip(),
                             "tipo_canto": str(r['tipo_canto']).strip() if 'tipo_canto' in r and r['tipo_canto'] else None,
+                            # PERSISTENCIA COMPLETA DEL CAMPO TIPO MAESTRO EN SUPABASE
+                            "tipo_tablero_retazo": str(r['tipo_tablero_retazo']).strip() if 'tipo_tablero_retazo' in r and r['tipo_tablero_retazo'] else None,
                             "fecha_inicio": normalizar_fecha_iso(r['F.I.'] if 'F.I.' in r else r.get('fecha_inicio')),
                             "hora_inicio": str(r['H.I.'] if 'H.I.' in r else r.get('hora_inicio')).strip(),
                             "cant_final_pl_pzs": str(r['cant_final_pl_pzs']).strip() if 'cant_final_pl_pzs' in r else None,
                             "hora_termino": str(r['H.T.'] if 'H.T.' in r else r.get('hora_termino')).strip(),
                             "fecha_termino": normalizar_fecha_iso(r['F.T.'] if 'F.T.' in r else r.get('fecha_termino')),
-                            "obs_incidencias": str(r['OBS.'] if 'OBS.' in r else r.get('obs_incidencias')).strip(),
+                            "obs_incidencias": str(r['OBS'] if 'OBS' in r else r.get('obs_incidencias')).strip(),
                             "nombre_firma_operario": op1, "nombre_firma_operario2": op2
                         }
                         if pd.notna(r['id']) and r['id'] != "":
@@ -281,14 +287,13 @@ def mostrar(supervisor_id=None):
         # =========================================================================
         try:
             buffer_pdf = io.BytesIO()
-            # Margen de 12 puntos para ancho total exacto de 571 puntos útiles de dibujo
             doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=12, leftMargin=12, topMargin=12, bottomMargin=12)
             story = []
             
-           # Ajuste de interlineado (leading) un 40% más amplio para dar holgura a la fuente en impresión
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=8.5, leading=11.5)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=11.5)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
+            # TITULOS DOBLES Y CENTRADOS EXCLUSIVAMENTE PARA EL PDF IMPRESO
             style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=18, leading=22, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
@@ -315,7 +320,7 @@ def mostrar(supervisor_id=None):
             
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op1, op2, ancho_cols):
                 op_text = f"{op1} / {op2}".strip(" / ")
-                story.append(Paragraph(f"<b>{titulo}</b>", style_seccion_titulo)) # <-- CAMBIADO
+                story.append(Paragraph(f"<b>{titulo}</b>", style_seccion_titulo))
                 rows_pdf = [[Paragraph(f"<b>{h}</b>", style_bold) for h in cabeceras]]
                 
                 for _, r in df_ed.iterrows():
@@ -327,7 +332,6 @@ def mostrar(supervisor_id=None):
                             if val_t.lower() == "nan" or val_t == "None" or val_t == "0.0": 
                                 val_t = ""
                             
-                            # SOLUCIÓN CRÍTICA: Inyectar Paragraph vacío con alto mínimo para que la celda no se colapse
                             if val_t == "":
                                 p_celda = Paragraph("&nbsp;", style_normal)
                             else:
@@ -335,34 +339,32 @@ def mostrar(supervisor_id=None):
                             fila.append(p_celda)
                     rows_pdf.append(fila)
                 
-                rows_pdf.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_text}", style_normal), "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
+                rows_pdf.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_text}", style_normal), "", "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
                         
                 t_block = Table(rows_pdf, colWidths=ancho_cols)
                 t_block.setStyle(TableStyle([
                     ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), 
                     ('GRID', (0,0), (-1,-2), 0.5, colors.black),
                     ('BOX', (0,-1), (-1,-1), 0.5, colors.black),
-                    ('LINEBEFORE', (6,-1), (6,-1), 0.5, colors.black),
-                    ('SPAN', (0,-1), (5,-1)),
-                    ('SPAN', (6,-1), (7,-1)),
+                    ('LINEBEFORE', (7,-1), (7,-1), 0.5, colors.black),
+                    ('SPAN', (0,-1), (6,-1)),
+                    ('SPAN', (7,-1), (8,-1)),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
                     ('TOPPADDING', (0,0), (-1,-2), 4.5), 
                     ('BOTTOMPADDING', (0,0), (-1,-2), 4.5),
-                    # INCREMENTO DEL 50% EN EL ESPACIO DE FIRMA (ÚLTIMA FILA):
+                    # INCREMENTO DEL 50% EN EL ESPACIO DE FIRMAS INTEGRADO
                     ('TOPPADDING', (0,-1), (-1,-1), 9.0), 
                     ('BOTTOMPADDING', (0,-1), (-1,-1), 9.0)
                 ]))
                 story.append(t_block)
                 story.append(Spacer(1, 3))
 
-            # ANCHOS REPARTIDOS AL 100% (TOTAL EXACTO 570): OBS ALINEADO A 85, DESCRIPCIÓN AMPLIADA
-            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, [30, 255, 35, 35, 35, 35, 60, 85])
-            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, [30, 255, 35, 35, 35, 35, 60, 85])
+            # GEOMETRÍA CALIBRADA A 570 PUNTOS CON INCLUSIÓN DE COLUMNA TIPO Y COMPRESIÓN DE OBS.
+            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, [30, 217, 55, 35, 35, 35, 35, 60, 68])
+            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, [30, 217, 55, 35, 35, 35, 35, 60, 68])
             
-            # SECCIÓN 4 (CANTEO): Columna OBS con exactamente 85 puntos (misma alineación vertical que secc 2 y 3)
-            # Ajuste específico de Canteo eliminando la columna fantasma y cuadrando anchos simétricos
             op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
-            story.append(Paragraph("<b>CANTEO</b>", style_seccion_titulo)) # <-- CAMBIADO
+            story.append(Paragraph("<b>CANTEO</b>", style_seccion_titulo))
             rows_canteo = [[Paragraph(f"<b>{h}</b>", style_bold) for h in ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS"]]]
             for _, r in ed_cant.iterrows():
                 fila_c = []
@@ -381,7 +383,6 @@ def mostrar(supervisor_id=None):
                 rows_canteo.append(fila_c)
             rows_canteo.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_cant_text}", style_normal), "", "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
             
-            # DISTRIBUCIÓN DE ANCHOS CANTEO: OBS=85 (Simétrico), DESCRIPCIÓN=190 (Máximo posible), TIPO CANTO=65
             t_cant = Table(rows_canteo, colWidths=[30, 190, 65, 33, 33, 33, 33, 68, 85])
             t_cant.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
@@ -393,15 +394,13 @@ def mostrar(supervisor_id=None):
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ('TOPPADDING', (0,0), (-1,-2), 4.5),
                 ('BOTTOMPADDING', (0,0), (-1,-2), 4.5),
-                # INCREMENTO DEL 50% EN EL ESPACIO DE FIRMA DE CANTEO (ÚLTIMA FILA):
                 ('TOPPADDING', (0,-1), (-1,-1), 9.0),
                 ('BOTTOMPADDING', (0,-1), (-1,-1), 9.0)
             ]))
             story.append(t_cant)
             story.append(Spacer(1, 3))
 
-            # RECONSTRUCCIÓN FIDELIGNA DE LA SECCIÓN 5 (ZONAS CON LOGÍSTICA COMPACTADA)
-            story.append(Paragraph("<b>■ SECCIÓN 5: ARMADO Y DESPACHO</b>", style_bold))
+            story.append(Paragraph("<b>■ SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</b>", style_bold))
             f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
             f_des_p = u_log_despacho_fecha.strftime("%d/%m/%Y") if u_log_despacho_fecha else ""
             f_sal_p = u_log_salida_fecha.strftime("%d/%m/%Y") if u_log_salida_fecha else ""
@@ -418,14 +417,12 @@ def mostrar(supervisor_id=None):
                 ('BACKGROUND', (0,0), (1,0), colors.lightgrey), 
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-                # INCREMENTO EN LAS CELDAS DE LOGÍSTICA:
                 ('TOPPADDING', (0,0), (-1,-1), 4.0), 
                 ('BOTTOMPADDING', (0,0), (-1,-1), 4.0)
             ]))
             story.append(t_log)
             story.append(Spacer(1, 2))
 
-            # BLOQUE INFERIOR DE SALIDA A OBRA (TRES COLUMNAS COMPACTAS)
             data_salida = [
                 [Paragraph(f"FECHA SALIDA A OBRA: {f_sal_p}", style_normal), 
                  Paragraph(f"CONDUCTOR: {u_log_salida_conductor}", style_normal), 
@@ -435,12 +432,13 @@ def mostrar(supervisor_id=None):
             t_sal.setStyle(TableStyle([
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                # INCREMENTO EN RUTA DE DESPACHO:
                 ('TOPPADDING', (0,0), (-1,-1), 4.0), 
                 ('BOTTOMPADDING', (0,0), (-1,-1), 4.0)
             ]))
+            story.append(t_sal)
             story.append(Spacer(1, 2))
 
+            # CORRECCIÓN DE LA DUPLICIDAD: Renderizado definitivo del bloque de notas en la base
             data_obs_final = [
                 [Paragraph("<b>OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA:</b>", style_bold)],
                 [Paragraph(u_log_observaciones if u_log_observaciones.strip() else "&nbsp;", style_normal)]
@@ -451,24 +449,7 @@ def mostrar(supervisor_id=None):
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
                 ('TOPPADDING', (0,0), (-1,-1), 3.0),
-                # EXPANSIÓN DEL CUADRO DE NOTAS DE CAMPO SIN ROTURA DE HOJA UNICA:
                 ('BOTTOMPADDING', (0,1), (0,1), 18.0) 
-            ]))
-            story.append(t_sal)
-            story.append(Spacer(1, 2))
-
-            # CUADRO DE OBSERVACIONES DE LOGÍSTICA COMPLETO EN LA BASE DEL FOLIO ÚNICO
-            data_obs_final = [
-                [Paragraph("<b>OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA:</b>", style_bold)],
-                [Paragraph(u_log_observaciones if u_log_observaciones.strip() else "&nbsp;", style_normal)]
-            ]
-            t_obs_final = Table(data_obs_final, colWidths=[570])
-            t_obs_final.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (0,0), colors.lightgrey),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-                ('BOTTOMPADDING', (0,1), (0,1), 12) # Padding controlado para que no salte de página
             ]))
             story.append(t_obs_final)
             
@@ -537,15 +518,16 @@ def mostrar(supervisor_id=None):
                     }).execute()
                     st.success("Bitácora creada con éxito."); st.rerun()
 
+        # ADICIÓN DEL CUARTO MAESTRO DINÁMICO EN LA PESTAÑA DE GESTIÓN CORPORATIVA
         with tab_config:
             st.caption("Administración corporativa de catálogos activos para los componentes predictivos de planta.")
-            sel_maestro = st.selectbox("Seleccione el Catálogo a gestionar:", ["Responsables (Operarios)", "Materiales (Descripciones)", "Tipos de Canto"])
+            sel_maestro = st.selectbox("Seleccione el Catálogo a gestionar:", ["Responsables (Operarios)", "Materiales (Descripciones)", "Tipos de Canto", "Origen de Material (Tablero/Retazo)"])
             
             if sel_maestro == "Responsables (Operarios)":
                 st.markdown("#### 👨‍🔧 Registro de Operarios de Planta")
                 with st.form("form_op"):
                     nuevo_op = st.text_input("Nombre completo del Operario:")
-                    if st.form_submit_button("➕ Añadir a Planta"):
+                    if st.form_submit_button("➕ Registrar Operario"):
                         if nuevo_op.strip():
                             supabase.table("cfg_operarios").insert({"nombre": nuevo_op.strip().upper()}).execute()
                             st.success("Operario registrado."); st.rerun()
@@ -578,4 +560,17 @@ def mostrar(supervisor_id=None):
                 try:
                     df_cans = pd.DataFrame(supabase.table("cfg_cantos").select("*").order("tipo").execute().data)
                     st.data_editor(df_cans, column_config={"id": None}, hide_index=True, use_container_width=True)
+                except: st.info("Catálogo vacío.")
+
+            elif sel_maestro == "Origen de Material (Tablero/Retazo)":
+                st.markdown("#### 🔄 Clasificación de Origen de Material")
+                with st.form("form_origen"):
+                    nueva_opcion = st.text_input("Nueva categoría (ej. MATERIA PRIMA EXTERNA):")
+                    if st.form_submit_button("➕ Registrar Opción"):
+                        if nueva_opcion.strip():
+                            supabase.table("cfg_tipo_pieza_corte").insert({"opcion": nueva_opcion.strip().upper()}).execute()
+                            st.success("Opción guardada."); st.rerun()
+                try:
+                    df_orig = pd.DataFrame(supabase.table("cfg_tipo_pieza_corte").select("*").order("opcion").execute().data)
+                    st.data_editor(df_orig, column_config={"id": None}, hide_index=True, use_container_width=True)
                 except: st.info("Catálogo vacío.")
