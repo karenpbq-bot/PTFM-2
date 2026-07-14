@@ -78,11 +78,11 @@ def mostrar(supervisor_id=None):
             u_fecha = c1.date_input("FECHA (DD/MM/AAAA):", value=fecha_dt, format="DD/MM/YYYY")
             u_n_orden = c2.text_input("Nº ORDEN:", value=cab['n_orden'] or "")
             u_tipo_mueble = c1.text_input("TIPO DE MUEBLE:", value=cab['tipo_mueble'] or "")
-            u_motivo = c2.text_input("MOTIVO (Texto libre):", value=cab['motivo'] or "")
+            u_motivo = c2.text_input("MOTIVO:", value=cab['motivo'] or "")
             u_cliente = c1.text_input("CLIENTE:", value=cab['cliente'] or "")
             u_proyecto = c2.text_input("PROYECTO:", value=cab['proyecto'] or "")
             u_sol_por = c1.text_input("SOLICITADO POR:", value=cab['solicitado_por'] or "")
-            u_sup_prod = c2.text_input("SUP. DE PRODUCCION:", value=cab['sup_production'] or "")
+            u_sup_prod = c2.text_input("SUP. PROD.:", value=cab['sup_production'] or "")
             u_estado = st.selectbox("ESTADO DE LA BITÁCORA:", ["Pendiente", "En Proceso", "Cerrada"], index=["Pendiente", "En Proceso", "Cerrada"].index(cab['estado']))
 
         res_l = supabase.table("bitacoras_lineas").select("*").eq("bitacora_id", id_act).order("id").execute()
@@ -165,28 +165,28 @@ def mostrar(supervisor_id=None):
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f", width="small"),
+                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width="small"),
                     "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width="large"),
-                    "tipo_canto": st.column_config.SelectboxColumn("TIPO CANTO", options=lista_cantos, required=False, width="medium"),
+                    "tipo_canto": st.column_config.SelectboxColumn("TIPO", options=lista_cantos, required=False, width="medium"),
                     "fecha_inicio": st.column_config.TextColumn("F.I.", width="small"),
                     "hora_inicio": st.column_config.TextColumn("H.I.", width="small"),
                     "hora_termino": st.column_config.TextColumn("H.T.", width="small"),
                     "fecha_termino": st.column_config.TextColumn("F.T.", width="small"),
                     "cant_final_pl_pzs": st.column_config.TextColumn(col_salida_label, width="medium"),
-                    "obs_incidencias": st.column_config.TextColumn("OBS.", width="small")
+                    "obs_incidencias": st.column_config.TextColumn("OBS", width="small")
                 }
             else:
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("CANT.", format="%.2f", width="small"),
+                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width="small"),
                     "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width="large"),
                     "fecha_inicio": st.column_config.TextColumn("F.I.", width="small"),
                     "hora_inicio": st.column_config.TextColumn("H.I.", width="small"),
                     "hora_termino": st.column_config.TextColumn("H.T.", width="small"),
                     "fecha_termino": st.column_config.TextColumn("F.T.", width="small"),
                     "cant_final_pl_pzs": st.column_config.TextColumn(col_salida_label, width="medium"),
-                    "obs_incidencias": st.column_config.TextColumn("OBS.", width="small")
+                    "obs_incidencias": st.column_config.TextColumn("OBS", width="small")
                 }
 
             df_limpio = df_bloque[columnas_visibles].copy()
@@ -356,8 +356,8 @@ def mostrar(supervisor_id=None):
                 story.append(Spacer(1, 3))
 
             # ANCHOS REPARTIDOS AL 100% (TOTAL EXACTO 570): OBS ALINEADO A 85, DESCRIPCIÓN AMPLIADA
-            inyectar_tabla_pdf("CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS."], ed_secc, op_secc1, op_secc2, [30, 255, 35, 35, 35, 35, 60, 85])
-            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS."], ed_escu, op_escu1, op_escu2, [30, 255, 35, 35, 35, 35, 60, 85])
+            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS."], ed_secc, op_secc1, op_secc2, [30, 255, 35, 35, 35, 35, 60, 85])
+            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS."], ed_escu, op_escu1, op_escu2, [30, 255, 35, 35, 35, 35, 60, 85])
             
             # SECCIÓN 4 (CANTEO): Columna OBS con exactamente 85 puntos (misma alineación vertical que secc 2 y 3)
             # Ajuste específico de Canteo eliminando la columna fantasma y cuadrando anchos simétricos
@@ -401,7 +401,7 @@ def mostrar(supervisor_id=None):
             story.append(Spacer(1, 3))
 
             # RECONSTRUCCIÓN FIDELIGNA DE LA SECCIÓN 5 (ZONAS CON LOGÍSTICA COMPACTADA)
-            story.append(Paragraph("<b>■ SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</b>", style_bold))
+            story.append(Paragraph("<b>■ SECCIÓN 5: ARMADO Y DESPACHO</b>", style_bold))
             f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
             f_des_p = u_log_despacho_fecha.strftime("%d/%m/%Y") if u_log_despacho_fecha else ""
             f_sal_p = u_log_salida_fecha.strftime("%d/%m/%Y") if u_log_salida_fecha else ""
