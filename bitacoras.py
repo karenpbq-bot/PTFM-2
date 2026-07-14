@@ -346,9 +346,11 @@ def mostrar(supervisor_id=None):
                     ('SPAN', (0,-1), (5,-1)),
                     ('SPAN', (6,-1), (7,-1)),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-                    # AUMENTO DEL 40% DEL ESPACIO DE ESCRITURA EN CELDAS SECCIONADORA / ESCUADRADORA:
-                    ('TOPPADDING', (0,0), (-1,-1), 4.5), 
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 4.5)
+                    ('TOPPADDING', (0,0), (-1,-2), 4.5), 
+                    ('BOTTOMPADDING', (0,0), (-1,-2), 4.5),
+                    # INCREMENTO DEL 50% EN EL ESPACIO DE FIRMA (ÚLTIMA FILA):
+                    ('TOPPADDING', (0,-1), (-1,-1), 9.0), 
+                    ('BOTTOMPADDING', (0,-1), (-1,-1), 9.0)
                 ]))
                 story.append(t_block)
                 story.append(Spacer(1, 3))
@@ -389,9 +391,11 @@ def mostrar(supervisor_id=None):
                 ('SPAN', (0,-1), (6,-1)),
                 ('SPAN', (7,-1), (8,-1)),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                # AUMENTO DEL 40% DEL ESPACIO DE ESCRITURA EN CELDAS CANTEO:
-                ('TOPPADDING', (0,0), (-1,-1), 4.5),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 4.5)
+                ('TOPPADDING', (0,0), (-1,-2), 4.5),
+                ('BOTTOMPADDING', (0,0), (-1,-2), 4.5),
+                # INCREMENTO DEL 50% EN EL ESPACIO DE FIRMA DE CANTEO (ÚLTIMA FILA):
+                ('TOPPADDING', (0,-1), (-1,-1), 9.0),
+                ('BOTTOMPADDING', (0,-1), (-1,-1), 9.0)
             ]))
             story.append(t_cant)
             story.append(Spacer(1, 3))
