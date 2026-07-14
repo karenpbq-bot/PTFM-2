@@ -203,7 +203,7 @@ def mostrar(supervisor_id=None):
         ed_escu, op_escu1, op_escu2 = generar_bloque_interfaz("📐 SECCIÓN 3: CORTE ESCUADRADORA", "ESCUADRADORA", df_escu, "N° PZAS")
         ed_cant, op_cant1, op_cant2 = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "ML CANTO")
 
-        st.markdown('<div class="section-header">🚚 SECCIÓN 5: ARMADO Y DESPACHO</div>', unsafe_allow_html=True)
+        # Se elimina el título de la sección 5 para ahorrar espacio vertical
         with st.container(border=True):
             c_arm, c_des = st.columns(2)
             with c_arm:
@@ -227,7 +227,7 @@ def mostrar(supervisor_id=None):
             u_log_salida_fecha = col_s1.date_input("FECHA SALIDA A OBRA:", value=f_sal_dt, format="DD/MM/YYYY", key="f_sal_log")
             u_log_salida_conductor = col_s2.text_input("CONDUCTOR / CHOFER:", value=cab.get('log_salida_conductor') or "")
             u_log_salida_vob = col_s3.text_input("VºBº ALMACÉN (SALIDA):", value=cab.get('log_salida_vob') or "")
-            u_log_observaciones = st.text_area("Observaciones de Logística:", value=cab.get('log_observaciones') or "", height=40)
+            u_log_observaciones = st.text_area("Observaciones de Logística:", value=cab.get('log_observaciones') or "", height=20)
 
         st.divider()
         c_save, c_pdf = st.columns(2)
