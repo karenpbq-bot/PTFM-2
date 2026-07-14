@@ -564,71 +564,96 @@ def mostrar(supervisor_id=None):
                 except: st.info("Catálogo vacío.")
                 
             elif sel_maestro == "Materiales (Descripciones)":
-                st.markdown("#### 🪵 Catálogo Maestro de Melamina y Tableros")
-                
-                # Formulario para registro manual (individual)
-                with st.form("form_mat"):
-                    nuevo_mat = st.text_input("Detalle/Nombre comercial del Tablero:")
-                    if st.form_submit_button("➕ Añadir Material"):
-                        if nuevo_mat.strip():
-                            supabase.table("cfg_descripciones").insert({"detalle": nuevo_mat.strip().upper()}).execute()
-                            st.success("Material añadido."); st.rerun()
-                
-                # --- NUEVA SECCIÓN: IMPORTACIÓN MASIVA DESDE EXCEL ---
-                st.markdown("---")
-                st.markdown("##### 📥 Importación Masiva desde Excel")
-                st.info("El archivo debe ser un Excel (.xlsx) y contener obligatoriamente la columna **'Material'**.")
-                
-                archivo_subido = st.file_uploader("Seleccione el archivo Excel de colores/tableros:", type=["xlsx", "xls"], key="uploader_materiales")
-                
-                if archivo_subido is not None:
-                    try:
-                        # Leer el archivo Excel usando pandas
-                        df_importado = pd.read_excel(archivo_subido)
-                        
-                        # Validar si tiene la columna requerida
-                        if "Material" in df_importado.columns:
-                            # Limpiar filas vacías en la columna 'Material'
-                            df_materiales = df_importado[["Material"]].dropna()
-                            # Normalizar: eliminar espacios en blanco y convertir a mayúsculas
-                            df_materiales["Material"] = df_materiales["Material"].astype(str).str.strip().str.upper()
-                            # Eliminar duplicados dentro del mismo archivo para optimizar la carga
-                            lista_materiales_unicos = df_materiales["Material"].unique().tolist()
-                            
-                            # Filtrar registros vacíos
-                            lista_materiales_unicos = [m for m in lista_materiales_unicos if m]
-                            
-                            st.write(f"📊 Registros válidos encontrados en el archivo: **{len(lista_materiales_unicos)}**")
-                            
-                            if st.button("🚀 Confirmar e Importar a Base de Datos", type="primary", key="btn_confirmar_importacion"):
-                                with st.spinner("Procesando importación..."):
-                                    # 1. Obtener materiales ya existentes para evitar duplicar claves en Supabase
-                                    res_existentes = supabase.table("cfg_descripciones").select("detalle").execute()
-                                    materiales_existentes = {row["detalle"].strip().upper() for row in res_existentes.data} if res_existentes.data else set()
-                                    
-                                    # 2. Filtrar únicamente los nuevos materiales
-                                    nuevos_materiales = [
-                                        {"detalle": mat} for mat in lista_materiales_unicos 
-                                        if mat not in materiales_existentes
-                                    ]
-                                    
-                                    if nuevos_materiales:
-                                        # Inserción por lotes en Supabase
-                                        supabase.table("cfg_descripciones").insert(nuevos_materiales).execute()
-                                        st.success(f"🎉 Se han importado con éxito **{len(nuevos_materiales)}** nuevos materiales.")
-                                    else:
-                                        st.warning("⚠️ Todos los materiales del archivo ya existen en el catálogo actual.")
-                                    
-                                    st.rerun()
-                        else:
-                            st.error("❌ Estructura inválida. El documento debe contener una columna llamada exactamente **'Material'**.")
-                    except Exception as e:
-                        st.error(f"❌ Error al procesar el archivo: {e}")
-                # ----------------------------------------------------
-                
-                # Visualización y edición de datos del catálogo
+            st.markdown("#### 🪵 Catálogo Maestro de Melamina y Tableros")
+            
+            # --- Opción 1: Carga Masiva desde Excel ---
+            st.markdown("##### 📥 Importación Masiva desde Excel")
+            archivo_excel = st.file_uploader(
+                "Sube tu archivo 'lista de colores tableros.xlsx'", 
+                type=["xlsx", "xls"],
+                key="uploader_mats"
+            )
+            
+            if archivo_excel is not None:
                 try:
-                    df_mats = pd.DataFrame(supabase.table("cfg_descripciones").select("*").order("detalle").execute().data)
-                    st.data_editor(df_mats, column_config={"id": None}, hide_index=True, use_container_width=True)
-                except: 
+                    # Leer el archivo Excel
+                    df_importado = pd.read_excel(archivo_excel)
+                    
+                    # Validar que existan las columnas requeridas (ignorando mayúsculas/minúsculas)
+                    df_importado.columns = [col.strip().upper() for col in df_importado.columns]
+                    
+                    if "MATERIAL" in df_importado.columns and "COD" in df_importado.columns:
+                        # Limpiar y preparar los datos
+                        df_importado["MATERIAL"] = df_importado["MATERIAL"].astype(str).str.strip().str.upper()
+                        df_importado["COD"] = df_importado["COD"].astype(str).str.strip().str.upper()
+                        
+                        # Eliminar filas con valores vacíos
+                        df_importado = df_importado.dropna(subset=["MATERIAL", "COD"])
+                        
+                        cant_registros = len(df_importado)
+                        st.info(f"Se encontraron {cant_registros} materiales listos para importar.")
+                        
+                        if st.button("🚀 Confirmar y Cargar a la Base de Datos"):
+                            # Preparar la lista de diccionarios para Supabase
+                            registros_a_insertar = [
+                                {"detalle": fila["MATERIAL"], "codigo": fila["COD"]}
+                                for _, fila in df_importado.iterrows()
+                            ]
+                            
+                            # Inserción masiva en Supabase
+                            supabase.table("cfg_descripciones").insert(registros_a_insertar).execute()
+                            st.success(f"¡Éxito! Se han importado {cant_registros} materiales correctamente.")
+                            st.rerun()
+                    else:
+                        st.error("El archivo Excel debe contener exactamente las columnas: 'Material' y 'COD'.")
+                except Exception as e:
+                    st.error(f"Error al procesar el archivo Excel: {e}")
+            
+            st.markdown("---")
+            
+            # --- Opción 2: Registro Manual (Mantiene tu funcionalidad original) ---
+            st.markdown("##### ➕ Registro Manual de un Material")
+            with st.form("form_mat"):
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    nuevo_mat = st.text_input("Detalle/Nombre comercial del Tablero (ej. Blanco - VESTO):")
+                with col2:
+                    nuevo_cod = st.text_input("Código único (ej. 1BLA):")
+                
+                if st.form_submit_button("Añadir Material"):
+                    nombre_clean = nuevo_mat.strip().upper()
+                    codigo_clean = nuevo_cod.strip().upper()
+                    
+                    if nombre_clean and codigo_clean:
+                        try:
+                            supabase.table("cfg_descripciones").insert({
+                                "detalle": nombre_clean,
+                                "codigo": codigo_clean
+                            }).execute()
+                            st.success(f"Material '{nombre_clean}' ({codigo_clean}) añadido.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al guardar en base de datos: {e}")
+                    else:
+                        st.warning("Por favor, complete tanto el nombre del material como su código.")
+            
+            st.markdown("---")
+            st.markdown("##### 📋 Materiales Registrados")
+            try:
+                data_response = supabase.table("cfg_descripciones").select("id, detalle, codigo").order("detalle").execute().data
+                if data_response:
+                    df_mats = pd.DataFrame(data_response)
+                    st.data_editor(
+                        df_mats, 
+                        column_config={
+                            "id": None, 
+                            "detalle": "Material / Descripción", 
+                            "codigo": "Código"
+                        }, 
+                        hide_index=True, 
+                        use_container_width=True
+                    )
+                else:
                     st.info("Catálogo vacío.")
+            except Exception:
+                st.info("Catálogo vacío o error al cargar los datos.")
