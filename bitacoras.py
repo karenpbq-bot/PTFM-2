@@ -13,7 +13,7 @@ except ImportError:
     st.error("Por favor ejecute 'pip install reportlab' en la terminal para habilitar la exportación a PDF.")
 
 def mostrar(supervisor_id=None):
-    # COMPACTACIÓN EXTREMA CSS PARA INTERFAZ DE PLANTA
+    # AJUSTE DE INTERFAZ EN PANTALLA (100% ALINEADO)
     st.markdown("""
         <style>
         .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; }
@@ -54,6 +54,9 @@ def mostrar(supervisor_id=None):
     if 'id_bitacora_activa' not in st.session_state:
         st.session_state.id_bitacora_activa = None
 
+    # =========================================================================
+    # VISTA DE EDICIÓN / APERTURA SIMÉTRICA
+    # =========================================================================
     if st.session_state.id_bitacora_activa:
         id_act = st.session_state.id_bitacora_activa
         
@@ -156,6 +159,7 @@ def mostrar(supervisor_id=None):
                 }).execute()
                 st.rerun()
             
+            # CONFIGURACIÓN DE INTERFAZ STREAMLIT CON LAS CONDICIONES DE ANCHO Y ORDEN
             if bloque_id == 'CANTEO':
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
@@ -272,20 +276,20 @@ def mostrar(supervisor_id=None):
                 st.error(f"Falla de sincronización: {e}")
         
         # =========================================================================
-        # MOTOR PDF OPTIMIZADO: FUERZA LA SECCIÓN 5 AL FINAL DEL FOLIO ÚNICO
+        # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - GARANTÍA DE SIMETRÍA Y FOLIO ÚNICO
         # =========================================================================
         try:
             buffer_pdf = io.BytesIO()
-            # Márgenes de 12 puntos para ganar ancho exacto y evitar saltos de línea internos en celdas
+            # Margen de 12 puntos para ancho total exacto de 571 puntos útiles de dibujo
             doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=12, leftMargin=12, topMargin=12, bottomMargin=12)
             story = []
             
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=8.5, leading=10)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=10)
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=8, leading=9.5)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=8, leading=9.5)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
-            story.append(Spacer(1, 4))
+            story.append(Spacer(1, 3))
             
             # Cabecera Sección 1
             data_s1 = [
@@ -300,11 +304,11 @@ def mostrar(supervisor_id=None):
                 ('BACKGROUND', (2,0), (2,3), colors.lightgrey), 
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2)
+                ('TOPPADDING', (0,0), (-1,-1), 1.5),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1.5)
             ]))
             story.append(t_s1)
-            story.append(Spacer(1, 4))
+            story.append(Spacer(1, 3))
             
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op1, op2, ancho_cols):
                 op_text = f"{op1} / {op2}".strip(" / ")
@@ -317,13 +321,17 @@ def mostrar(supervisor_id=None):
                     for col_id in df_ed.columns:
                         if col_id != 'id':
                             val_t = "" if es_vacia else str(r[col_id])
-                            # Saneado estricto contra residuos NaN de la base de datos
                             if val_t.lower() == "nan" or val_t == "None" or val_t == "0.0": 
                                 val_t = ""
-                            fila.append(Paragraph(val_t, style_normal))
+                            
+                            # SOLUCIÓN CRÍTICA: Inyectar Paragraph vacío con alto mínimo para que la celda no se colapse
+                            if val_t == "":
+                                p_celda = Paragraph("&nbsp;", style_normal)
+                            else:
+                                p_celda = Paragraph(val_t, style_normal)
+                            fila.append(p_celda)
                     rows_pdf.append(fila)
                 
-                # Fila de firma integrada por sección
                 rows_pdf.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_text}", style_normal), "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
                         
                 t_block = Table(rows_pdf, colWidths=ancho_cols)
@@ -335,20 +343,20 @@ def mostrar(supervisor_id=None):
                     ('SPAN', (0,-1), (5,-1)),
                     ('SPAN', (6,-1), (7,-1)),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-                    ('TOPPADDING', (0,0), (-1,-1), 2), 
-                    ('BOTTOMPADDING', (0,0), (-1,-1), 2)
+                    ('TOPPADDING', (0,0), (-1,-1), 1.5), 
+                    ('BOTTOMPADDING', (0,0), (-1,-1), 1.5)
                 ]))
                 story.append(t_block)
-                story.append(Spacer(1, 4))
+                story.append(Spacer(1, 3))
 
-            # ANCHOS RECALCULADOS (TOTAL EXACTO DE 570 PUNTOS CORRESPONDIENTES A LA IMAGEN 1)
-            inyectar_tabla_pdf("CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PL.", "OBS."], ed_secc, op_secc1, op_secc2, [35, 235, 40, 40, 40, 40, 55, 85])
-            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "CANT. PIEZAS", "OBS."], ed_escu, op_escu1, op_escu2, [35, 235, 40, 40, 40, 40, 55, 85])
+            # ANCHOS REPARTIDOS AL 100% (TOTAL EXACTO 570): OBS ALINEADO A 85, DESCRIPCIÓN AMPLIADA
+            inyectar_tabla_pdf("CORTE SECCIONADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS."], ed_secc, op_secc1, op_secc2, [30, 255, 35, 35, 35, 35, 60, 85])
+            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["CANT.", "DESCRIPCIÓN", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS."], ed_escu, op_escu1, op_escu2, [30, 255, 35, 35, 35, 35, 60, 85])
             
-            # Ajuste específico de Canteo eliminando la columna fantasma y cuadrando anchos simétricos
+            # SECCIÓN 4 (CANTEO): Columna OBS con exactamente 85 puntos (misma alineación vertical que secc 2 y 3)
             op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
             story.append(Paragraph("<b>CANTEO</b>", style_bold))
-            rows_canteo = [[Paragraph(f"<b>{h}</b>", style_bold) for h in ["CANT.", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "CANTO USADO", "OBS."]]]
+            rows_canteo = [[Paragraph(f"<b>{h}</b>", style_bold) for h in ["CANT.", "DESCRIPCIÓN", "TIPO DE CANTO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS."]]]
             for _, r in ed_cant.iterrows():
                 fila_c = []
                 es_vacia = (r['id'] == "")
@@ -357,11 +365,17 @@ def mostrar(supervisor_id=None):
                     val_t = "" if es_vacia else str(r[col_id])
                     if val_t.lower() == "nan" or val_t == "None" or val_t == "0.0": 
                         val_t = ""
-                    fila_c.append(Paragraph(val_t, style_normal))
+                    
+                    if val_t == "":
+                        p_celda = Paragraph("&nbsp;", style_normal)
+                    else:
+                        p_celda = Paragraph(val_t, style_normal)
+                    fila_c.append(p_celda)
                 rows_canteo.append(fila_c)
             rows_canteo.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_cant_text}", style_normal), "", "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
             
-            t_cant = Table(rows_canteo, colWidths=[35, 160, 65, 35, 35, 35, 35, 55, 115])
+            # DISTRIBUCIÓN DE ANCHOS CANTEO: OBS=85 (Simétrico), DESCRIPCIÓN=190 (Máximo posible), TIPO CANTO=65
+            t_cant = Table(rows_canteo, colWidths=[30, 190, 65, 33, 33, 33, 33, 68, 85])
             t_cant.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
                 ('GRID', (0,0), (-1,-2), 0.5, colors.black),
@@ -370,13 +384,13 @@ def mostrar(supervisor_id=None):
                 ('SPAN', (0,-1), (6,-1)),
                 ('SPAN', (7,-1), (8,-1)),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 2),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 2)
+                ('TOPPADDING', (0,0), (-1,-1), 1.5),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1.5)
             ]))
             story.append(t_cant)
-            story.append(Spacer(1, 4))
+            story.append(Spacer(1, 3))
 
-            # SECCIÓN 5 COMPACTA CON RECUADRO DE OBSERVACIONES INTEGRADO EN LA MISMA HOJA
+            # RECONSTRUCCIÓN FIDELIGNA DE LA SECCIÓN 5 (ZONAS CON LOGÍSTICA COMPACTADA)
             story.append(Paragraph("<b>■ SECCIÓN 5: CONTROL LOGÍSTICO, ENRUTAMIENTO Y DESPACHO</b>", style_bold))
             f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
             f_des_p = u_log_despacho_fecha.strftime("%d/%m/%Y") if u_log_despacho_fecha else ""
@@ -386,23 +400,50 @@ def mostrar(supervisor_id=None):
                 [Paragraph("<b>ZONA DE ARMADO (Piezas en Planta)</b>", style_bold), Paragraph("<b>ZONA DE DESPACHO (Directo a Obra)</b>", style_bold)],
                 [Paragraph(f"FECHA RECEPCIÓN: {f_arm_p}", style_normal), Paragraph(f"FECHA RECEPCIÓN: {f_des_p}", style_normal)],
                 [Paragraph(f"Nº PALLETS / PIEZAS: {u_log_armado_cant}", style_normal), Paragraph(f"Nº PALLETS / PIEZAS: {u_log_despacho_cant}", style_normal)],
-                [Paragraph(f"VºBº SUP. PRODUCCIÓN: {u_log_armado_vob}", style_normal), Paragraph(f"VºBº ALMACÉN / DESPACHO: {u_log_despacho_vob}", style_normal)],
-                [Paragraph(f"<b>FECHA SALIDA A OBRA:</b> {f_sal_p}", style_normal), Paragraph(f"<b>CONDUCTOR:</b> {u_log_salida_conductor}", style_normal)],
-                [Paragraph(f"<b>OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA:</b><br/>{u_log_observaciones}", style_normal), Paragraph("<b>V°B° ALMACÉN:</b>", style_normal)]
+                [Paragraph(f"VºBº SUP. PRODUCCIÓN: {u_log_armado_vob}", style_normal), Paragraph(f"VºBº ALMACÉN / DESPACHO: {u_log_despacho_vob}", style_normal)]
             ]
             
             t_log = Table(data_log_tab, colWidths=[285, 285])
             t_log.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (1,0), colors.lightgrey), 
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
-                ('SPAN', (0,4), (0,4)),
-                ('SPAN', (1,4), (1,4)),
-                ('SPAN', (1,4), (1,5)), # V°B° Almacén integrado de forma compacta
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
+                ('TOPPADDING', (0,0), (-1,-1), 1.5), 
+                ('BOTTOMPADDING', (0,0), (-1,-1), 1.5)
+            ]))
+            story.append(t_log)
+            story.append(Spacer(1, 2))
+
+            # BLOQUE INFERIOR DE SALIDA A OBRA (TRES COLUMNAS COMPACTAS)
+            data_salida = [
+                [Paragraph(f"FECHA SALIDA A OBRA: {f_sal_p}", style_normal), 
+                 Paragraph(f"CONDUCTOR: {u_log_salida_conductor}", style_normal), 
+                 Paragraph(f"V°B° ALMACÉN: {u_log_salida_vob}", style_normal)]
+            ]
+            t_sal = Table(data_salida, colWidths=[180, 240, 150])
+            t_sal.setStyle(TableStyle([
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
+                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ('TOPPADDING', (0,0), (-1,-1), 2), 
                 ('BOTTOMPADDING', (0,0), (-1,-1), 2)
             ]))
-            story.append(t_log)
+            story.append(t_sal)
+            story.append(Spacer(1, 2))
+
+            # CUADRO DE OBSERVACIONES DE LOGÍSTICA COMPLETO EN LA BASE DEL FOLIO ÚNICO
+            data_obs_final = [
+                [Paragraph("<b>OBSERVACIONES / INCIDENCIAS DE LOGÍSTICA:</b>", style_bold)],
+                [Paragraph(u_log_observaciones if u_log_observaciones.strip() else "&nbsp;", style_normal)]
+            ]
+            t_obs_final = Table(data_obs_final, colWidths=[570])
+            t_obs_final.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (0,0), colors.lightgrey),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('TOPPADDING', (0,0), (-1,-1), 2),
+                ('BOTTOMPADDING', (0,1), (0,1), 12) # Padding controlado para que no salte de página
+            ]))
+            story.append(t_obs_final)
             
             doc_pdf.build(story)
             c_pdf.download_button("🖨️ EXPORTAR EN UN SOLO FOLIO (PDF)", data=buffer_pdf.getvalue(), file_name=f"Format_B_{u_n_orden}.pdf", mime="application/pdf", use_container_width=True)
