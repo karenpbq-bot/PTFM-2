@@ -383,7 +383,8 @@ def mostrar(supervisor_id=None):
                 rows_canteo.append(fila_c)
             rows_canteo.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_cant_text}", style_normal), "", "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
             
-            t_cant = Table(rows_canteo, colWidths=[30, 190, 65, 33, 33, 33, 33, 68, 85])
+            # DISTRIBUCIÓN DE ANCHOS CANTEO CORREGIDO (IDÉNTICO A CORTE SECC. Y ESCUAD.):
+            t_cant = Table(rows_canteo, colWidths=[30, 217, 55, 35, 35, 35, 35, 60, 68])
             t_cant.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
                 ('GRID', (0,0), (-1,-2), 0.5, colors.black),
