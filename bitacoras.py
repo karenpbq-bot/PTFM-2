@@ -478,9 +478,14 @@ def mostrar(supervisor_id=None):
                 
             if not df_t.empty:
                 df_t = df_t.sort_values(by="fecha", ascending=False)
+                
+                # INYECCIÓN DE COLUMNA DE SELECCIÓN RÁPIDA (CHECKBOX)
+                df_t.insert(0, "EDITAR", False)
+                
                 df_estados = st.data_editor(
-                    df_t[['id', 'fecha', 'n_orden', 'proyecto', 'cliente', 'tipo_mueble', 'estado']],
+                    df_t[['EDITAR', 'id', 'fecha', 'n_orden', 'proyecto', 'cliente', 'tipo_mueble', 'estado']],
                     column_config={
+                        "EDITAR": st.column_config.CheckboxColumn("🔓 ABRIR", help="Marque para abrir el formato inmediatamente", default=False),
                         "id": st.column_config.TextColumn("ID", disabled=True),
                         "fecha": st.column_config.TextColumn("FECHA", disabled=True),
                         "estado": st.column_config.SelectboxColumn("ESTADO", options=["Pendiente", "En Proceso", "Cerrada"], required=True)
@@ -488,13 +493,21 @@ def mostrar(supervisor_id=None):
                     hide_index=True, use_container_width=True, key="grid_estados_inicial"
                 )
                 
-                if st.button("💾 Actualizar"):
+                # CONTROLADOR DE TRIGER INMEDIATO (CAPTURA SI EL SUPERVISOR MARCÓ EL CASILLERO)
+                filas_editadas = df_estados[df_estados["EDITAR"] == True]
+                if not filas_editadas.empty:
+                    id_seleccionado = int(filas_editadas.iloc[0]["id"])
+                    st.session_state.id_bitacora_activa = id_seleccionado
+                    st.rerun()
+                
+                if st.button("💾 Actualizar Estados Modificados"):
                     for _, r_e in df_estados.iterrows():
                         supabase.table("bitacoras_taller").update({"estado": r_e['estado']}).eq("id", int(r_e['id'])).execute()
                     st.success("Estados guardados."); st.rerun()
                     
-                id_abrir = st.number_input("ID de Bitácora a editar:", min_value=1, step=1)
-                if st.button("🔓 Abrir Formato Simétrico en Pantalla", type="primary"):
+                st.caption("---")
+                id_abrir = st.number_input("O digite el ID de Bitácora manualmente:", min_value=1, step=1)
+                if st.button("🔓 Abrir por ID Manual", type="secondary"):
                     st.session_state.id_bitacora_activa = int(id_abrir)
                     st.rerun()
             else:
