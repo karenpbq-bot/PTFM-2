@@ -450,7 +450,7 @@ def mostrar(supervisor_id=None):
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
                 ('TOPPADDING', (0,0), (-1,-1), 6.0),      # Incrementado para dar más margen superior
-                ('BOTTOMPADDING', (0,0), (-1,-1), 22.0)   # Incrementado un ~35% más para la altura interna útil
+                ('BOTTOMPADDING', (0,0), (-1,-1), 14.0)   # Incrementado un ~35% más para la altura interna útil
             ]))
             story.append(t_obs_final)
             
