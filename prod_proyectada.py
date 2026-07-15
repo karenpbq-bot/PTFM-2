@@ -8,312 +8,254 @@ def mostrar():
     # Margen superior para separación ergonómica del menú principal
     st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
 
-    tab_matriz, tab_grafico, tab_feriados = st.tabs(["🪚 Matriz de Carga de Producción", "📈 Gráfico de Carga", "📅 Calendario de Feriados"])
+    tab_matriz, tab_analisis, tab_feriados = st.tabs([
+        "📋 Matriz de Carga de Producción", 
+        "📊 Análisis Multifrente", 
+        "📅 Calendario de Feriados"
+    ])
+
+    supabase = conectar()
+    hoy = date.today()
+    feriados = obtener_feriados_lista()
 
     # =========================================================
-    # PESTAÑA 1: MATRIZ DE CARGA HORIZONTAL INTEGRADA (EDITABLE)
+    # CONSOLIDACIÓN MIGRADA A MODELO TRIDIMENSIONAL DINÁMICO
+    # =========================================================
+    try:
+        # 1. Descargar los proyectos activos desde Supabase
+        res_proyectos = supabase.table("proyectos").select("*").eq("estatus", "Activo").execute()
+        if not res_proyectos.data:
+            with tab_matriz:
+                st.info("📂 Actualmente no existen proyectos con estatus 'Activo' registrados en el sistema.")
+            return
+        
+        df_proy = pd.DataFrame(res_proyectos.data)
+        
+        # Mapeo y fallback seguro de Fechas Contractuales (Línea Base) vs Fechas de Ejecución Real
+        df_proy["p_fab_i"] = pd.to_datetime(df_proy["p_fab_i"], errors='coerce').dt.date
+        df_proy["p_fab_f"] = pd.to_datetime(df_proy["p_fab_f"], errors='coerce').dt.date
+        
+        # Si las columnas de ejecución están vacías en la BD, adoptamos las contractuales como inicio seguro
+        df_proy["p_fab_i_ejecucion"] = pd.to_datetime(df_proy.get("p_fab_i_ejecucion"), errors='coerce').dt.date.fillna(df_proy["p_fab_i"])
+        df_proy["p_fab_f_ejecucion"] = pd.to_datetime(df_proy.get("p_fab_f_ejecucion"), errors='coerce').dt.date.fillna(df_proy["p_fab_f"])
+        df_proy["total_tableros"] = df_proy["total_tableros"].fillna(0).astype(int)
+
+        lote_reporte = []
+
+        for _, proy in df_proy.iterrows():
+            id_p = int(proy['id'])
+            
+            # --- FRENTE 1: AVANCE EN OBRA (Metros Lineales basados en Estatus Muebles) ---
+            res_prods = supabase.table("productos").select("id, ml").eq("proyecto_id", id_p).execute()
+            df_items = pd.DataFrame(res_prods.data) if res_prods.data else pd.DataFrame(columns=['id', 'ml'])
+            df_items['ml'] = df_items['ml'].fillna(0.0).astype(float)
+            ml_total_proyecto = df_items['ml'].sum()
+
+            ml_instalado = 0.0
+            if not df_items.empty:
+                ids_productos = df_items['id'].tolist()
+                res_estatus = supabase.table("estatus_muebles").select("producto_id, culminado, entregado").in_("producto_id", ids_productos).execute()
+                
+                if res_estatus.data:
+                    df_est = pd.DataFrame(res_estatus.data)
+                    # Un mueble se considera instalado/listo si está culminado o entregado
+                    df_est['listo'] = df_est['culminado'].fillna(False) | df_est['entregado'].fillna(False)
+                    ids_listos = df_est[df_est['listo'] == True]['producto_id'].tolist()
+                    ml_instalado = df_items[df_items['id'].isin(ids_listos)]['ml'].sum()
+
+            ml_pendiente = max(0.0, ml_total_proyecto - ml_instalado)
+
+            # --- FRENTE 2: CAPACIDAD DE PLANTA (Tableros basados en Fechas de Ejecución Ajustables) ---
+            # Factor de conversión: cuántos tableros representa cada metro lineal diseñado en este lote
+            factor_tablero_ml = proy['total_tableros'] / ml_total_proyecto if ml_total_proyecto > 0 else 0.0
+            tableros_pendientes = ml_pendiente * factor_tablero_ml
+
+            # Días útiles de taller calculados estrictamente sobre el rango móvil de ejecución (Lun-Sáb)
+            fecha_inicio_calculo = max(hoy, proy['p_fab_i_ejecucion'])
+            dias_restantes = calcular_dias_utiles_taller(fecha_inicio_calculo, proy['p_fab_f_ejecucion'], feriados)
+
+            # Tasa de corte diaria recalculada automáticamente
+            if dias_restantes > 0:
+                tasa_diaria = tableros_pendientes / dias_restantes
+            else:
+                tasa_diaria = tableros_pendientes # Carga de urgencia si venció el rango de ejecución
+
+            # Porcentaje de avance físico real basado en ML
+            avance_real_ml = (ml_instalado / ml_total_proyecto * 100) if ml_total_proyecto > 0 else 0.0
+
+            # --- FRENTE 3: AVANCE DE OPTIMIZACIÓN (Área Técnica / Diseño) ---
+            tableros_optimizados = 0
+            try:
+                res_opt = supabase.table("tableros_requeridos").select("cantidad_tableros").eq("proyecto_id", id_p).execute()
+                if res_opt.data:
+                    tableros_optimizados = sum([int(t.get('cantidad_tableros', 0)) for t in res_opt.data])
+            except:
+                pass
+            
+            tableros_por_optimizar = max(0, proy['total_tableros'] - tableros_optimizados)
+
+            lote_reporte.append({
+                "id": id_p,
+                "Código": proy['codigo'],
+                "Proyecto": proy['proyecto_text'],
+                "Cliente": proy['cliente'],
+                "Línea Base Fin": proy['p_fab_f'], # Plazo Inamovible del Contrato
+                "F. Inicio Ejecución": proy['p_fab_i_ejecucion'], # Ajustable en Planta
+                "F. Fin Ejecución": proy['p_fab_f_ejecucion'], # Ajustable en Planta
+                "ML Total": round(ml_total_proyecto, 1),
+                "ML Pendiente": round(ml_pendiente, 1),
+                "Avance (ML)": f"{avance_real_ml:.1f}%",
+                "Tableros Totales": proy['total_tableros'],
+                "Tableros Pendientes": round(tableros_pendientes, 1),
+                "Días Útiles Restantes": dias_restantes,
+                "Ritmo Diario (Tableros/Día)": round(tasa_diaria, 2),
+                "Tableros Optimizados": tableros_optimizados,
+                "Por Optimizar": tableros_por_optimizar
+            })
+
+        df_reporte = pd.DataFrame(lote_reporte) if lote_reporte else pd.DataFrame()
+
+    except Exception as e:
+        st.error(f"Error crítico en el cálculo dinámico multifrente: {e}")
+        return
+
+    # =========================================================
+    # PESTAÑA 1: MATRIZ DE CARGA DE PRODUCCIÓN (EDITABLE)
     # =========================================================
     with tab_matriz:
-        try:
-            supabase = conectar()
-            res = supabase.table("proyectos").select("*").eq("estatus", "Activo").execute()
-            
-            if not res.data:
-                st.info("📂 Actualmente no existen proyectos con estatus 'Activo' registrados en el sistema.")
-                return
-
-            df_proy = pd.DataFrame(res.data)
-            
-            # Conversión inicial segura a objetos date de Python
-            df_proy["p_fab_i"] = pd.to_datetime(df_proy["p_fab_i"], errors='coerce').dt.date
-            df_proy["p_fab_f"] = pd.to_datetime(df_proy["p_fab_f"], errors='coerce').dt.date
-            df_proy["total_tableros"] = pd.to_numeric(df_proy["total_tableros"], errors='coerce').fillna(0).astype(int)
-
-            # Cargar set de feriados registrados en formato texto DD/MM/YYYY
-            feriados_set = obtener_feriados_lista()
-
-            # --- CONFIGURACIÓN DE CONTROLES TEMPORALES COMPACTOS (UNA SOLA FILA HORIZONTAL) ---
-            c_titulo, c_fecha, c_vista = st.columns([3.5, 3, 5.5])
-            
-            # Título compacto con margen cero para evitar espacio muerto superior
-            c_titulo.markdown("<h3 style='margin: 0px; padding: 0px; line-height: 1.2;'>🪚 Producción Proyectada</h3>", unsafe_allow_html=True)
-            
-            # Selector de fecha y vista alineados a la altura del título (Etiquetas ocultas para ahorrar espacio)
-            fecha_inicio_vista = c_fecha.date_input("Item Inicio:", value=date.today(), format="DD/MM/YYYY", label_visibility="collapsed")
-            vista = c_vista.radio("🔍 Vista:", ["📅 Mensual (30 días)", "📅 Trimestral (90 días)"], horizontal=True, label_visibility="collapsed")
-            
-            st.markdown("<hr style='margin: 0.3rem 0px 0.8rem 0px;'>", unsafe_allow_html=True)
-
-            # --- MOTOR DE GENERACIÓN DE COLUMNAS CONTINUAS (LUNES A SÁBADO) ---
-            inicio_rango = fecha_inicio_vista
-            num_dias_busqueda = 30 if "Mensual" in vista else 90
-
-            lista_dias = []
-            for x in range(num_dias_busqueda):
-                d = inicio_rango + timedelta(days=x)
-                if d.weekday() < 6: # Filtro estricto: Excluye Domingos (6)
-                    lista_dias.append(d)
-
-            columns_fecha = [d.strftime("%d/%m") for d in lista_dias]
-
-            # --- CONSTRUCCIÓN DEL DATAEDITOR UNIFICADO ---
-            filas_editor_base = []
-            for _, fila in df_proy.iterrows():
-                f_i = fila["p_fab_i"]
-                f_f = fila["p_fab_f"]
-                tot_tab = fila["total_tableros"]
-                
-                # Calcular días útiles reales (Lunes a Sábado) descartando feriados
-                dias_utiles = 0
-                if f_i and f_f and f_i <= f_f:
-                    curr = f_i
-                    while curr <= f_f:
-                        if curr.weekday() < 6 and curr not in feriados_set:
-                            dias_utiles += 1
-                        curr += timedelta(days=1)
-
-                tab_por_dia = tot_tab / dias_utiles if dias_utiles > 0 else 0.0
-
-                registro = {
-                    "id": fila["id"],
-                    "Proyecto": fila["proyecto_text"],
-                    "Fecha Inicio": f_i,
-                    "Fecha Fin": f_f,
-                    "Tableros Totales": tot_tab
-                }
-                
-                # Inyección de las celdas calculadas para las columnas de días
-                for d in lista_dias:
-                    nombre_col = d.strftime("%d/%m")
-                    if f_i and f_f and f_i <= d <= f_f and d.weekday() < 6 and d not in feriados_set:
-                        registro[nombre_col] = round(tab_por_dia, 2)
-                    else:
-                        registro[nombre_col] = 0.0
-                        
-                filas_editor_base.append(registro)
-
-            df_editor_base = pd.DataFrame(filas_editor_base)
-
-            # Guardamos df_editor_base y lista_dias en el estado de sesión para compartirlos de forma segura con la pestaña del gráfico
-            st.session_state["df_editor_base_cache"] = df_editor_base
-            st.session_state["lista_dias_cache"] = lista_dias
-
-            # Cálculo de la Fila de Totales Diarios en el Tope Superior
-            totales_diarios = {col: round(df_editor_base[col].sum(), 2) for col in columns_fecha}
-            fila_total = {
-                "id": 0,
-                "Proyecto": "🔥 TOTAL DIARIO",
-                "Fecha Inicio": None,
-                "Fecha Fin": None,
-                "Tableros Totales": int(df_editor_base["Tableros Totales"].sum())
-            }
-            fila_total.update(totales_diarios)
-            
-            df_matriz_interactiva = pd.concat([pd.DataFrame([fila_total]), df_editor_base], ignore_index=True)
-
-            # Configuración de permisos de edición por columna
-            config_columnas = {
-                "id": None,
-                "Proyecto": st.column_config.TextColumn("Proyecto", disabled=True),
-                "Fecha Inicio": st.column_config.DateColumn("Fecha Inicio", format="DD/MM/YYYY", required=True),
-                "Fecha Fin": st.column_config.DateColumn("Fecha Fin", format="DD/MM/YYYY", required=True),
-                "Tableros Totales": st.column_config.NumberColumn("Tabl. Tot.", min_value=1, step=1, required=True)
-            }
-            # Protegemos las columnas de los días (Solo Lectura)
-            for col in columns_fecha:
-                config_columnas[col] = st.column_config.NumberColumn(col, disabled=True, format="%.2f")
-
-            # --- APLICACIÓN DE ALERTA VISUAL CONDICIONAL (>= 45 TABLEROS) ---
-            def resaltar_sobrecarga(val):
-                try:
-                    if isinstance(val, (int, float)) and val >= 45.0:
-                        return 'color: #D32F2F; font-weight: bold; background-color: #FFEBEE;'
-                except:
-                    pass
-                return ''
-
-            # Aplicamos el estilo condicional estrictamente a las columnas de los días utilizando .map() para Pandas 2.x
-            df_matriz_estilada = df_matriz_interactiva.style.map(resaltar_sobrecarga, subset=columns_fecha)
-
-            # Renderizado de la matriz interactiva unificada
-            cambios_matriz_df = st.data_editor(
-                df_matriz_estilada,
-                column_config=config_columnas,
+        st.subheader("⚙️ Programación de Fechas de Ejecución y Ritmo de Planta")
+        st.caption("Fije los plazos reales de ejecución de carpintería aquí. Las fechas contractuales originales de la Línea Base permanecerán seguras e inalteradas.")
+        
+        if not df_reporte.empty:
+            # Grilla interactiva configurada para permitir la modificación exclusiva de las fechas de ejecución
+            cambios_grid = st.data_editor(
+                df_reporte[['id', 'Código', 'Proyecto', 'Línea Base Fin', 'F. Inicio Ejecución', 'F. Fin Ejecución', 'Tableros Pendientes', 'Días Útiles Restantes', 'Ritmo Diario (Tableros/Día)']],
+                column_config={
+                    "id": None,
+                    "Código": st.column_config.TextColumn("Código", disabled=True),
+                    "Proyecto": st.column_config.TextColumn("Proyecto", disabled=True),
+                    "Línea Base Fin": st.column_config.DateColumn("Plazo Contrato", format="DD/MM/YYYY", disabled=True),
+                    "F. Inicio Ejecución": st.column_config.DateColumn("F. Inicio Ejecución", format="DD/MM/YYYY", required=True),
+                    "F. Fin Ejecución": st.column_config.DateColumn("F. Fin Ejecución", format="DD/MM/YYYY", required=True),
+                    "Tableros Pendientes": st.column_config.NumberColumn("Tableros Pend.", format="%.1f", disabled=True),
+                    "Días Útiles Restantes": st.column_config.NumberColumn("Días Utiles", format="%d", disabled=True),
+                    "Ritmo Diario (Tableros/Día)": st.column_config.NumberColumn("Corte Requerido", format="%.2f", disabled=True)
+                },
                 hide_index=True,
                 use_container_width=True,
-                key="data_editor_produccion_horizontal_final"
+                key="grid_ajuste_fechas_ejecucion_produccion"
             )
-
-            # --- PROCESAMIENTO DE GUARDADO Y EFECTO CASCADA EN SUPABASE (CORREGIDO: Ubicación Nativa) ---
-            if st.button("💾 Guardar Cambios de Fechas y Tableros", type="primary"):
-                try:
-                    with st.spinner("Actualizando parámetros operativos y recalculando frentes..."):
-                        df_proyectos_editados = cambios_matriz_df[cambios_matriz_df['id'] > 0]
-                        
-                        for idx, row in df_proyectos_editados.iterrows():
-                            id_proyecto = int(row['id'])
-                            nuevo_ini_fab = row['Fecha Inicio']
-                            nuevo_fin_fab = row['Fecha Fin']
-                            nuevos_tableros = int(row['Tableros Totales'])
-                            
-                            if nuevo_ini_fab > nuevo_fin_fab:
-                                st.error(f"❌ Error en proyecto {row['Proyecto']}: La fecha de inicio no puede ser posterior a la de fin.")
-                                st.stop()
-                            
-                            datos_orig = df_proy[df_proy['id'] == id_proyecto].iloc[0]
-                            old_ini_fab = datos_orig['p_fab_i']
-                            
-                            delta_dias = (nuevo_ini_fab - old_ini_fab).days if old_ini_fab else 0
-                            
-                            def desplazar_fecha(campo_fecha):
-                                if datos_orig.get(campo_fecha):
-                                    fecha_orig = pd.to_datetime(datos_orig[campo_fecha]).date()
-                                    return (fecha_orig + timedelta(days=delta_dias)).isoformat()
-                                return None
-
-                            datos_actualizados = {
-                                "p_fab_i": nuevo_ini_fab.isoformat(),
-                                "p_fab_f": nuevo_fin_fab.isoformat(),
-                                "total_tableros": nuevos_tableros,
-                                "p_tra_i": desplazar_fecha('p_tra_i'),
-                                "p_tra_f": desplazar_fecha('p_tra_f'),
-                                "p_ins_i": desplazar_fecha('p_ins_i'),
-                                "p_ins_f": desplazar_fecha('p_ins_f'),
-                                "p_ent_i": desplazar_fecha('p_ent_i'),
-                                "p_ent_f": desplazar_fecha('p_ent_f'),
-                                "f_ini": nuevo_ini_fab.isoformat()
-                            }
-                            
-                            supabase.table("proyectos").update(datos_actualizados).eq("id", id_proyecto).execute()
-                            
-                            from base_datos import sincronizar_avances_estructural
-                            sincronizar_avances_estructural(datos_orig['codigo'])
-
-                    st.success("✅ Parámetros de producción actualizados con éxito.")
+            
+            # Sincronización e inyección en bloque a Supabase ante modificaciones
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("💾 Guardar Fechas de Ejecución Ajustadas", type="primary", use_container_width=True):
+                cambios_detectados = 0
+                for index, row in cambios_grid.iterrows():
+                    id_proy_mod = int(row['id'])
+                    match_original = df_reporte[df_reporte['id'] == id_proy_mod].iloc[0]
+                    
+                    f_i_iso = row['F. Inicio Ejecución'].isoformat() if isinstance(row['F. Inicio Ejecución'], (date, datetime)) else str(row['F. Inicio Ejecución'])
+                    f_f_iso = row['F. Fin Ejecución'].isoformat() if isinstance(row['F. Fin Ejecución'], (date, datetime)) else str(row['F. Fin Ejecución'])
+                    
+                    if f_i_iso != match_original['F. Inicio Ejecución'].isoformat() or f_f_iso != match_original['F. Fin Ejecución'].isoformat():
+                        supabase.table("proyectos").update({
+                            "p_fab_i_ejecucion": f_i_iso,
+                            "p_fab_f_ejecucion": f_f_iso
+                        }).eq("id", id_proy_mod).execute()
+                        cambios_detectados += 1
+                
+                if cambios_detectados > 0:
+                    st.success(f"🎉 Fechas de ejecución guardadas con éxito para {cambios_detectados} proyecto(s).")
                     st.cache_data.clear()
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Error al guardar los datos en Supabase: {e}")
-
-        except Exception as e:
-            st.error(f"Error crítico en el renderizado de la matriz: {e}")
+        else:
+            st.info("📂 Los proyectos activos no cuentan con despiece de productos cargado.")
 
     # =========================================================
-    # PESTAÑA 2: VISTA GRÁFICA DE LA CURVA DE FABRICACIÓN (MIGRADO A PLOTLY)
+    # PESTAÑA 2: ANÁLISIS MULTIFRENTE Y GRÁFICO DE CARGA
     # =========================================================
-    with tab_grafico:
-        try:
-            df_editor_base_cache = st.session_state.get("df_editor_base_cache", None)
+    with tab_analisis:
+        if not df_reporte.empty:
+            st.subheader("📊 Reporte de Control Tridimensional Colectivo")
+            
+            # Despliegue unificado de los 3 frentes para análisis de la gerencia de operaciones
+            st.dataframe(
+                df_reporte[['Código', 'Proyecto', 'ML Total', 'ML Pendiente', 'Avance (ML)', 'Tableros Totales', 'Tableros Pendientes', 'Ritmo Diario (Tableros/Día)', 'Tableros Optimizados', 'Por Optimizar']],
+                column_config={
+                    "ML Total": st.column_config.NumberColumn("Metraje Lote (ml)", format="%.1f"),
+                    "ML Pendiente": st.column_config.NumberColumn("Pend. Instalar (ml)", format="%.1f"),
+                    "Ritmo Diario (Tableros/Día)": st.column_config.NumberColumn("Tableros/Día", format="%.2f"),
+                    "Por Optimizar": st.column_config.NumberColumn("Por Diseñar (Tab)", format="%d")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
 
-            if df_editor_base_cache is not None and not df_editor_base_cache.empty:
-                st.markdown("<h4 style='margin: 0px; padding-bottom: 0.5rem;'>📈 Curva de Carga Diaria (Tableros Proyectados)</h4>", unsafe_allow_html=True)
-                
-                # Generación analítica independiente del rango temporal seleccionado
-                inicio_rango_grafico = fecha_inicio_vista
-                num_dias_grafico = 30 if "Mensual" in vista else 90
-
-                lista_dias_grafico = []
-                for x in range(num_dias_grafico):
-                    d = inicio_rango_grafico + timedelta(days=x)
-                    if d.weekday() < 6: # Excluye domingos de manera estricta
-                        lista_dias_grafico.append(d)
-
-                fechas_grafico = []
-                totales_grafico = []
-                
-                for d in lista_dias_grafico:
-                    nombre_col = d.strftime("%d/%m")
-                    # Suma el volumen del día si existe en las columnas del dataframe operativo
-                    total_dia = df_editor_base_cache[nombre_col].sum() if nombre_col in df_editor_base_cache.columns else 0.0
-                    fechas_grafico.append(nombre_col)
-                    totales_grafico.append(round(total_dia, 2))
-                
-                df_curva = pd.DataFrame({
-                    "Día": fechas_grafico,
-                    "Tableros a Cortar": totales_grafico
-                })
-                
-                # --- NUEVA RENDERIZACIÓN CON PLOTLY PARA INYECTAR LAS ETIQUETAS DIARIAS ---
-                fig_curva = px.line(
-                    df_curva,
-                    x="Día",
-                    y="Tableros a Cortar",
-                    text="Tableros a Cortar",  # Inyecta dinámicamente las etiquetas numéricas en cada punto
-                    color_discrete_sequence=["#D32F2F"]
-                )
-                
-                # Configuración estética de las etiquetas en los nodos de la curva
-                fig_curva.update_traces(
-                    textposition="top center", 
-                    marker=dict(size=6, symbol="circle"), 
-                    mode="lines+markers+text"
-                )
-                
-                fig_curva.update_layout(
-                    xaxis_title=None,
-                    yaxis_title="Cantidad de Tableros",
-                    margin=dict(l=10, r=10, t=15, b=10),
-                    hovermode="x unified"
-                )
-                
-                # Despliegue del gráfico Plotly adaptado al contenedor de Streamlit
-                st.plotly_chart(fig_curva, use_container_width=True)
-                
-                c_inf1, c_inf2 = st.columns(2)
-                with c_inf1:
-                    st.info("💡 **Interpretación:** Los descensos que tocan el nivel 0 representan los domingos y feriados sin procesamiento de material.")
-                with c_inf2:
-                    if any(t >= 45.0 for t in totales_grafico):
-                        st.warning("⚠️ **Alerta de Capacidad:** Se detectan picos que igualan o superan el umbral crítico de 45 tableros diarios. Se recomienda revisar la matriz para reprogramar fechas.")
-                    else:
-                        st.success("✅ **Flujo Optimizado:** La carga proyectada se mantiene balanceada dentro de las capacidades operativas.")
-            else:
-                st.info("📂 No hay datos de producción activos en este período para generar la gráfica.")
-                
-        except Exception as e:
-            st.error(f"No se pudo renderizar la curva gráfica: {e}")
+            st.markdown("---")
+            st.subheader("📈 Tasa de Corte Requerida por Jornada Útil Restante")
+            
+            # Reconstrucción simétrica del gráfico de barras interactivo de Plotly Express
+            fig = px.bar(
+                df_reporte,
+                x="Proyecto",
+                y="Ritmo Diario (Tableros/Día)",
+                text="Ritmo Diario (Tableros/Día)",
+                color="Proyecto",
+                title="Número de Tableros a Cortar por Día Hábil de Ejecución Restante"
+            )
+            fig.update_traces(textposition='outside')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Gráfico de barras agrupado para análisis comparativo de saldos pendientes
+            st.markdown("### 🔍 Comparativo de Saldos Pendientes por Frente Operativo")
+            fig_frentes = px.bar(
+                df_reporte,
+                x="Proyecto",
+                y=["ML Pendiente", "Tableros Pendientes", "Por Optimizar"],
+                barmode="group",
+                labels={"value": "Cantidad / Medida", "variable": "Frente de Análisis"},
+                title="Estado de los Proyectos (Instalación de Muebles vs. Planta vs. Optimización de Ingeniería)"
+            )
+            st.plotly_chart(fig_frentes, use_container_width=True)
+        else:
+            st.info("No hay datos consolidados suficientes para mostrar los análisis gráficos.")
 
     # =========================================================
-    # PESTAÑA 3: CALENDARIO DE FERIADOS (TEXTO DD/MM/YYYY)
+    # PESTAÑA 3: CALENDARIO DE FERIADOS
     # =========================================================
     with tab_feriados:
-        st.subheader("📅 Registro de Feriados Anuales")
-        st.write("Declara los días festivos o cierres de taller en formato DD/MM/YYYY.")
-
-        with st.form("form_nuevo_feriado", clear_on_submit=True):
-            c_f1, c_f2 = st.columns(2)
-            f_fecha = c_f1.date_input("Fecha No Laborable:", value=date.today(), format="DD/MM/YYYY")
-            f_desc = c_f2.text_input("Descripción / Motivo:", placeholder="Ej: Fiestas Patrias")
+        st.markdown("### 📅 Registro de Días No Laborables de Taller")
+        
+        with st.form("form_feriados_p"):
+            c1, c2 = st.columns([2, 4])
+            f_sel = c1.date_input("Fecha Feriado:", value=hoy, format="DD/MM/YYYY")
+            f_desc = c2.text_input("Descripción / Motivo:", placeholder="Ej. Aniversario de Arequipa")
             
-            if st.form_submit_button("🚀 Registrar Feriado"):
+            if st.form_submit_button("➕ Registrar Día Feriado"):
                 try:
-                    fecha_texto = f_fecha.strftime('%d/%m/%Y')
-                    conectar().table("feriados").insert({
+                    fecha_texto = f_sel.strftime('%d/%m/%Y')
+                    supabase.table("feriados").insert({
                         "fecha": fecha_texto,
                         "descripcion": f_desc
                     }).execute()
-                    st.success(f"✅ Feriado del {fecha_texto} registrado con éxito.")
+                    st.success(f"✅ Feriado del {fecha_texto} registrado.")
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error o fecha ya registrada: {e}")
+                    st.error(f"Error o fecha ya duplicada: {e}")
 
         st.divider()
         st.markdown("#### Feriados Activos en el Sistema")
         try:
-            res_f = conectar().table("feriados").select("*").execute()
+            res_f = supabase.table("feriados").select("*").execute()
             if res_f.data:
                 df_f_vista = pd.DataFrame(res_f.data)
-                
-                # Ordenamiento cronológico seguro
                 df_f_vista['date_obj'] = pd.to_datetime(df_f_vista['fecha'], format='%d/%m/%Y')
-                df_f_vista = df_f_vista.sort_values('date_obj')
-                
-                df_f_vista = df_f_vista.rename(columns={'fecha': 'Fecha', 'descripcion': 'Descripción'})
+                df_f_vista = df_f_vista.sort_values('date_obj').rename(columns={'fecha': 'Fecha', 'descripcion': 'Descripción'})
                 st.dataframe(df_f_vista[['Fecha', 'Descripción']], use_container_width=True, hide_index=True)
                 
                 if st.button("🧹 Vaciar Todos los Feriados", type="primary"):
-                    conectar().table("feriados").delete().neq("id", 0).execute()
+                    supabase.table("feriados").delete().neq("id", 0).execute()
                     st.success("Calendario de feriados reiniciado.")
                     st.cache_data.clear()
                     st.rerun()
