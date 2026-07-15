@@ -116,7 +116,7 @@ elif menu == "Estatus de Muebles":
     estatus_muebles.mostrar(supervisor_id=id_usuario if rol_usuario == "Supervisor" else None)
 
 elif menu == "Producción Proyectada":
-    produccion.mostrar()
+    prod_proyectada.mostrar()
 
 elif menu == "Rendimiento de Corte":
     cortes.mostrar()
