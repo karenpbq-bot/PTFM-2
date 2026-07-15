@@ -28,7 +28,7 @@ def mostrar():
     feriados = obtener_feriados_lista()
 
     # =========================================================
-    # 1. ORIGEN A: GOOGLE DRIVE (Frente Optimización)
+    # 1. ORIGEN A: GOOGLE DRIVE (Frente de Optimización)
     # =========================================================
     try:
         FILE_ID = "1ATuNF0Js31QZCo3g3wDUfP3O2PzFjNjW"
@@ -39,10 +39,10 @@ def mostrar():
         df_drive_optim = pd.DataFrame()
 
     # =========================================================
-    # 2. ORIGEN B: SUPABASE Y CONSOLIDACIÓN DE DATOS (Producción e Instalación)
+    # 2. ORIGEN B: SUPABASE Y CONSOLIDACIÓN DE DATOS (Real)
     # =========================================================
     try:
-        # Descarga masiva para evitar loops en base de datos
+        # Descarga de proyectos activos (Excluye cerrados)
         res_proy = supabase.table("proyectos").select("*").neq("estatus", "Cerrado").execute()
         if not res_proy.data:
             st.info("📂 No existen proyectos activos para proyectar cargas.")
@@ -57,6 +57,7 @@ def mostrar():
 
         df_p["total_tableros"] = pd.to_numeric(df_p.get("total_tableros", 0), errors='coerce').fillna(0).astype(int)
 
+        # Descarga de tablas secundarias existentes
         res_productos = supabase.table("productos").select("id, proyecto_id, ml, ctd").execute()
         df_prods = pd.DataFrame(res_productos.data) if res_productos.data else pd.DataFrame(columns=['id', 'proyecto_id', 'ml', 'ctd'])
         df_prods['ml'] = pd.to_numeric(df_prods['ml'], errors='coerce').fillna(0.0)
@@ -71,7 +72,7 @@ def mostrar():
         res_bit_lineas = supabase.table("bitacoras_lineas").select("bitacora_id, cant_final_pl_pzs, cantidad").execute()
         df_bit_l = pd.DataFrame(res_bit_lineas.data) if res_bit_lineas.data else pd.DataFrame(columns=['bitacora_id', 'cant_final_pl_pzs', 'cantidad'])
 
-        # Preparamos el rango del horizonte
+        # Generar eje de tiempo (Lunes a Sábado, sin feriados)
         rango_fechas_3m = []
         curr = hoy
         while curr <= horizonte_3m:
@@ -79,7 +80,7 @@ def mostrar():
                 rango_fechas_3m.append(curr)
             curr += timedelta(days=1)
 
-        # Contenedores de las curvas
+        # Contenedores de sumatoria para las curvas
         curva_corte = {d: 0.0 for d in rango_fechas_3m}
         curva_optim = {d: 0.0 for d in rango_fechas_3m}
         curva_inst_muebles = {d: 0.0 for d in rango_fechas_3m}
@@ -93,7 +94,7 @@ def mostrar():
             nom_p = str(proy['proyecto_text']).strip()
             tableros_totales = proy['total_tableros']
 
-            # Fechas reales de ejecución
+            # Fechas reales a utilizar (preferencia a las de ejecución ajustables)
             f_inicio = proy.get('p_fab_i_ejecucion') or proy.get('p_fab_i') or proy.get('f_ini') or hoy
             f_fin = proy.get('p_fab_f_ejecucion') or proy.get('p_fab_f') or proy.get('f_fin') or horizonte_3m
 
@@ -114,9 +115,15 @@ def mostrar():
             # --- FRENTE: PRODUCCIÓN / CORTE (Bitácoras) ---
             piezas_producidas = 0.0
             if not df_bit_t.empty and not df_bit_l.empty:
-                ids_taller = df_bit_t[df_bit_t['proyecto'].str.strip().str.lower() == nom_p.lower()]['id'].tolist()
+                # Filtrar bitacoras por el nombre del proyecto
+                df_bit_t['proyecto_clean'] = df_bit_t['proyecto'].astype(str).str.strip().str.lower()
+                ids_taller = df_bit_t[df_bit_t['proyecto_clean'] == nom_p.lower()]['id'].tolist()
+                
                 df_l_filtrado = df_bit_l[df_bit_l['bitacora_id'].isin(ids_taller)]
-                piezas_producidas = pd.to_numeric(df_l_filtrado['cant_final_pl_pzs'].fillna(df_l_filtrado['cantidad']), errors='coerce').sum()
+                # Usa cant_final_pl_pzs, si está vacío, usa cantidad
+                cant_cortada = pd.to_numeric(df_l_filtrado['cant_final_pl_pzs'], errors='coerce')
+                cant_planeada = pd.to_numeric(df_l_filtrado['cantidad'], errors='coerce')
+                piezas_producidas = cant_cortada.fillna(cant_planeada).sum()
             
             av_prod = (piezas_producidas / muebles_totales * 100) if muebles_totales > 0 else 0.0
             pend_prod_tableros = max(0.0, tableros_totales * (1.0 - (av_prod / 100.0)))
@@ -126,7 +133,7 @@ def mostrar():
             muebles_instalados = 0
             if not df_p_prods.empty and not df_est.empty:
                 df_est_p = df_est[df_est['producto_id'].isin(df_p_prods['id'])]
-                df_est_p['listo'] = df_est_p['culminado'].astype(bool) | df_est_p['entregado'].astype(bool)
+                df_est_p['listo'] = df_est_p['culminado'].fillna(False).astype(bool) | df_est_p['entregado'].fillna(False).astype(bool)
                 ids_listos = df_est_p[df_est_p['listo'] == True]['producto_id'].tolist()
                 
                 df_listos = df_p_prods[df_p_prods['id'].isin(ids_listos)]
@@ -137,7 +144,7 @@ def mostrar():
             pend_inst_ml = max(0.0, ml_totales - ml_instalado)
             pend_inst_muebles = max(0, muebles_totales - muebles_instalados)
 
-            # --- DISTRIBUCIÓN EN CURVAS DIARIAS ---
+            # --- REPARTO EN EL HORIZONTE DE TIEMPO (LAS CURVAS) ---
             f_inicio_calc = max(hoy, f_inicio)
             dias_restantes = calcular_dias_utiles_taller(f_inicio_calc, f_fin, feriados)
 
@@ -154,7 +161,7 @@ def mostrar():
                         curva_inst_ml[d] += c_inst_ml
                         curva_inst_muebles[d] += c_inst_m
 
-            # Agregar a matriz base
+            # Inyectar al DataFrame de la tabla principal
             lote_resumen.append({
                 "id": id_p,
                 "Proyecto": f"[{cod_p}] {nom_p}",
@@ -170,13 +177,12 @@ def mostrar():
         df_resumen = pd.DataFrame(lote_resumen)
 
     except Exception as e:
-        st.error(f"Falla en el procesamiento analítico: {e}")
+        st.error(f"Falla en el procesamiento analítico de datos: {e}")
         return
 
     # =========================================================
-    # RENDERIZADO DE PESTAÑAS (MATRIZ Y GRÁFICOS)
+    # RENDERIZADO VISUAL (TABLAS Y GRÁFICOS)
     # =========================================================
-    
     with tab1:
         st.subheader("⚙️ Control Interactivo de Saldos y Plazos")
         if not df_resumen.empty:
@@ -196,6 +202,7 @@ def mostrar():
                 hide_index=True, use_container_width=True, key="grid_fechas_dinamicas"
             )
 
+            # Botón de Sincronización a Base de Datos
             if st.button("💾 Guardar Fechas de Ejecución Ajustadas", type="primary", use_container_width=True):
                 modificados = 0
                 for index, row in cambios.iterrows():
@@ -211,6 +218,7 @@ def mostrar():
                     if fi_str != fi_orig or ff_str != ff_orig:
                         supabase.table("proyectos").update({"p_fab_i_ejecucion": fi_str, "p_fab_f_ejecucion": ff_str}).eq("id", id_mod).execute()
                         modificados += 1
+                        
                 if modificados > 0:
                     st.success("Plazos reprogramados correctamente en la base de datos."); st.cache_data.clear(); st.rerun()
         else:
