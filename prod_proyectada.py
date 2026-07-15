@@ -261,8 +261,16 @@ def mostrar():
             fig4.update_layout(
                 title="Ritmo de Despliegue de Muebles y Metros Lineales Requerido",
                 xaxis_title="Fechas Hábiles Taller (Horizonte 90 Días)",
-                yaxis=dict(title="Muebles a Instalar", titlefont=dict(color="#2ECC71"), tickfont=dict(color="#2ECC71")),
-                yaxis2=dict(title="Metros Lineales (ML)", titlefont=dict(color="#9B59B6"), tickfont=dict(color="#9B59B6"), overlaying="y", side="right"),
+                yaxis=dict(
+                    title=dict(text="Muebles a Instalar", font=dict(color="#2ECC71")), 
+                    tickfont=dict(color="#2ECC71")
+                ),
+                yaxis2=dict(
+                    title=dict(text="Metros Lineales (ML)", font=dict(color="#9B59B6")), 
+                    tickfont=dict(color="#9B59B6"), 
+                    overlaying="y", 
+                    side="right"
+                ),
                 legend=dict(x=0.01, y=0.99)
             )
             st.plotly_chart(fig4, use_container_width=True)
