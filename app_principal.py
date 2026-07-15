@@ -9,7 +9,7 @@ from base_datos import *
 import os  # <-- Manejo seguro de rutas de archivos de la empresa
 
 # Importación limpia de todos los submódulos operativos del sistema
-import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, produccion, cortes, tableros_req, estatus_muebles, bitacoras 
+import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, prod_proyectada, cortes, tableros_req, estatus_muebles, bitacoras 
 
 # --- Lógica para localizar el logo de la organización ---
 directorio_actual = os.path.dirname(__file__)
