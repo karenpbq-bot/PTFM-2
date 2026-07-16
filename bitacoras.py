@@ -658,89 +658,71 @@ def mostrar(supervisor_id=None):
                     else:
                         st.success(f"📄 Archivo leído correctamente: {len(df_hist)} registros detectados.")
                         
-                        if st.button("🚀 Procesar y Migrar a la Base de Datos", type="primary", use_container_width=True):
-                            with st.spinner("Sincronizando las OP (n_orden), limpiando formatos e insertando líneas..."):
+                       if st.button("🚀 Procesar y Migrar (Modo Inteligente)", type="primary", use_container_width=True):
+                            with st.spinner("Sincronizando y actualizando registros..."):
                                 
-                                # 2. Descargar las OPs (n_orden) existentes en bitacoras_taller para cruzar los IDs
+                                # 1. Descargar OPs (n_orden) existentes
                                 res_taller = supabase.table("bitacoras_taller").select("id, n_orden").execute()
-                                dict_ops_existentes = {str(r["n_orden"]).strip(): int(r["id"]) for r in res_taller.data} if res_taller.data else {}
+                                dict_ops = {str(r["n_orden"]).strip(): int(r["id"]) for r in res_taller.data} if res_taller.data else {}
 
-                                registros_lineas = []
-                                ops_creadas_nuevas = 0
-
-                                # 3. Procesar fila por fila del Excel
+                                registros_para_upsert = []
+                                
                                 for _, row in df_hist.iterrows():
-                                    nro_op_excel = str(row.get("Nro de OP", "")).strip()
-                                    fecha_corte_val = str(row.get("Fecha de Corte / Canteo", "")).strip()[:10]
+                                    # Limpiamos nombres de columnas dinámicamente
+                                    row_clean = {str(k).replace('\n', ' ').strip(): v for k, v in row.items()}
                                     
-                                    # Si la celda de OP está vacía, EL PROGRAMA ASIGNA UNA AUTOMÁTICA
-                                    if not nro_op_excel or nro_op_excel == "nan":
-                                        fecha_segura = fecha_corte_val if fecha_corte_val and fecha_corte_val != "nan" else date.today().isoformat()
-                                        nro_op_excel = f"OP-AUTO-{fecha_segura}"
-
-                                    # A. Verificar si el n_orden existe. Si no, crearlo para obtener un ID maestro.
-                                    if nro_op_excel not in dict_ops_existentes:
-                                        nueva_op = {
-                                            "n_orden": nro_op_excel,
-                                            "fecha": fecha_corte_val if fecha_corte_val and fecha_corte_val != "nan" else date.today().isoformat(),
-                                            "estado": "Cerrada" # Lo guardamos como cerrado ya que es histórico
-                                        }
-                                        res_insert_op = supabase.table("bitacoras_taller").insert(nueva_op).execute()
-                                        nuevo_id = int(res_insert_op.data[0]["id"])
-                                        dict_ops_existentes[nro_op_excel] = nuevo_id
-                                        ops_creadas_nuevas += 1
-
-                                    # Obtenemos el ID interno relacional seguro
-                                    id_maestro_valido = dict_ops_existentes[nro_op_excel]
-
-                                    # B. Traducción de Máquinas (S, E, C) a los bloques correctos
-                                    maquina_excel = str(row.get("Maquina", "")).strip().upper()
-                                    proceso_traducido = None
-                                    if maquina_excel == "S": proceso_traducido = "SECCIONADORA"
-                                    elif maquina_excel == "E": proceso_traducido = "ESCUADRADORA"
-                                    elif maquina_excel == "C": proceso_traducido = "CANTEO"
-                                    else: proceso_traducido = maquina_excel
-
-                                    # C. Separación de Material (Tablero/Retazo vs Grueso/Delgado)
-                                    material_excel = str(row.get("Material", "")).strip()
-                                    tipo_canto_val = None
-                                    tipo_tablero_val = None
+                                    nro_op = str(row_clean.get("Nro de OP", "")).strip()
+                                    fecha = str(row_clean.get("Fecha de Corte / Canteo", "")).strip()[:10]
+                                    maquina = str(row_clean.get("Maquina", "")).strip().upper()
                                     
-                                    if material_excel.lower() in ["grueso", "delgado", "groso", "fino"]:
-                                        tipo_canto_val = material_excel
-                                    else:
-                                        tipo_tablero_val = material_excel if material_excel and material_excel != "nan" else None
+                                    # Asignación automática de OP si falta
+                                    if not nro_op or nro_op == "nan":
+                                        nro_op = f"OP-AUTO-{fecha if fecha else date.today().isoformat()}"
 
-                                    # D. Construcción del registro limpio
-                                    fecha_str = str(row.get("Fecha de Corte / Canteo", "")).strip()[:10]
+                                    # Obtener ID de OP (Crear si no existe)
+                                    if nro_op not in dict_ops:
+                                        res_op = supabase.table("bitacoras_taller").insert({"n_orden": nro_op, "fecha": fecha}).execute()
+                                        dict_ops[nro_op] = int(res_op.data[0]["id"])
                                     
-                                    registro_limpio = {
-                                        "bitacora_id": id_maestro_valido, 
-                                        "proceso_bloque": proceso_traducido,
-                                        "cantidad": float(row.get("Cantidad (Unid / ml)", 0)) if pd.notna(row.get("Cantidad (Unid / ml)")) else 0.0,
-                                        "descripcion": str(row.get("Descripción", "")).strip() if pd.notna(row.get("Descripción")) else None,
-                                        "tipo_canto": tipo_canto_val,
-                                        "tipo_tablero_retazo": tipo_tablero_val,
-                                        "fecha_inicio": fecha_str if fecha_str != "nan" else None,
-                                        "cant_final_pl_pzs": float(row.get("Piezas\nObtenidas", 0)) if pd.notna(row.get("Piezas\nObtenidas")) else (float(row.get("Piezas Obtenidas", 0)) if pd.notna(row.get("Piezas Obtenidas")) else None),
-                                        "obs_incidencias": str(row.get("Observaciones", "")).strip() if pd.notna(row.get("Observaciones")) else None,
-                                        "nombre_firma_operario": str(row.get("Diseñador", "")).strip() if pd.notna(row.get("Diseñador")) else None
+                                    id_maestro = dict_ops[nro_op]
+
+                                    # Extracción segura de CANTIDADES (evitando ceros por formato)
+                                    val_cantidad = row_clean.get("Cantidad (Unid / ml)", 0)
+                                    val_piezas = row_clean.get("Piezas Obtenidas", 0)
+                                    
+                                    # Convertimos a float, si falla ponemos 0
+                                    try: 
+                                        cant_final = float(val_cantidad) if pd.notna(val_cantidad) else 0.0
+                                        pzas_final = float(val_piezas) if pd.notna(val_piezas) else 0.0
+                                    except:
+                                        cant_final, pzas_final = 0.0, 0.0
+
+                                    # Creamos el registro
+                                    reg = {
+                                        "bitacora_id": id_maestro,
+                                        "proceso_bloque": {"S": "SECCIONADORA", "E": "ESCUADRADORA", "C": "CANTEO"}.get(maquina, maquina),
+                                        "cantidad": cant_final,
+                                        "cant_final_pl_pzs": pzas_final,
+                                        "descripcion": str(row_clean.get("Descripción", "")),
+                                        "fecha_inicio": fecha if fecha != "nan" else None
                                     }
-                                    registros_lineas.append(registro_limpio)
+                                    registros_para_upsert.append(reg)
 
-                                # 4. Inserción masiva segmentada (Lotes de 500 para estabilidad)
-                                if registros_lineas:
-                                    try:
-                                        chunk_size = 500
-                                        for i in range(0, len(registros_lineas), chunk_size):
-                                            supabase.table("bitacoras_lineas").insert(registros_lineas[i:i + chunk_size]).execute()
+                                # 2. UPSERT en lotes (Actualiza si existe, inserta si es nuevo)
+                                # NOTA: Para que esto funcione, la tabla bitacoras_lineas debe tener una 
+                                # restricción única (Unique Constraint) o usaremos un filtro previo.
+                                try:
+                                    for reg in registros_para_upsert:
+                                        # Intentamos buscar si existe el registro para actualizarlo
+                                        res_check = supabase.table("bitacoras_lineas").select("id").eq("bitacora_id", reg["bitacora_id"]).eq("proceso_bloque", reg["proceso_bloque"]).eq("fecha_inicio", reg["fecha_inicio"]).execute()
                                         
-                                        st.success(f"✅ ¡Migración Histórica Exitosa! Se crearon {ops_creadas_nuevas} OP nuevas (`n_orden`) en la matriz y se insertaron {len(registros_lineas)} registros operativos.")
-                                        st.cache_data.clear()
-                                    except Exception as db_err:
-                                        st.error(f"❌ Falló la inserción en la base de datos: {db_err}")
-                                else:
-                                    st.warning("⚠️ No se encontraron registros válidos para insertar.")
-
-                except Exception as e:
-                    st.error(f"❌ Error técnico procesando el archivo: {e}")
+                                        if res_check.data:
+                                            # Existe: Actualizamos (Update)
+                                            supabase.table("bitacoras_lineas").update(reg).eq("id", res_check.data[0]["id"]).execute()
+                                        else:
+                                            # No existe: Insertamos (Insert)
+                                            supabase.table("bitacoras_lineas").insert(reg).execute()
+                                            
+                                    st.success("✅ ¡Datos actualizados! Se sobrescribieron los valores en 0 con la información del Excel.")
+                                except Exception as e:
+                                    st.error(f"Error en la sincronización: {e}")
