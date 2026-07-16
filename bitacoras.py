@@ -463,7 +463,7 @@ def mostrar(supervisor_id=None):
     # ENTORNO INICIAL (PESTAÑAS HISTORIAL, ALTA Y CONFIGURACIÓN MAESTROS)
     # =========================================================================
     else:
-        tab_listado, tab_alta_nueva, tab_config = st.tabs(["🗂️ Listado de Bitácoras", "➕ Nueva Bitácora", "⚙️ Configuración de Catálogos"])
+        tab_listado, tab_alta_nueva, tab_config, tab_importacion_historica = st.tabs(["🗂️ Listado de Bitácoras", "➕ Nueva Bitácora", "⚙️ Configuración de Catálogos", "📥 Importación Histórica"])
         
         with tab_listado:
             filtro = st.text_input("🔍 Filtro rápido de búsqueda:", placeholder="Escriba la OP o cliente...")
@@ -632,3 +632,115 @@ def mostrar(supervisor_id=None):
                     st.data_editor(df_mats, column_config={"id": None}, hide_index=True, use_container_width=True)
                 except: 
                     st.info("Catálogo vacío.")
+
+        # =========================================================================
+        # IMPORTACIÓN INTELIGENTE DE DATOS HISTÓRICOS (EXCEL)
+        # =========================================================================
+        with tab_importacion_historica: 
+            st.subheader("📥 Importación Automatizada de Historial de Cortes (Excel)")
+            st.markdown("Sube tu archivo Excel mensual (`CORTES X DIA 2026.xlsx`). El sistema leerá el formato original, cruzará los **Nros de OP** con la base de datos, y estandarizará todo automáticamente. Si hay filas sin OP, se les asignará un código automático.")
+            
+            archivo_historico = st.file_uploader("Seleccione la hoja de Excel (.xlsx o .csv)", type=["xlsx", "xls", "csv"], key="up_hist_inteligente")
+
+            if archivo_historico is not None:
+                try:
+                    # 1. Leer Excel saltando las 2 primeras filas de título decorativo
+                    if archivo_historico.name.endswith(".csv"):
+                        df_hist = pd.read_csv(archivo_historico, skiprows=2)
+                    else:
+                        df_hist = pd.read_excel(archivo_historico, skiprows=2)
+                        
+                    df_hist.columns = df_hist.columns.str.strip().str.replace('\n', ' ')
+
+                    # Validar si es el formato correcto buscando la columna 'Nro de OP'
+                    if "Nro de OP" not in df_hist.columns:
+                        st.error("❌ El archivo no parece tener el formato histórico correcto. Falta la columna 'Nro de OP'.")
+                    else:
+                        st.success(f"📄 Archivo leído correctamente: {len(df_hist)} registros detectados.")
+                        
+                        if st.button("🚀 Procesar y Migrar a la Base de Datos", type="primary", use_container_width=True):
+                            with st.spinner("Sincronizando las OP (n_orden), limpiando formatos e insertando líneas..."):
+                                
+                                # 2. Descargar las OPs (n_orden) existentes en bitacoras_taller para cruzar los IDs
+                                res_taller = supabase.table("bitacoras_taller").select("id, n_orden").execute()
+                                dict_ops_existentes = {str(r["n_orden"]).strip(): int(r["id"]) for r in res_taller.data} if res_taller.data else {}
+
+                                registros_lineas = []
+                                ops_creadas_nuevas = 0
+
+                                # 3. Procesar fila por fila del Excel
+                                for _, row in df_hist.iterrows():
+                                    nro_op_excel = str(row.get("Nro de OP", "")).strip()
+                                    fecha_corte_val = str(row.get("Fecha de Corte / Canteo", "")).strip()[:10]
+                                    
+                                    # Si la celda de OP está vacía, EL PROGRAMA ASIGNA UNA AUTOMÁTICA
+                                    if not nro_op_excel or nro_op_excel == "nan":
+                                        fecha_segura = fecha_corte_val if fecha_corte_val and fecha_corte_val != "nan" else date.today().isoformat()
+                                        nro_op_excel = f"OP-AUTO-{fecha_segura}"
+
+                                    # A. Verificar si el n_orden existe. Si no, crearlo para obtener un ID maestro.
+                                    if nro_op_excel not in dict_ops_existentes:
+                                        nueva_op = {
+                                            "n_orden": nro_op_excel,
+                                            "fecha": fecha_corte_val if fecha_corte_val and fecha_corte_val != "nan" else date.today().isoformat(),
+                                            "estado": "Cerrada" # Lo guardamos como cerrado ya que es histórico
+                                        }
+                                        res_insert_op = supabase.table("bitacoras_taller").insert(nueva_op).execute()
+                                        nuevo_id = int(res_insert_op.data[0]["id"])
+                                        dict_ops_existentes[nro_op_excel] = nuevo_id
+                                        ops_creadas_nuevas += 1
+
+                                    # Obtenemos el ID interno relacional seguro
+                                    id_maestro_valido = dict_ops_existentes[nro_op_excel]
+
+                                    # B. Traducción de Máquinas (S, E, C) a los bloques correctos
+                                    maquina_excel = str(row.get("Maquina", "")).strip().upper()
+                                    proceso_traducido = None
+                                    if maquina_excel == "S": proceso_traducido = "SECCIONADORA"
+                                    elif maquina_excel == "E": proceso_traducido = "ESCUADRADORA"
+                                    elif maquina_excel == "C": proceso_traducido = "CANTEO"
+                                    else: proceso_traducido = maquina_excel
+
+                                    # C. Separación de Material (Tablero/Retazo vs Grueso/Delgado)
+                                    material_excel = str(row.get("Material", "")).strip()
+                                    tipo_canto_val = None
+                                    tipo_tablero_val = None
+                                    
+                                    if material_excel.lower() in ["grueso", "delgado", "groso", "fino"]:
+                                        tipo_canto_val = material_excel
+                                    else:
+                                        tipo_tablero_val = material_excel if material_excel and material_excel != "nan" else None
+
+                                    # D. Construcción del registro limpio
+                                    fecha_str = str(row.get("Fecha de Corte / Canteo", "")).strip()[:10]
+                                    
+                                    registro_limpio = {
+                                        "bitacora_id": id_maestro_valido, 
+                                        "proceso_bloque": proceso_traducido,
+                                        "cantidad": float(row.get("Cantidad (Unid / ml)", 0)) if pd.notna(row.get("Cantidad (Unid / ml)")) else 0.0,
+                                        "descripcion": str(row.get("Descripción", "")).strip() if pd.notna(row.get("Descripción")) else None,
+                                        "tipo_canto": tipo_canto_val,
+                                        "tipo_tablero_retazo": tipo_tablero_val,
+                                        "fecha_inicio": fecha_str if fecha_str != "nan" else None,
+                                        "cant_final_pl_pzs": float(row.get("Piezas\nObtenidas", 0)) if pd.notna(row.get("Piezas\nObtenidas")) else (float(row.get("Piezas Obtenidas", 0)) if pd.notna(row.get("Piezas Obtenidas")) else None),
+                                        "obs_incidencias": str(row.get("Observaciones", "")).strip() if pd.notna(row.get("Observaciones")) else None,
+                                        "nombre_firma_operario": str(row.get("Diseñador", "")).strip() if pd.notna(row.get("Diseñador")) else None
+                                    }
+                                    registros_lineas.append(registro_limpio)
+
+                                # 4. Inserción masiva segmentada (Lotes de 500 para estabilidad)
+                                if registros_lineas:
+                                    try:
+                                        chunk_size = 500
+                                        for i in range(0, len(registros_lineas), chunk_size):
+                                            supabase.table("bitacoras_lineas").insert(registros_lineas[i:i + chunk_size]).execute()
+                                        
+                                        st.success(f"✅ ¡Migración Histórica Exitosa! Se crearon {ops_creadas_nuevas} OP nuevas (`n_orden`) en la matriz y se insertaron {len(registros_lineas)} registros operativos.")
+                                        st.cache_data.clear()
+                                    except Exception as db_err:
+                                        st.error(f"❌ Falló la inserción en la base de datos: {db_err}")
+                                else:
+                                    st.warning("⚠️ No se encontraron registros válidos para insertar.")
+
+                except Exception as e:
+                    st.error(f"❌ Error técnico procesando el archivo: {e}")
