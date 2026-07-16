@@ -638,52 +638,61 @@ def mostrar(supervisor_id=None):
         # =========================================================================
         with tab_importacion_historica: 
             st.subheader("📥 Importación Automatizada (Excel)")
-            # Cambiado a xlsx
-            archivo_historico = st.file_uploader("Seleccione el archivo Excel (.xlsx)", type=["xlsx"], key="up_junio_final")
+            archivo_historico = st.file_uploader("Seleccione archivo Excel (.xlsx)", type=["xlsx"], key="up_junio_final")
 
             if archivo_historico is not None:
                 try:
-                    # Leemos directamente el Excel
                     df_hist = pd.read_excel(archivo_historico)
-                    
-                    # Limpiamos nombres de columnas por seguridad
                     df_hist.columns = df_hist.columns.str.strip()
 
-                    if st.button("🚀 Migrar Registros de Excel", type="primary"):
-                        with st.spinner("Procesando Excel..."):
+                    if st.button("🚀 Migrar Registros", type="primary"):
+                        with st.spinner("Procesando..."):
                             res_taller = supabase.table("bitacoras_taller").select("id, n_orden").execute()
                             dict_ops = {str(r["n_orden"]).strip(): int(r["id"]) for r in res_taller.data} if res_taller.data else {}
                             
                             registros = []
                             for _, row in df_hist.iterrows():
-                                # Convertimos a string el n_orden para comparar
+                                # 1. Validar que la fila tenga al menos el n_orden
+                                if pd.isna(row.get('n_orden')): continue 
+
                                 nro_op = str(row['n_orden']).strip()
                                 
-                                # Si no existe, creamos la OP
+                                # 2. Lógica para manejar celdas vacías de forma segura
+                                def get_clean_num(val):
+                                    if pd.isna(val) or val == '-': return 0.0
+                                    try: return float(val)
+                                    except: return 0.0
+                                
+                                def get_clean_str(val):
+                                    return str(val).strip() if pd.notna(val) else ""
+
+                                # Crear OP si no existe
                                 if nro_op not in dict_ops:
+                                    # Usamos fecha_inicio o fecha de hoy si viene vacía
+                                    fecha_val = str(row['fecha_inicio']) if pd.notna(row['fecha_inicio']) else date.today().isoformat()
                                     res_op = supabase.table("bitacoras_taller").insert({
                                         "n_orden": nro_op, 
-                                        "fecha": str(row['fecha_inicio']), 
+                                        "fecha": fecha_val, 
                                         "estado": "Cerrada"
                                     }).execute()
                                     dict_ops[nro_op] = int(res_op.data[0]["id"])
                                 
-                                # Creamos el registro con los nombres de columna exactos del Excel
+                                # Crear registro
                                 reg = {
                                     "bitacora_id": dict_ops[nro_op],
-                                    "proceso_bloque": str(row['proceso_bloque']).strip().upper(),
-                                    "cantidad": float(row['cantidad']) if pd.notna(row['cantidad']) else 0.0,
-                                    "cant_final_pl_pzs": float(row['cant_final_pl_pzs']) if pd.notna(row['cant_final_pl_pzs']) else None,
-                                    "descripcion": str(row['descripcion']) if pd.notna(row['descripcion']) else "",
-                                    "tipo_tablero_retazo": str(row['tipo_tablero_retazo']) if pd.notna(row['tipo_tablero_retazo']) else None,
-                                    "fecha_inicio": str(row['fecha_inicio'])
+                                    "proceso_bloque": get_clean_str(row.get('proceso_bloque', '')).upper(),
+                                    "cantidad": get_clean_num(row.get('cantidad', 0)),
+                                    "cant_final_pl_pzs": get_clean_num(row.get('cant_final_pl_pzs', 0)),
+                                    "descripcion": get_clean_str(row.get('descripcion', '')),
+                                    "tipo_tablero_retazo": get_clean_str(row.get('tipo_tablero_retazo', '')),
+                                    "fecha_inicio": get_clean_str(row.get('fecha_inicio', ''))
                                 }
                                 registros.append(reg)
                             
-                            # Insertamos en lotes
-                            supabase.table("bitacoras_lineas").insert(registros).execute()
-                            st.success(f"✅ ¡Éxito! Se importaron {len(registros)} registros desde el Excel.")
+                            if registros:
+                                supabase.table("bitacoras_lineas").insert(registros).execute()
+                                st.success(f"✅ ¡Importación exitosa! {len(registros)} registros procesados.")
+                            else:
+                                st.warning("⚠️ No se encontraron datos válidos en el archivo.")
                 except Exception as e:
-                    st.error(f"❌ Error al procesar el Excel: {e}. Asegúrate de que las columnas coincidan exactamente con: n_orden, cantidad, tipo_tablero_retazo, tipo_canto, descripcion, fecha_inicio, proceso_bloque, cant_final_pl_pzs.")
-
-        
+                    st.error(f"❌ Error durante la importación: {e}")
