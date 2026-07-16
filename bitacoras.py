@@ -637,62 +637,44 @@ def mostrar(supervisor_id=None):
         # IMPORTACIÓN DIRECTA (Excel .xlsx)
         # =========================================================================
         with tab_importacion_historica: 
-            st.subheader("📥 Importación Automatizada (Excel)")
-            archivo_historico = st.file_uploader("Seleccione archivo Excel (.xlsx)", type=["xlsx"], key="up_junio_final")
+            st.subheader("📥 Importación Automatizada (Junio 2026)")
+            archivo_historico = st.file_uploader("Seleccione el archivo CSV de Junio", type=["csv"], key="up_junio_v2")
 
             if archivo_historico is not None:
                 try:
-                    df_hist = pd.read_excel(archivo_historico)
-                    df_hist.columns = df_hist.columns.str.strip()
+                    df = pd.read_csv(archivo_historico)
+                    df.columns = df.columns.str.strip()
 
                     if st.button("🚀 Migrar Registros", type="primary"):
-                        with st.spinner("Procesando..."):
+                        with st.spinner("Procesando archivo..."):
+                            # 1. Obtener OPs existentes
                             res_taller = supabase.table("bitacoras_taller").select("id, n_orden").execute()
-                            dict_ops = {str(r["n_orden"]).strip(): int(r["id"]) for r in res_taller.data} if res_taller.data else {}
+                            dict_ops = {str(r["n_orden"]).strip(): r["id"] for r in res_taller.data}
                             
                             registros = []
-                            for _, row in df_hist.iterrows():
-                                # 1. Validar que la fila tenga al menos el n_orden
-                                if pd.isna(row.get('n_orden')): continue 
-
-                                nro_op = str(row['n_orden']).strip()
+                            for _, row in df.iterrows():
+                                n_orden = str(row['n_orden']).strip()
+                                # Saltamos si la OP no existe en el taller
+                                if n_orden not in dict_ops: continue
                                 
-                                # 2. Lógica para manejar celdas vacías de forma segura
-                                def get_clean_num(val):
-                                    if pd.isna(val) or val == '-': return 0.0
-                                    try: return float(val)
-                                    except: return 0.0
+                                # Convertimos cantidad (asegurando que sea 0 si está vacía)
+                                cant = row['cantidad']
+                                cantidad = float(cant) if pd.notna(cant) and str(cant).strip() != '' else 0.0
                                 
-                                def get_clean_str(val):
-                                    return str(val).strip() if pd.notna(val) else ""
-
-                                # Crear OP si no existe
-                                if nro_op not in dict_ops:
-                                    # Usamos fecha_inicio o fecha de hoy si viene vacía
-                                    fecha_val = str(row['fecha_inicio']) if pd.notna(row['fecha_inicio']) else date.today().isoformat()
-                                    res_op = supabase.table("bitacoras_taller").insert({
-                                        "n_orden": nro_op, 
-                                        "fecha": fecha_val, 
-                                        "estado": "Cerrada"
-                                    }).execute()
-                                    dict_ops[nro_op] = int(res_op.data[0]["id"])
-                                
-                                # Crear registro
                                 reg = {
-                                    "bitacora_id": dict_ops[nro_op],
-                                    "proceso_bloque": get_clean_str(row.get('proceso_bloque', '')).upper(),
-                                    "cantidad": get_clean_num(row.get('cantidad', 0)),
-                                    "cant_final_pl_pzs": get_clean_num(row.get('cant_final_pl_pzs', 0)),
-                                    "descripcion": get_clean_str(row.get('descripcion', '')),
-                                    "tipo_tablero_retazo": get_clean_str(row.get('tipo_tablero_retazo', '')),
-                                    "fecha_inicio": get_clean_str(row.get('fecha_inicio', ''))
+                                    "bitacora_id": dict_ops[n_orden],
+                                    "proceso_bloque": str(row['proceso_bloque']).strip().upper(),
+                                    "cantidad": cantidad,
+                                    "descripcion": str(row['descripcion']) if pd.notna(row['descripcion']) else "",
+                                    "tipo_tablero_retazo": str(row['tipo_tablero_retazo']) if pd.notna(row['tipo_tablero_retazo']) else None,
+                                    "fecha_inicio": str(row['fecha_inicio'])
                                 }
                                 registros.append(reg)
                             
                             if registros:
                                 supabase.table("bitacoras_lineas").insert(registros).execute()
-                                st.success(f"✅ ¡Importación exitosa! {len(registros)} registros procesados.")
+                                st.success(f"✅ ¡Éxito! Se migraron {len(registros)} registros.")
                             else:
-                                st.warning("⚠️ No se encontraron datos válidos en el archivo.")
+                                st.warning("⚠️ No se encontraron registros coincidentes con las OPs existentes.")
                 except Exception as e:
-                    st.error(f"❌ Error durante la importación: {e}")
+                    st.error(f"❌ Error en la importación: {e}")
