@@ -637,44 +637,49 @@ def mostrar(supervisor_id=None):
         # IMPORTACIÓN DIRECTA (Excel .xlsx)
         # =========================================================================
         with tab_importacion_historica: 
-            st.subheader("📥 Importación Automatizada (Junio 2026)")
-            archivo_historico = st.file_uploader("Seleccione el archivo CSV de Junio", type=["csv"], key="up_junio_v2")
+            st.subheader("📥 Importación Automatizada (Excel)")
+            archivo_historico = st.file_uploader("Seleccione el archivo Excel (.xlsx)", type=["xlsx"], key="up_junio_xlsx")
 
             if archivo_historico is not None:
                 try:
-                    df = pd.read_csv(archivo_historico)
+                    # Leemos directamente el Excel
+                    df = pd.read_excel(archivo_historico)
                     df.columns = df.columns.str.strip()
 
-                    if st.button("🚀 Migrar Registros", type="primary"):
-                        with st.spinner("Procesando archivo..."):
+                    if st.button("🚀 Migrar Registros de Excel", type="primary"):
+                        with st.spinner("Procesando Excel..."):
                             # 1. Obtener OPs existentes
                             res_taller = supabase.table("bitacoras_taller").select("id, n_orden").execute()
-                            dict_ops = {str(r["n_orden"]).strip(): r["id"] for r in res_taller.data}
+                            dict_ops = {str(r["n_orden"]).strip(): int(r["id"]) for r in res_taller.data}
                             
                             registros = []
                             for _, row in df.iterrows():
-                                n_orden = str(row['n_orden']).strip()
-                                # Saltamos si la OP no existe en el taller
+                                n_orden = str(row.get('n_orden', '')).strip()
+                                
+                                # Si la OP no existe, la saltamos para no generar errores
                                 if n_orden not in dict_ops: continue
                                 
-                                # Convertimos cantidad (asegurando que sea 0 si está vacía)
-                                cant = row['cantidad']
-                                cantidad = float(cant) if pd.notna(cant) and str(cant).strip() != '' else 0.0
-                                
+                                # Función segura para extraer números
+                                def get_num(col):
+                                    val = row.get(col)
+                                    return float(val) if pd.notna(val) and str(val).strip() not in ['-', ''] else 0.0
+
+                                # Construcción del registro solo con columnas que existen en tu Excel
                                 reg = {
                                     "bitacora_id": dict_ops[n_orden],
-                                    "proceso_bloque": str(row['proceso_bloque']).strip().upper(),
-                                    "cantidad": cantidad,
-                                    "descripcion": str(row['descripcion']) if pd.notna(row['descripcion']) else "",
-                                    "tipo_tablero_retazo": str(row['tipo_tablero_retazo']) if pd.notna(row['tipo_tablero_retazo']) else None,
-                                    "fecha_inicio": str(row['fecha_inicio'])
+                                    "proceso_bloque": str(row.get('proceso_bloque', '')).strip().upper(),
+                                    "cantidad": get_num('cantidad'),
+                                    "descripcion": str(row.get('descripcion', '')),
+                                    "tipo_tablero_retazo": str(row.get('tipo_tablero_retazo', '')),
+                                    "fecha_inicio": str(row.get('fecha_inicio', ''))
                                 }
                                 registros.append(reg)
                             
+                            # 2. Insertamos en lotes
                             if registros:
                                 supabase.table("bitacoras_lineas").insert(registros).execute()
                                 st.success(f"✅ ¡Éxito! Se migraron {len(registros)} registros.")
                             else:
-                                st.warning("⚠️ No se encontraron registros coincidentes con las OPs existentes.")
+                                st.warning("No se encontraron registros válidos para migrar.")
                 except Exception as e:
-                    st.error(f"❌ Error en la importación: {e}")
+                    st.error(f"❌ Error al leer el Excel: {e}")
