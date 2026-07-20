@@ -634,52 +634,107 @@ def mostrar(supervisor_id=None):
                     st.info("Catálogo vacío.")
 
         # =========================================================================
-        # IMPORTACIÓN DIRECTA (Excel .xlsx)
+        # IMPORTACIÓN DIRECTA (Excel .xlsx) - OPTIMIZADA Y ROBUSTA
         # =========================================================================
         with tab_importacion_historica: 
             st.subheader("📥 Importación Automatizada (Excel)")
-            archivo_historico = st.file_uploader("Seleccione el archivo Excel (.xlsx)", type=["xlsx"], key="up_junio_xlsx")
+            st.info("El archivo Excel debe contener las columnas: **n_orden, cantidad, tipo_tablero_retazo, tipo_canto, descripcion, fecha_inicio, proceso_bloque, obs_incidencias**.")
+            
+            archivo_historico = st.file_uploader("Seleccione el archivo Excel (.xlsx)", type=["xlsx"], key="up_junio_xlsx_v3")
 
             if archivo_historico is not None:
                 try:
-                    # Leemos directamente el Excel
                     df = pd.read_excel(archivo_historico)
                     df.columns = df.columns.str.strip()
 
+                    # Vista previa interactiva de los datos antes de migrar
+                    st.markdown("<b>🔍 Vista previa de los datos a importar:</b>", unsafe_allow_html=True)
+                    st.dataframe(df.head(10), use_container_width=True)
+
                     if st.button("🚀 Migrar Registros de Excel", type="primary"):
-                        with st.spinner("Procesando Excel..."):
-                            # 1. Obtener OPs existentes
-                            res_taller = supabase.table("bitacoras_taller").select("id, n_orden").execute()
-                            dict_ops = {str(r["n_orden"]).strip(): int(r["id"]) for r in res_taller.data}
+                        with st.spinner("Procesando y sincronizando con Supabase..."):
                             
-                            registros = []
+                            # 1. Obtener OPs existentes en el taller para mapear IDs
+                            res_taller = supabase.table("bitacoras_taller").select("id, n_orden").execute()
+                            dict_ops = {str(r["n_orden"]).strip(): int(r["id"]) for r in res_taller.data} if res_taller.data else {}
+                            
+                            registros_lineas = []
+                            oks_creadas = 0
+                            
                             for _, row in df.iterrows():
-                                n_orden = str(row.get('n_orden', '')).strip()
-                                
-                                # Si la OP no existe, la saltamos para no generar errores
-                                if n_orden not in dict_ops: continue
-                                
-                                # Función segura para extraer números
+                                n_orden_raw = row.get('n_orden')
+                                if pd.isna(n_orden_raw): 
+                                    continue
+                                    
+                                n_orden = str(int(n_orden_raw)) if isinstance(n_orden_raw, (int, float)) else str(n_orden_raw).strip()
+                                if not n_orden or n_orden == 'nan': 
+                                    continue
+
+                                # 2. Si la OP no existe en bitacoras_taller, la creamos automáticamente
+                                if n_orden not in dict_ops:
+                                    fecha_op = str(row.get('fecha_inicio')) if pd.notna(row.get('fecha_inicio')) else date.today().isoformat()
+                                    # Limpiar formato de fecha si viene con hora o basura
+                                    fecha_op = fecha_op.split("T")[0] if "T" in fecha_op else fecha_op[:10]
+                                    
+                                    nueva_op_res = supabase.table("bitacoras_taller").insert({
+                                        "n_orden": n_orden,
+                                        "fecha": fecha_op,
+                                        "estado": "Cerrada",
+                                        "tipo_mueble": "IMPORTADO",
+                                        "motivo": "CARGA HISTÓRICA"
+                                    }).execute()
+                                    
+                                    if nueva_op_res.data:
+                                        new_id = int(nueva_op_res.data[0]["id"])
+                                        dict_ops[n_orden] = new_id
+                                        oks_creadas += 1
+
+                                # Funciones auxiliares de limpieza segura de tipos de datos
                                 def get_num(col):
                                     val = row.get(col)
-                                    return float(val) if pd.notna(val) and str(val).strip() not in ['-', ''] else 0.0
+                                    if pd.isna(val) or str(val).strip() in ['-', '', 'nan', 'None']:
+                                        return 0.0
+                                    try:
+                                        return float(val)
+                                    except:
+                                        return 0.0
 
-                                # Construcción del registro solo con columnas que existen en tu Excel
+                                def get_str(col):
+                                    val = row.get(col)
+                                    if pd.isna(val) or str(val).strip() in ['nan', 'None']:
+                                        return ""
+                                    return str(val).strip()
+
+                                def get_date(col):
+                                    val = row.get(col)
+                                    if pd.isna(val) or str(val).strip() in ['nan', 'None', '']:
+                                        return date.today().isoformat()
+                                    s = str(val).strip()
+                                    return s.split("T")[0] if "T" in s else s[:10]
+
+                                # 3. Construir el registro detallado para bitacoras_lineas
                                 reg = {
                                     "bitacora_id": dict_ops[n_orden],
-                                    "proceso_bloque": str(row.get('proceso_bloque', '')).strip().upper(),
+                                    "proceso_bloque": get_str('proceso_bloque').upper() if get_str('proceso_bloque') else "SECCIONADORA",
                                     "cantidad": get_num('cantidad'),
-                                    "descripcion": str(row.get('descripcion', '')),
-                                    "tipo_tablero_retazo": str(row.get('tipo_tablero_retazo', '')),
-                                    "fecha_inicio": str(row.get('fecha_inicio', ''))
+                                    "descripcion": get_str('descripcion'),
+                                    "tipo_tablero_retazo": get_str('tipo_tablero_retazo') if get_str('tipo_tablero_retazo') else None,
+                                    "tipo_canto": get_str('tipo_canto') if get_str('tipo_canto') else None,
+                                    "fecha_inicio": get_date('fecha_inicio'),
+                                    "obs_incidencias": get_str('obs_incidencias') if get_str('obs_incidencias') else None
                                 }
-                                registros.append(reg)
+                                registros_lineas.append(reg)
                             
-                            # 2. Insertamos en lotes
-                            if registros:
-                                supabase.table("bitacoras_lineas").insert(registros).execute()
-                                st.success(f"✅ ¡Éxito! Se migraron {len(registros)} registros.")
+                            # 4. Inserción masiva optimizada por bloques en Supabase
+                            if registros_lineas:
+                                # Insertar en lotes de 100 para evitar saturar la API
+                                tam_lote = 100
+                                for i in range(0, len(registros_lineas), tam_lote):
+                                    lote = registros_lineas[i:i + tam_lote]
+                                    supabase.table("bitacoras_lineas").insert(lote).execute()
+                                    
+                                st.success(f"✅ ¡Migración completada con éxito! Se registraron {len(registros_lineas)} líneas de producción y se crearon {oks_creadas} nuevas OPs en el taller.")
                             else:
-                                st.warning("No se encontraron registros válidos para migrar.")
+                                st.warning("⚠️ No se detectaron filas válidas procesables dentro del archivo Excel.")
                 except Exception as e:
-                    st.error(f"❌ Error al leer el Excel: {e}")
+                    st.error(f"❌ Error crítico al procesar el archivo Excel: {e}")
