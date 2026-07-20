@@ -9,7 +9,7 @@ from base_datos import *
 import os  # <-- Manejo seguro de rutas de archivos de la empresa
 
 # Importación limpia de todos los submódulos operativos del sistema
-import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, prod_proyectada, cortes, tableros_req, estatus_muebles, bitacoras 
+import seguimiento, ejecucion, login, usuarios, incidencias, proyectos, prod_proyectada, produccion_cortes, cortes, tableros_req, estatus_muebles, bitacoras 
 
 # --- Lógica para localizar el logo de la organización ---
 directorio_actual = os.path.dirname(__file__)
@@ -94,7 +94,7 @@ with st.sidebar:
     st.caption(f"Rol: {rol_usuario}")
     
     # Definición limpia de opciones del menú
-    opciones = ["Proyectos", "Estatus de Muebles", "Producción Proyectada", "Rendimiento de Corte", "Avance de Optimización", "Bitácoras de Producción", "Seguimiento", "Gantt", "Incidencias", "Usuarios"]
+    opciones = ["Proyectos", "Estatus de Muebles", "Producción Proyectada", "Rendimiento Producción", "Rendimiento de Corte", "Avance de Optimización", "Bitácoras de Producción", "Seguimiento", "Gantt", "Incidencias", "Usuarios"]
     menu = st.radio("MENÚ PRINCIPAL", opciones)
     
     st.write("---")
@@ -117,6 +117,9 @@ elif menu == "Estatus de Muebles":
 
 elif menu == "Producción Proyectada":
     prod_proyectada.mostrar()
+
+elif menu == "Rendimiento Producción":
+    produccion_cortes.mostrar()
 
 elif menu == "Rendimiento de Corte":
     cortes.mostrar()
