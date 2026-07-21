@@ -218,6 +218,8 @@ def mostrar():
     # =========================================================
     with tab_matriz:
         if st.session_state.get('id_p_sel'):
+            from base_datos import conectar, sincronizar_avances_estructural
+            
             res_info = conectar().table("proyectos").select("*").eq("id", st.session_state.id_p_sel).execute()
             if res_info.data:
                 info_p = res_info.data[0]
@@ -228,75 +230,124 @@ def mostrar():
                     st.write("Cargue la planilla excel de despiece para este lote. Columnas requeridas: **Ubicación**, **Tipo Mueble**, **ML**.")
                     archivo_despiece = st.file_uploader("Seleccione el archivo de despiece de melamina:", type=["xlsx", "csv"], key="uploader_despiece_masivo")
                     
-                    if archivo_despiece and st.button("🚀 PROCESAR E IMPORTAR PLANILLA", type="primary", use_container_width=True):
-                        try:
-                            # 1. Selección dinámica del motor según extensión
-                            if archivo_despiece.name.endswith(".csv"):
-                                df_imp = pd.read_csv(archivo_despiece)
-                            else:
-                                df_imp = pd.read_excel(archivo_despiece)
-                            
-                            # Limpieza profunda de encabezados (remueve espacios y normaliza)
-                            df_imp.columns = df_imp.columns.astype(str).str.strip()
-                            
-                            # Diccionario inteligente y flexible de acople de nomenclatura
-                            mapeo_columnas = {
-                                'Ubicación': 'ubicacion', 'Ubicacion': 'ubicacion', 'ubicacion': 'ubicacion', 'UBICACIÓN': 'ubicacion',
-                                'Tipo Mueble': 'tipo', 'Tipo': 'tipo', 'Tipo de Mueble': 'tipo', 'tipo': 'tipo', 'TIPO': 'tipo',
-                                'ML': 'ml', 'Metros Lineales': 'ml', 'ml': 'ml', 'metros lineales': 'ml',
-                                'Cantidad': 'ctd', 'cantidad': 'ctd', 'CANTIDAD': 'ctd', 'ctd': 'ctd'
-                            }
-                            df_imp = df_imp.rename(columns=mapeo_columnas)
-                            
-                            # 2. Validación transparente de columnas obligatorias
-                            columnas_necesarias = ['ubicacion', 'tipo', 'ml']
-                            columnas_faltantes = [col for col in columnas_necesarias if col not in df_imp.columns]
-                            
-                            if columnas_faltantes:
-                                st.error(f"❌ Estructura de archivo incorrecta. Faltan las columnas obligatorias: **{', '.join(columnas_faltantes)}**.")
-                            else:
-                                # Descarte riguroso de registros vacíos
-                                df_imp = df_imp.dropna(subset=['ubicacion', 'tipo'])
-                                
-                                if df_imp.empty:
-                                    st.warning("⚠️ El archivo cargado no contiene registros válidos.")
+                    if archivo_despiece and st.button("🚀 PROCESAR E IMPORTAR PLANILLA AL SISTEMA", type="primary", use_container_width=True):
+                        with st.spinner("Procesando y sincronizando con la base de datos matriz..."):
+                            try:
+                                # 1. Lectura y limpieza de formato
+                                if archivo_despiece.name.endswith(".csv"):
+                                    df_imp = pd.read_csv(archivo_despiece)
                                 else:
-                                    # Obtener el correlativo real exacto consultando Supabase
-                                    res_c = conectar().table("productos").select("id", count="exact").eq("proyecto_id", st.session_state.id_p_sel).execute()
-                                    conteo_inicial = res_c.count if res_c.count else 0
+                                    df_imp = pd.read_excel(archivo_despiece)
+                                
+                                df_imp.columns = df_imp.columns.astype(str).str.strip()
+                                
+                                # Diccionario flexible para normalizar las columnas base
+                                mapeo_columnas = {
+                                    'Ubicación': 'ubicacion', 'Ubicacion': 'ubicacion', 'ubicacion': 'ubicacion', 'UBICACIÓN': 'ubicacion',
+                                    'Tipo Mueble': 'tipo', 'Tipo': 'tipo', 'Tipo de Mueble': 'tipo', 'tipo': 'tipo', 'TIPO': 'tipo',
+                                    'ML': 'ml', 'Metros Lineales': 'ml', 'ml': 'ml', 'metros lineales': 'ml',
+                                    'Cantidad': 'ctd', 'cantidad': 'ctd', 'CANTIDAD': 'ctd', 'ctd': 'ctd'
+                                }
+                                df_imp = df_imp.rename(columns=mapeo_columnas)
+                                
+                                # 2. Validación de columnas mandatorias
+                                columnas_necesarias = ['ubicacion', 'tipo', 'ml']
+                                columnas_faltantes = [col for col in columnas_necesarias if col not in df_imp.columns]
+                                
+                                if columnas_faltantes:
+                                    st.error(f"❌ Estructura incorrecta. Faltan las columnas: **{', '.join(columnas_faltantes)}**.")
+                                else:
+                                    df_imp = df_imp.dropna(subset=['ubicacion', 'tipo'])
                                     
-                                    lote_productos = []
-                                    for _, row in df_imp.iterrows():
-                                        conteo_inicial += 1
-                                        etiqueta_generada = f"{info_p['codigo']}-{str(conteo_inicial).zfill(4)}"
+                                    if df_imp.empty:
+                                        st.warning("⚠️ El archivo Excel no contiene registros válidos.")
+                                    else:
+                                        res_c = conectar().table("productos").select("id", count="exact").eq("proyecto_id", st.session_state.id_p_sel).execute()
+                                        conteo_inicial = res_c.count if res_c.count else 0
                                         
-                                        cantidad_pieza = int(row['ctd']) if 'ctd' in df_imp.columns and pd.notna(row['ctd']) else 1
-                                        metros_lineales = pd.to_numeric(row['ml'], errors='coerce')
-                                        if pd.isna(metros_lineales): 
-                                            metros_lineales = 0.0
+                                        lote_productos = []
+                                        df_imp['codigo_etiqueta'] = "" # Columna de apoyo para el mapeo
+                                        
+                                        # 3. Preparación de la carga de Productos (Sanitizando tipos de datos a int y float puros)
+                                        for idx, row in df_imp.iterrows():
+                                            conteo_inicial += 1
+                                            etiqueta_generada = f"{info_p['codigo']}-{str(conteo_inicial).zfill(4)}"
+                                            df_imp.at[idx, 'codigo_etiqueta'] = etiqueta_generada
+                                            
+                                            cantidad_pieza = int(row['ctd']) if 'ctd' in df_imp.columns and pd.notna(row['ctd']) else 1
+                                            metros_lineales = float(pd.to_numeric(row['ml'], errors='coerce'))
+                                            if pd.isna(metros_lineales): metros_lineales = 0.0
 
-                                        lote_productos.append({
-                                            "proyecto_id": int(st.session_state.id_p_sel),
-                                            "codigo_etiqueta": etiqueta_generada,
-                                            "ubicacion": str(row['ubicacion']).strip(),
-                                            "tipo": str(row['tipo']).strip(),
-                                            "ctd": cantidad_pieza,
-                                            "ml": float(metros_lineales)
-                                        })
-                                    
-                                    # 3. Escritura masiva en Supabase con retroalimentación explícita
-                                    if lote_productos:
-                                        res_insert = conectar().table("productos").insert(lote_productos).execute()
-                                        if res_insert.data:
-                                            st.success(f"🎉 ¡Planilla procesada con éxito! Se registraron físicamente **{len(lote_productos)}** productos en Supabase.")
-                                            st.cache_data.clear()
-                                            st.rerun()
-                                        else:
-                                            st.error("❌ La base de datos no confirmó la inserción de los registros.")
-                        except Exception as e:
-                            st.error(f"❌ Falla técnica crítica al procesar el archivo de despiece: {e}")
+                                            lote_productos.append({
+                                                "proyecto_id": int(st.session_state.id_p_sel),
+                                                "codigo_etiqueta": etiqueta_generada,
+                                                "ubicacion": str(row['ubicacion']).strip(),
+                                                "tipo": str(row['tipo']).strip(),
+                                                "ctd": cantidad_pieza,
+                                                "ml": metros_lineales
+                                            })
+                                        
+                                        if lote_productos:
+                                            # === INSERCIÓN EN CASCADA (NÚCLEO DEL SISTEMA) ===
+                                            # PASO A: Insertamos y recuperamos los IDs autogenerados por Supabase
+                                            res_insert = conectar().table("productos").insert(lote_productos).execute()
+                                            
+                                            if res_insert.data:
+                                                inserted_products = res_insert.data
+                                                
+                                                lote_estatus = []
+                                                lote_fechas = []
+                                                lote_pav = []
+                                                
+                                                hitos_pesos = {
+                                                    "Diseñado": 15, "Fabricado": 40, "Material en Obra": 5,
+                                                    "Material en Ubicación": 5, "Instalación de Estructura": 15,
+                                                    "Instalación de Puertas o Frentes": 10, "Revisión y Observaciones": 5, "Entrega": 5
+                                                }
+                                                
+                                                # Construcción en memoria de los registros analíticos hijos
+                                                for prod in inserted_products:
+                                                    p_id = int(prod['id'])
+                                                    cod_etiq = prod['codigo_etiqueta']
+                                                    
+                                                    lote_estatus.append({"producto_id": p_id, "en_proceso": False, "culminado": False, "entregado": False})
+                                                    lote_fechas.append({"producto_id": p_id})
+                                                    
+                                                    row_ex = df_imp[df_imp['codigo_etiqueta'] == cod_etiq].iloc[0]
+                                                    
+                                                    for hito, peso in hitos_pesos.items():
+                                                        # ¡Magia Analítica!: Si la columna del hito existe en el Excel y tiene dato (ej. Diseñado), se da por logrado.
+                                                        logrado = 1 if hito in row_ex.index and pd.notna(row_ex[hito]) else 0
+                                                            
+                                                        lote_pav.append({
+                                                            "codigo_proyecto": info_p['codigo'],
+                                                            "producto_id": p_id,
+                                                            "hito": hito,
+                                                            "logrado": logrado,
+                                                            "valor_porcentual": peso
+                                                        })
+                                                
+                                                # PASO B: Inicializamos Estatus y Fechas
+                                                if lote_estatus: conectar().table("estatus_muebles").insert(lote_estatus).execute()
+                                                if lote_fechas: conectar().table("fechas_hitos_muebles").insert(lote_fechas).execute()
+                                                
+                                                # PASO C: Cargamos los valores porcentuales (En bloques para cuidar la RAM)
+                                                tam_lote = 1000
+                                                for i in range(0, len(lote_pav), tam_lote):
+                                                    conectar().table("productos_avance_valor").insert(lote_pav[i:i+tam_lote]).execute()
+                                                    
+                                                # PASO D: Motor Estructural (Actualizamos avances_etapas del proyecto)
+                                                sincronizar_avances_estructural(info_p['codigo'])
+                                                
+                                                st.success(f"🎉 ¡Éxito Total! Se registraron {len(inserted_products)} productos y sus matrices analíticas vinculadas. Revise el módulo de Producción Proyectada.")
+                                                st.cache_data.clear()
+                                                st.rerun()
+                                            else:
+                                                st.error("❌ Ocurrió un error: La base de datos no devolvió los IDs insertados.")
+                            except Exception as e:
+                                st.error(f"❌ Falla de sistema al procesar el enlace masivo: {e}")
 
-                # Formulario para agregar producto manual (Control unitario)
+                # Formulario para agregar producto manual
                 with st.expander("➕ Agregar Producto Manualmente", expanded=False):
                     with st.form("form_producto_manual_reing", clear_on_submit=True):
                         c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
@@ -312,16 +363,32 @@ def mostrar():
                                     nuevo_n = (res_c.count if res_c.count else 0) + 1
                                     etiqueta = f"{info_p['codigo']}-{str(nuevo_n).zfill(4)}"
 
+                                    # Se crea el producto unitario sanitizado
                                     datos_producto = {
                                         "proyecto_id": int(st.session_state.id_p_sel), "codigo_etiqueta": etiqueta,
                                         "ubicacion": str(u).strip(), "tipo": str(t).strip(), "ctd": int(c), "ml": float(m)
                                     }
-                                    conectar().table("productos").insert(datos_producto).execute()
-                                    st.success(f"✅ Pieza registrada con etiqueta: {etiqueta}")
+                                    res_man = conectar().table("productos").insert(datos_producto).execute()
+                                    
+                                    # INICIALIZACIÓN UNITARIA OBLIGATORIA
+                                    if res_man.data:
+                                        p_id = int(res_man.data[0]['id'])
+                                        conectar().table("estatus_muebles").insert({"producto_id": p_id, "en_proceso": False, "culminado": False, "entregado": False}).execute()
+                                        conectar().table("fechas_hitos_muebles").insert({"producto_id": p_id}).execute()
+                                        
+                                        lote_pav_m = []
+                                        for hito, peso in {"Diseñado": 15, "Fabricado": 40, "Material en Obra": 5, "Material en Ubicación": 5, "Instalación de Estructura": 15, "Instalación de Puertas o Frentes": 10, "Revisión y Observaciones": 5, "Entrega": 5}.items():
+                                            lote_pav_m.append({"codigo_proyecto": info_p['codigo'], "producto_id": p_id, "hito": hito, "logrado": 0, "valor_porcentual": peso})
+                                        
+                                        conectar().table("productos_avance_valor").insert(lote_pav_m).execute()
+                                        from base_datos import sincronizar_avances_estructural
+                                        sincronizar_avances_estructural(info_p['codigo'])
+                                        
+                                    st.success(f"✅ Pieza registrada e inicializada correctamente con etiqueta: {etiqueta}")
                                     st.cache_data.clear()
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Error al guardar pieza: {e}")
+                                    st.error(f"Error técnico al guardar pieza manual: {e}")
 
                 # Visualización de la matriz de despiece vinculada
                 st.divider()
