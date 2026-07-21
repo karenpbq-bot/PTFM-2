@@ -390,20 +390,104 @@ def mostrar():
                                 except Exception as e:
                                     st.error(f"Error técnico al guardar pieza manual: {e}")
 
-                # Visualización de la matriz de despiece vinculada
+                # =========================================================================
+                # VISUALIZACIÓN Y EDICIÓN INTERACTIVA DE LA MATRIZ DE DESPIECE
+                # =========================================================================
                 st.divider()
-                res_p = conectar().table("productos").select("codigo_etiqueta, ubicacion, tipo, ctd, ml").eq("proyecto_id", st.session_state.id_p_sel).order("codigo_etiqueta").execute()
+                st.subheader("✏️ Edición y Gestión del Despiece Registrado")
+                
+                # Obtenemos los productos incluyendo su ID para poder editarlos/borrarlos
+                res_p = conectar().table("productos").select("id, codigo_etiqueta, ubicacion, tipo, ctd, ml").eq("proyecto_id", st.session_state.id_p_sel).order("codigo_etiqueta").execute()
                 
                 if res_p.data:
                     df_matriz_prod = pd.DataFrame(res_p.data)
-                    df_unificado = df_matriz_prod.rename(columns={
-                        'codigo_etiqueta': 'Código ID', 'ubicacion': 'Ubicación', 'tipo': 'Tipo Mueble', 'ctd': 'Cantidad', 'ml': 'ML'
-                    })
-                    st.dataframe(df_unificado, hide_index=True, use_container_width=True)
                     
+                    # Insertamos una columna de control para marcar filas a eliminar
+                    df_matriz_prod.insert(0, "Eliminar", False)
+                    
+                    st.caption("💡 Puede editar la Ubicación, Tipo, Cantidad y ML directamente en las celdas. Para borrar una pieza, marque la casilla de la izquierda.")
+                    
+                    # Desplegamos la grilla editable
+                    edit_grid = st.data_editor(
+                        df_matriz_prod,
+                        column_config={
+                            "Eliminar": st.column_config.CheckboxColumn("🗑️ Borrar", default=False),
+                            "id": None, # Ocultamos el ID interno
+                            "codigo_etiqueta": st.column_config.TextColumn("Código Etiqueta", disabled=True),
+                            "ubicacion": st.column_config.TextColumn("Ubicación / Ambiente", required=True),
+                            "tipo": st.column_config.TextColumn("Tipo Mueble", required=True),
+                            "ctd": st.column_config.NumberColumn("Cantidad", min_value=1, step=1, required=True),
+                            "ml": st.column_config.NumberColumn("Metros Lineales (ML)", min_value=0.0, format="%.2f", required=True)
+                        },
+                        hide_index=True, 
+                        use_container_width=True, 
+                        key=f"grid_edicion_prods_{st.session_state.id_p_sel}"
+                    )
+                    
+                    # Resumen visual rápido
                     cx1, cx2 = st.columns(2)
-                    cx1.info(f"**Total Piezas en Lote:** {int(df_unificado['Cantidad'].sum())} Unidades")
-                    cx2.info(f"**Metraje Total Asignado:** {df_unificado['ML'].sum():.2f} ml")
+                    cx1.info(f"**Total Piezas Actuales:** {int(df_matriz_prod['ctd'].sum())} Unidades")
+                    cx2.info(f"**Metraje Total Actual:** {df_matriz_prod['ml'].sum():.2f} ml")
+
+                    # BOTÓN DE GUARDADO Y ELIMINACIÓN MASIVA
+                    if st.button("💾 Guardar Cambios y/o Eliminar Piezas", type="primary", use_container_width=True):
+                        
+                        # 1. Identificar filas marcadas para eliminar
+                        filas_a_borrar = edit_grid[edit_grid["Eliminar"] == True]
+                        ids_a_borrar = filas_a_borrar["id"].tolist()
+                        
+                        # 2. Identificar filas que se mantienen (para revisar si fueron editadas)
+                        filas_a_mantener = edit_grid[edit_grid["Eliminar"] == False]
+                        
+                        cambios_hechos = 0
+                        borrados_hechos = 0
+                        
+                        with st.spinner("Procesando modificaciones en la base de datos..."):
+                            try:
+                                # --- FASE A: ELIMINACIÓN EN CASCADA ---
+                                if ids_a_borrar:
+                                    # Se eliminan los registros analíticos hijos primero para mantener la integridad relacional
+                                    conectar().table("productos_avance_valor").delete().in_("producto_id", ids_a_borrar).execute()
+                                    conectar().table("estatus_muebles").delete().in_("producto_id", ids_a_borrar).execute()
+                                    conectar().table("fechas_hitos_muebles").delete().in_("producto_id", ids_a_borrar).execute()
+                                    conectar().table("seguimiento").delete().in_("producto_id", ids_a_borrar).execute()
+                                    
+                                    # Se elimina la pieza padre
+                                    conectar().table("productos").delete().in_("id", ids_a_borrar).execute()
+                                    borrados_hechos += len(ids_a_borrar)
+                                
+                                # --- FASE B: ACTUALIZACIÓN DE PIEZAS EDITADAS ---
+                                for _, row in filas_a_mantener.iterrows():
+                                    p_id = int(row["id"])
+                                    orig_row = df_matriz_prod[df_matriz_prod["id"] == p_id].iloc[0]
+                                    
+                                    if (str(row["ubicacion"]).strip() != str(orig_row["ubicacion"]).strip() or
+                                        str(row["tipo"]).strip() != str(orig_row["tipo"]).strip() or
+                                        int(row["ctd"]) != int(orig_row["ctd"]) or
+                                        float(row["ml"]) != float(orig_row["ml"])):
+                                        
+                                        payload_up = {
+                                            "ubicacion": str(row["ubicacion"]).strip(),
+                                            "tipo": str(row["tipo"]).strip(),
+                                            "ctd": int(row["ctd"]),
+                                            "ml": float(row["ml"])
+                                        }
+                                        conectar().table("productos").update(payload_up).eq("id", p_id).execute()
+                                        cambios_hechos += 1
+                                
+                                # --- FASE C: RECALCULAR AVANCE DEL PROYECTO ---
+                                if borrados_hechos > 0 or cambios_hechos > 0:
+                                    from base_datos import sincronizar_avances_estructural
+                                    sincronizar_avances_estructural(info_p['codigo'])
+                                    
+                                    st.success(f"✅ Operación completada: {cambios_hechos} piezas modificadas, {borrados_hechos} piezas eliminadas.")
+                                    st.cache_data.clear()
+                                    st.rerun()
+                                else:
+                                    st.info("ℹ️ No se detectaron modificaciones en las celdas para guardar.")
+                            
+                            except Exception as e:
+                                st.error(f"❌ Ocurrió un error crítico durante la edición: {e}")
                 else:
                     st.info("📂 Este proyecto no cuenta con despieces de carpintería registrados aún.")
         else:
