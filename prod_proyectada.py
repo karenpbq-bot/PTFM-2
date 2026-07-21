@@ -50,6 +50,14 @@ def mostrar():
         
         df_p = pd.DataFrame(res_proy.data)
         
+        # Descarga de proyectos activos (Excluye cerrados)
+        res_proy = supabase.table("proyectos").select("*").neq("estatus", "Cerrado").execute()
+        if not res_proy.data:
+            st.info("📂 No existen proyectos activos para proyectar cargas.")
+            return
+        
+        df_p = pd.DataFrame(res_proy.data)
+        
         # Saneamiento de fechas con cascada de respaldo (Ejecución -> Fabricación -> Global)
         for col in ["p_fab_i", "p_fab_f", "f_ini", "f_fin", "p_fab_i_ejecucion", "p_fab_f_ejecucion"]:
             if col in df_p.columns:
@@ -57,19 +65,19 @@ def mostrar():
 
         df_p["total_tableros"] = pd.to_numeric(df_p.get("total_tableros", 0), errors='coerce').fillna(0).astype(int)
 
-        # Descarga de tablas secundarias existentes
-        res_productos = supabase.table("productos").select("id, proyecto_id, ml, ctd").execute()
+        # SE ROMPE EL LÍMITE DE 1000 REGISTROS DE SUPABASE CON .limit(15000)
+        res_productos = supabase.table("productos").select("id, proyecto_id, ml, ctd").limit(15000).execute()
         df_prods = pd.DataFrame(res_productos.data) if res_productos.data else pd.DataFrame(columns=['id', 'proyecto_id', 'ml', 'ctd'])
         df_prods['ml'] = pd.to_numeric(df_prods['ml'], errors='coerce').fillna(0.0)
         df_prods['ctd'] = pd.to_numeric(df_prods['ctd'], errors='coerce').fillna(1).astype(int)
 
-        res_estatus = supabase.table("estatus_muebles").select("producto_id, culminado, entregado").execute()
+        res_estatus = supabase.table("estatus_muebles").select("producto_id, culminado, entregado").limit(15000).execute()
         df_est = pd.DataFrame(res_estatus.data) if res_estatus.data else pd.DataFrame(columns=['producto_id', 'culminado', 'entregado'])
         
-        res_bit_taller = supabase.table("bitacoras_taller").select("id, proyecto").execute()
+        res_bit_taller = supabase.table("bitacoras_taller").select("id, proyecto").limit(15000).execute()
         df_bit_t = pd.DataFrame(res_bit_taller.data) if res_bit_taller.data else pd.DataFrame(columns=['id', 'proyecto'])
         
-        res_bit_lineas = supabase.table("bitacoras_lineas").select("bitacora_id, cant_final_pl_pzs, cantidad").execute()
+        res_bit_lineas = supabase.table("bitacoras_lineas").select("bitacora_id, cant_final_pl_pzs, cantidad").limit(15000).execute()
         df_bit_l = pd.DataFrame(res_bit_lineas.data) if res_bit_lineas.data else pd.DataFrame(columns=['bitacora_id', 'cant_final_pl_pzs', 'cantidad'])
 
         # Generar eje de tiempo (Lunes a Sábado, sin feriados)
