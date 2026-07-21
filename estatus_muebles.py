@@ -60,24 +60,37 @@ def mostrar(supervisor_id=None):
     res_db = supabase.table("estatus_muebles").select("*").in_("producto_id", prods_all['id'].tolist()).execute()
     df_estatus_db = pd.DataFrame(res_db.data) if res_db.data else pd.DataFrame(columns=['producto_id', 'en_proceso', 'culminado', 'entregado', 'observaciones'])
 
-    # --- C. CÁLCULO DE LAS 4 MÉTRICAS EN FILA ---
-    df_metricas = prods_all[['id']].copy()
+   # --- C. CÁLCULO DE LAS 5 MÉTRICAS EN FILA (INCLUYENDO ML) ---
+    # Extraemos también 'ml' para los cálculos de metraje
+    df_metricas = prods_all[['id', 'ml']].copy()
     df_metricas = df_metricas.merge(df_estatus_db, left_on='id', right_on='producto_id', how='left')
     df_metricas['en_proceso'] = df_metricas['en_proceso'].fillna(False).astype(bool)
     df_metricas['culminado'] = df_metricas['culminado'].fillna(False).astype(bool)
     df_metricas['entregado'] = df_metricas['entregado'].fillna(False).astype(bool)
+    df_metricas['ml'] = pd.to_numeric(df_metricas['ml'], errors='coerce').fillna(0.0)
 
+    # Conteo por unidades (muebles)
     total_muebles = len(df_metricas)
     cant_pendiente = len(df_metricas[(df_metricas['en_proceso'] == False) & (df_metricas['culminado'] == False) & (df_metricas['entregado'] == False)])
     cant_proceso = len(df_metricas[df_metricas['en_proceso'] == True])
     cant_culminado = len(df_metricas[df_metricas['culminado'] == True])
     cant_entregado = len(df_metricas[df_metricas['entregado'] == True])
 
-    m1, m2, m3, m4 = st.columns(4)
+    # Nuevo Cálculo: Porcentaje de Avance en Metros Lineales (ML)
+    ml_totales_proyecto = df_metricas['ml'].sum()
+    # Consideramos avanzado en ML cualquier mueble que esté Culminado o Entregado
+    df_avanzados_ml = df_metricas[(df_metricas['culminado'] == True) | (df_metricas['entregado'] == True)]
+    ml_logrados = df_avanzados_ml['ml'].sum()
+    
+    pct_avance_ml = (ml_logrados / ml_totales_proyecto * 100) if ml_totales_proyecto > 0 else 0.0
+
+    # Desplegamos 5 columnas en la interfaz superior
+    m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("⏳ Pend.", f"{((cant_pendiente)/total_muebles)*100:.0f}%")
     m2.metric("🪚 Proc.", f"{((cant_proceso)/total_muebles)*100:.0f}%")
     m3.metric("📦 Culm.", f"{((cant_culminado)/total_muebles)*100:.0f}%")
     m4.metric("✅ Entr.", f"{((cant_entregado)/total_muebles)*100:.0f}%")
+    m5.metric("📏 Avance ML", f"{pct_avance_ml:.1f}%")
     
     # --- D. GESTIÓN OFFLINE CON EXCEL ---
     with st.expander("⚙️ Importar / Exportar Excel"):
