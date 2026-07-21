@@ -236,60 +236,67 @@ def mostrar():
                             else:
                                 df_imp = pd.read_excel(archivo_despiece)
                             
-                            # Limpieza y normalización de espacios en encabezados
-                            df_imp.columns = df_imp.columns.str.strip()
+                            # Limpieza profunda de encabezados (remueve espacios y normaliza)
+                            df_imp.columns = df_imp.columns.astype(str).str.strip()
                             
-                            # Diccionario inteligente de acople de nomenclatura de ingeniería
+                            # Diccionario inteligente y flexible de acople de nomenclatura
                             mapeo_columnas = {
-                                'Ubicación': 'ubicacion', 'Ubicacion': 'ubicacion',
-                                'Tipo Mueble': 'tipo', 'Tipo': 'tipo', 'Tipo de Mueble': 'tipo',
-                                'ML': 'ml', 'Metros Lineales': 'ml'
+                                'Ubicación': 'ubicacion', 'Ubicacion': 'ubicacion', 'ubicacion': 'ubicacion', 'UBICACIÓN': 'ubicacion',
+                                'Tipo Mueble': 'tipo', 'Tipo': 'tipo', 'Tipo de Mueble': 'tipo', 'tipo': 'tipo', 'TIPO': 'tipo',
+                                'ML': 'ml', 'Metros Lineales': 'ml', 'ml': 'ml', 'metros lineales': 'ml',
+                                'Cantidad': 'ctd', 'cantidad': 'ctd', 'CANTIDAD': 'ctd', 'ctd': 'ctd'
                             }
                             df_imp = df_imp.rename(columns=mapeo_columnas)
                             
-                            # 2. Validación de columnas mandatorias
+                            # 2. Validación transparente de columnas obligatorias
                             columnas_necesarias = ['ubicacion', 'tipo', 'ml']
-                            if all(col in df_imp.columns for col in columnas_necesarias):
-                                # Descarte riguroso de registros vacíos en el archivo externo
+                            columnas_faltantes = [col for col in columnas_necesarias if col not in df_imp.columns]
+                            
+                            if columnas_faltantes:
+                                st.error(f"❌ Estructura de archivo incorrecta. Faltan las columnas obligatorias: **{', '.join(columnas_faltantes)}**.")
+                            else:
+                                # Descarte riguroso de registros vacíos
                                 df_imp = df_imp.dropna(subset=['ubicacion', 'tipo'])
                                 
-                                # Obtener el correlativo real exacto consultando Supabase
-                                res_c = conectar().table("productos").select("id", count="exact").eq("proyecto_id", st.session_state.id_p_sel).execute()
-                                conteo_inicial = res_c.count if res_c.count else 0
-                                
-                                lote_productos = []
-                                for idx, row in df_imp.iterrows():
-                                    conteo_inicial += 1
-                                    # Construcción de la etiqueta de rastreo única de la empresa
-                                    etiqueta_generada = f"{info_p['codigo']}-{str(conteo_inicial).zfill(4)}"
+                                if df_imp.empty:
+                                    st.warning("⚠️ El archivo cargado no contiene registros válidos.")
+                                else:
+                                    # Obtener el correlativo real exacto consultando Supabase
+                                    res_c = conectar().table("productos").select("id", count="exact").eq("proyecto_id", st.session_state.id_p_sel).execute()
+                                    conteo_inicial = res_c.count if res_c.count else 0
                                     
-                                    # Leer cantidad o setear 1 por defecto (bigint)
-                                    cantidad_pieza = int(row['Cantidad']) if 'Cantidad' in df_imp.columns else 1
-                                    # Sanitización estricta de float para double precision
-                                    metros_lineales = pd.to_numeric(row['ml'], errors='coerce')
-                                    if pd.isna(metros_lineales): metros_lineales = 0.0
+                                    lote_productos = []
+                                    for _, row in df_imp.iterrows():
+                                        conteo_inicial += 1
+                                        etiqueta_generada = f"{info_p['codigo']}-{str(conteo_inicial).zfill(4)}"
+                                        
+                                        cantidad_pieza = int(row['ctd']) if 'ctd' in df_imp.columns and pd.notna(row['ctd']) else 1
+                                        metros_lineales = pd.to_numeric(row['ml'], errors='coerce')
+                                        if pd.isna(metros_lineales): 
+                                            metros_lineales = 0.0
 
-                                    lote_productos.append({
-                                        "proyecto_id": int(st.session_state.id_p_sel),
-                                        "codigo_etiqueta": etiqueta_generada,
-                                        "ubicacion": str(row['ubicacion']).strip(),
-                                        "tipo": str(row['tipo']).strip(),
-                                        "ctd": cantidad_pieza,
-                                        "ml": float(metros_lineales)
-                                    })
-                                
-                                # 3. Escritura masiva optimizada (Batch Insert)
-                                if lote_productos:
-                                    conectar().table("productos").insert(lote_productos).execute()
-                                    st.success(f"🎉 ¡Planilla procesada con éxito! Se cargaron {len(lote_productos)} productos al proyecto de forma masiva.")
-                                    st.cache_data.clear()
-                                    st.rerun()
-                            else:
-                                st.error("❌ Estructura de columnas incorrecta. Asegúrese de que el archivo contenga las columnas: 'Ubicación', 'Tipo Mueble' y 'ML'.")
+                                        lote_productos.append({
+                                            "proyecto_id": int(st.session_state.id_p_sel),
+                                            "codigo_etiqueta": etiqueta_generada,
+                                            "ubicacion": str(row['ubicacion']).strip(),
+                                            "tipo": str(row['tipo']).strip(),
+                                            "ctd": cantidad_pieza,
+                                            "ml": float(metros_lineales)
+                                        })
+                                    
+                                    # 3. Escritura masiva en Supabase con retroalimentación explícita
+                                    if lote_productos:
+                                        res_insert = conectar().table("productos").insert(lote_productos).execute()
+                                        if res_insert.data:
+                                            st.success(f"🎉 ¡Planilla procesada con éxito! Se registraron físicamente **{len(lote_productos)}** productos en Supabase.")
+                                            st.cache_data.clear()
+                                            st.rerun()
+                                        else:
+                                            st.error("❌ La base de datos no confirmó la inserción de los registros.")
                         except Exception as e:
-                            st.error(f"Falla técnica al procesar el archivo de despiece: {e}")
+                            st.error(f"❌ Falla técnica crítica al procesar el archivo de despiece: {e}")
 
-                # Formulario para agregar producto manual (Se mantiene intacto para control unitario)
+                # Formulario para agregar producto manual (Control unitario)
                 with st.expander("➕ Agregar Producto Manualmente", expanded=False):
                     with st.form("form_producto_manual_reing", clear_on_submit=True):
                         c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
