@@ -465,7 +465,7 @@ def mostrar(supervisor_id=None):
     else:
         tab_listado, tab_alta_nueva, tab_config, tab_importacion_historica = st.tabs(["🗂️ Listado de Bitácoras", "➕ Nueva Bitácora", "⚙️ Configuración de Catálogos", "📥 Importación Histórica"])
         
-        with tab_listado:
+       with tab_listado:
             filtro = st.text_input("🔍 Filtro rápido de búsqueda:", placeholder="Escriba la OP o cliente...")
             try:
                 res_t = supabase.table("bitacoras_taller").select("*").execute()
@@ -479,13 +479,16 @@ def mostrar(supervisor_id=None):
             if not df_t.empty:
                 df_t = df_t.sort_values(by="fecha", ascending=False)
                 
-                # INYECCIÓN DE COLUMNA DE SELECCIÓN RÁPIDA (CHECKBOX)
+                # INYECCIÓN DE COLUMNAS DE SELECCIÓN Y BORRADO
                 df_t.insert(0, "EDITAR", False)
+                df_t.insert(1, "ELIMINAR", False)
                 
+                st.caption("💡 Para borrar bitácoras creadas por error, marque las casillas de la columna 🗑️ y presione el botón rojo al final.")
                 df_estados = st.data_editor(
-                    df_t[['EDITAR', 'id', 'fecha', 'n_orden', 'proyecto', 'cliente', 'tipo_mueble', 'estado']],
+                    df_t[['EDITAR', 'ELIMINAR', 'id', 'fecha', 'n_orden', 'proyecto', 'cliente', 'tipo_mueble', 'estado']],
                     column_config={
-                        "EDITAR": st.column_config.CheckboxColumn("✏️", help="Marque para abrir el formato inmediatamente", default=False),
+                        "EDITAR": st.column_config.CheckboxColumn("✏️ Abrir", help="Marque para abrir el formato inmediatamente", default=False),
+                        "ELIMINAR": st.column_config.CheckboxColumn("🗑️ Borrar", default=False),
                         "id": st.column_config.TextColumn("ID", disabled=True),
                         "fecha": st.column_config.TextColumn("FECHA", disabled=True),
                         "estado": st.column_config.SelectboxColumn("ESTADO", options=["Pendiente", "En Proceso", "Cerrada"], required=True)
@@ -493,18 +496,36 @@ def mostrar(supervisor_id=None):
                     hide_index=True, use_container_width=True, key="grid_estados_inicial"
                 )
                 
-                # CONTROLADOR DE TRIGER INMEDIATO (CAPTURA SI EL SUPERVISOR MARCÓ EL CASILLERO)
+                # CONTROLADOR DE TRIGER INMEDIATO (CAPTURA SI EL SUPERVISOR MARCÓ "EDITAR")
                 filas_editadas = df_estados[df_estados["EDITAR"] == True]
                 if not filas_editadas.empty:
                     id_seleccionado = int(filas_editadas.iloc[0]["id"])
                     st.session_state.id_bitacora_activa = id_seleccionado
                     st.rerun()
                 
-                if st.button("💾 Actualizar Estados Modificados"):
+                c_act, c_del = st.columns(2)
+                if c_act.button("💾 Actualizar Estados Modificados", type="primary", use_container_width=True):
                     for _, r_e in df_estados.iterrows():
                         supabase.table("bitacoras_taller").update({"estado": r_e['estado']}).eq("id", int(r_e['id'])).execute()
                     st.success("Estados guardados."); st.rerun()
                     
+                # MOTOR DE ELIMINACIÓN EN CASCADA
+                if c_del.button("🔥 Eliminar Bitácoras Seleccionadas", type="primary", use_container_width=True):
+                    filas_borrar = df_estados[df_estados["ELIMINAR"] == True]
+                    if not filas_borrar.empty:
+                        ids_borrar = filas_borrar['id'].tolist()
+                        try:
+                            # 1. Borramos las lineas hijas
+                            supabase.table("bitacoras_lineas").delete().in_("bitacora_id", ids_borrar).execute()
+                            # 2. Borramos la cabecera
+                            supabase.table("bitacoras_taller").delete().in_("id", ids_borrar).execute()
+                            st.success(f"Se eliminaron {len(ids_borrar)} bitácoras permanentemente.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error al eliminar: {e}")
+                    else:
+                        st.warning("Debe marcar al menos una bitácora en la columna 🗑️ para eliminarla.")
+                        
                 st.caption("---")
                 id_abrir = st.number_input("O digite el ID de Bitácora manualmente:", min_value=1, step=1)
                 if st.button("🔓 Abrir por ID Manual", type="secondary"):
@@ -512,6 +533,12 @@ def mostrar(supervisor_id=None):
                     st.rerun()
             else:
                 st.info("No hay bitácoras bajo este criterio.")
+
+        # MANEJO DE ESTADO DE ÉXITO PERSISTENTE
+        if st.session_state.get('bitacora_creada_exito'):
+            st.success(st.session_state.bitacora_creada_exito)
+            # Limpiamos el mensaje después de mostrarlo para que no se quede para siempre
+            st.session_state.bitacora_creada_exito = None
 
         with tab_alta_nueva:
             with st.form("form_alta_inicial"):
@@ -525,12 +552,29 @@ def mostrar(supervisor_id=None):
                 sp_n = st.text_input("SUP. DE PRODUCCION:", value="DOMÉNICO MORÓN")
                 
                 if st.form_submit_button("🚀 Inicializar Bitácora", type="primary"):
-                    res_ins = supabase.table("bitacoras_taller").insert({
-                        "fecha": f_n.isoformat(), "n_orden": o_n, "tipo_mueble": m_n,
-                        "motivo": mt_n, "cliente": cl_n, "proyecto": pr_n,
-                        "solicitado_por": sl_n, "sup_production": sp_n, "estado": "Pendiente"
-                    }).execute()
-                    st.success("Bitácora creada con éxito."); st.rerun()
+                    # 1. Validación de campos críticos vacíos
+                    if not str(o_n).strip():
+                        st.error("⚠️ El Nº DE ORDEN es obligatorio para crear una bitácora.")
+                    else:
+                        n_orden_limpio = str(o_n).strip()
+                        # 2. Verificación de Duplicados en Base de Datos
+                        res_check = supabase.table("bitacoras_taller").select("id").eq("n_orden", n_orden_limpio).execute()
+                        
+                        if res_check.data and len(res_check.data) > 0:
+                            st.error(f"❌ ¡ATENCIÓN! Ya existe una bitácora registrada con el Nº de Orden '{n_orden_limpio}'. No se permiten duplicados.")
+                        else:
+                            try:
+                                res_ins = supabase.table("bitacoras_taller").insert({
+                                    "fecha": f_n.isoformat(), "n_orden": n_orden_limpio, "tipo_mueble": m_n,
+                                    "motivo": mt_n, "cliente": cl_n, "proyecto": pr_n,
+                                    "solicitado_por": sl_n, "sup_production": sp_n, "estado": "Pendiente"
+                                }).execute()
+                                
+                                # 3. Guardar el mensaje en sesión antes del rerun para que no desaparezca
+                                st.session_state.bitacora_creada_exito = f"✅ Bitácora '{n_orden_limpio}' creada exitosamente."
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error crítico al conectar con la base de datos: {e}")
 
         # ADICIÓN DEL CUARTO MAESTRO DINÁMICO EN LA PESTAÑA DE GESTIÓN CORPORATIVA
         with tab_config:
