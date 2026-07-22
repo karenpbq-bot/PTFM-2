@@ -218,8 +218,7 @@ def mostrar():
     # =========================================================
     with tab_matriz:
         if st.session_state.get('id_p_sel'):
-            from base_datos import conectar, sincronizar_avances_estructural
-            
+                        
             res_info = conectar().table("proyectos").select("*").eq("id", st.session_state.id_p_sel).execute()
             if res_info.data:
                 info_p = res_info.data[0]
