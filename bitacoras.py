@@ -260,7 +260,6 @@ def mostrar(supervisor_id=None):
                             "cantidad": float(r['cantidad']) if r['cantidad'] else 0.0,
                             "descripcion": str(r['descripcion']).strip(),
                             "tipo_canto": str(r['tipo_canto']).strip() if 'tipo_canto' in r and r['tipo_canto'] else None,
-                            # PERSISTENCIA COMPLETA DEL CAMPO TIPO MAESTRO EN SUPABASE
                             "tipo_tablero_retazo": str(r['tipo_tablero_retazo']).strip() if 'tipo_tablero_retazo' in r and r['tipo_tablero_retazo'] else None,
                             "fecha_inicio": normalizar_fecha_iso(r['F.I.'] if 'F.I.' in r else r.get('fecha_inicio')),
                             "hora_inicio": str(r['H.I.'] if 'H.I.' in r else r.get('hora_inicio')).strip(),
@@ -293,13 +292,11 @@ def mostrar(supervisor_id=None):
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=8.5, leading=11.5)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=11.5)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
-            # TITULOS DOBLES Y CENTRADOS EXCLUSIVAMENTE PARA EL PDF IMPRESO
             style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=17, leading=20, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
             story.append(Spacer(1, 3))
             
-            # Cabecera Sección 1
             data_s1 = [
                 [Paragraph("<b>FECHA:</b>", style_normal), Paragraph(u_fecha.strftime("%d/%m/%Y"), style_normal), Paragraph("<b>Nº ORDEN:</b>", style_normal), Paragraph(u_n_orden, style_normal)],
                 [Paragraph("<b>TIPO DE MUEBLE:</b>", style_normal), Paragraph(u_tipo_mueble, style_normal), Paragraph("<b>MOTIVO:</b>", style_normal), Paragraph(u_motivo, style_normal)],
@@ -352,14 +349,12 @@ def mostrar(supervisor_id=None):
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
                     ('TOPPADDING', (0,0), (-1,-2), 4.5), 
                     ('BOTTOMPADDING', (0,0), (-1,-2), 4.5),
-                    # INCREMENTO DEL 50% EN EL ESPACIO DE FIRMAS INTEGRADO
                     ('TOPPADDING', (0,-1), (-1,-1), 9.0), 
                     ('BOTTOMPADDING', (0,-1), (-1,-1), 9.0)
                 ]))
                 story.append(t_block)
                 story.append(Spacer(1, 3))
 
-            # GEOMETRÍA CALIBRADA A 570 PUNTOS CON INCLUSIÓN DE COLUMNA TIPO Y COMPRESIÓN DE OBS.
             inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, [30, 217, 55, 35, 35, 35, 35, 60, 68])
             inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, [30, 217, 55, 35, 35, 35, 35, 60, 68])
             
@@ -383,7 +378,6 @@ def mostrar(supervisor_id=None):
                 rows_canteo.append(fila_c)
             rows_canteo.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_cant_text}", style_normal), "", "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
             
-            # DISTRIBUCIÓN DE ANCHOS CANTEO CORREGIDO (IDÉNTICO A CORTE SECC. Y ESCUAD.):
             t_cant = Table(rows_canteo, colWidths=[30, 217, 55, 35, 35, 35, 35, 60, 68])
             t_cant.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
@@ -438,7 +432,6 @@ def mostrar(supervisor_id=None):
             story.append(t_sal)
             story.append(Spacer(1, 2))
 
-            # REGISTRO UNIFICADO DE OBSERVACIONES (FILA ÚNICA SIN SOMBREADO Y CON +35% DE ESPACIO DE ALTURA)
             texto_obs = u_log_observaciones.strip() if u_log_observaciones.strip() else "&nbsp;"
             
             data_obs_final = [
@@ -449,8 +442,8 @@ def mostrar(supervisor_id=None):
             t_obs_final.setStyle(TableStyle([
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('TOPPADDING', (0,0), (-1,-1), 6.0),      # Incrementado para dar más margen superior
-                ('BOTTOMPADDING', (0,0), (-1,-1), 14.0)   # Incrementado un ~35% más para la altura interna útil
+                ('TOPPADDING', (0,0), (-1,-1), 6.0),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 14.0)
             ]))
             story.append(t_obs_final)
             
@@ -465,7 +458,7 @@ def mostrar(supervisor_id=None):
     else:
         tab_listado, tab_alta_nueva, tab_config, tab_importacion_historica = st.tabs(["🗂️ Listado de Bitácoras", "➕ Nueva Bitácora", "⚙️ Configuración de Catálogos", "📥 Importación Histórica"])
         
-       with tab_listado:
+        with tab_listado:
             filtro = st.text_input("🔍 Filtro rápido de búsqueda:", placeholder="Escriba la OP o cliente...")
             try:
                 res_t = supabase.table("bitacoras_taller").select("*").execute()
@@ -496,7 +489,7 @@ def mostrar(supervisor_id=None):
                     hide_index=True, use_container_width=True, key="grid_estados_inicial"
                 )
                 
-                # CONTROLADOR DE TRIGER INMEDIATO (CAPTURA SI EL SUPERVISOR MARCÓ "EDITAR")
+                # CONTROLADOR DE TRIGER INMEDIATO
                 filas_editadas = df_estados[df_estados["EDITAR"] == True]
                 if not filas_editadas.empty:
                     id_seleccionado = int(filas_editadas.iloc[0]["id"])
@@ -515,9 +508,7 @@ def mostrar(supervisor_id=None):
                     if not filas_borrar.empty:
                         ids_borrar = filas_borrar['id'].tolist()
                         try:
-                            # 1. Borramos las lineas hijas
                             supabase.table("bitacoras_lineas").delete().in_("bitacora_id", ids_borrar).execute()
-                            # 2. Borramos la cabecera
                             supabase.table("bitacoras_taller").delete().in_("id", ids_borrar).execute()
                             st.success(f"Se eliminaron {len(ids_borrar)} bitácoras permanentemente.")
                             st.rerun()
@@ -537,7 +528,6 @@ def mostrar(supervisor_id=None):
         # MANEJO DE ESTADO DE ÉXITO PERSISTENTE
         if st.session_state.get('bitacora_creada_exito'):
             st.success(st.session_state.bitacora_creada_exito)
-            # Limpiamos el mensaje después de mostrarlo para que no se quede para siempre
             st.session_state.bitacora_creada_exito = None
 
         with tab_alta_nueva:
@@ -552,16 +542,14 @@ def mostrar(supervisor_id=None):
                 sp_n = st.text_input("SUP. DE PRODUCCION:", value="DOMÉNICO MORÓN")
                 
                 if st.form_submit_button("🚀 Inicializar Bitácora", type="primary"):
-                    # 1. Validación de campos críticos vacíos
                     if not str(o_n).strip():
                         st.error("⚠️ El Nº DE ORDEN es obligatorio para crear una bitácora.")
                     else:
                         n_orden_limpio = str(o_n).strip()
-                        # 2. Verificación de Duplicados en Base de Datos
                         res_check = supabase.table("bitacoras_taller").select("id").eq("n_orden", n_orden_limpio).execute()
                         
                         if res_check.data and len(res_check.data) > 0:
-                            st.error(f"❌ ¡ATENCIÓN! Ya existe una bitácora registrada con el Nº de Orden '{n_orden_limpio}'. No se permiten duplicados.")
+                            st.error(f"❌ ¡ATENCIÓN! Ya existe una bitácora con el Nº de Orden '{n_orden_limpio}'. No se permiten duplicados.")
                         else:
                             try:
                                 res_ins = supabase.table("bitacoras_taller").insert({
@@ -570,11 +558,10 @@ def mostrar(supervisor_id=None):
                                     "solicitado_por": sl_n, "sup_production": sp_n, "estado": "Pendiente"
                                 }).execute()
                                 
-                                # 3. Guardar el mensaje en sesión antes del rerun para que no desaparezca
                                 st.session_state.bitacora_creada_exito = f"✅ Bitácora '{n_orden_limpio}' creada exitosamente."
                                 st.rerun()
                             except Exception as e:
-                                st.error(f"Error crítico al conectar con la base de datos: {e}")
+                                st.error(f"Error al conectar con la base de datos: {e}")
 
         # ADICIÓN DEL CUARTO MAESTRO DINÁMICO EN LA PESTAÑA DE GESTIÓN CORPORATIVA
         with tab_config:
@@ -592,19 +579,6 @@ def mostrar(supervisor_id=None):
                 try:
                     df_ops = pd.DataFrame(supabase.table("cfg_operarios").select("*").order("nombre").execute().data)
                     st.data_editor(df_ops, column_config={"id": None}, hide_index=True, use_container_width=True)
-                except: st.info("Catálogo vacío.")
-                
-            elif sel_maestro == "Materiales (Descripciones)":
-                st.markdown("#### 🪵 Catálogo Maestro de Melamina y Tableros")
-                with st.form("form_mat"):
-                    nuevo_mat = st.text_input("Detalle/Nombre comercial del Tablero:")
-                    if st.form_submit_button("➕ Añadir Material"):
-                        if nuevo_mat.strip():
-                            supabase.table("cfg_descripciones").insert({"detalle": nuevo_mat.strip().upper()}).execute()
-                            st.success("Material añadido."); st.rerun()
-                try:
-                    df_mats = pd.DataFrame(supabase.table("cfg_descripciones").select("*").order("detalle").execute().data)
-                    st.data_editor(df_mats, column_config={"id": None}, hide_index=True, use_container_width=True)
                 except: st.info("Catálogo vacío.")
                 
             elif sel_maestro == "Materiales (Descripciones)":
@@ -627,42 +601,31 @@ def mostrar(supervisor_id=None):
                 
                 if archivo_subido is not None:
                     try:
-                        # Leer el archivo Excel usando pandas
                         df_importado = pd.read_excel(archivo_subido)
                         
-                        # Validar si tiene la columna requerida
                         if "Material" in df_importado.columns:
-                            # Limpiar filas vacías en la columna 'Material'
                             df_materiales = df_importado[["Material"]].dropna()
-                            # Normalizar: eliminar espacios en blanco y convertir a mayúsculas
                             df_materiales["Material"] = df_materiales["Material"].astype(str).str.strip().str.upper()
-                            # Eliminar duplicados dentro del mismo archivo para optimizar la carga
                             lista_materiales_unicos = df_materiales["Material"].unique().tolist()
-                            
-                            # Filtrar registros vacíos
                             lista_materiales_unicos = [m for m in lista_materiales_unicos if m]
                             
                             st.write(f"📊 Registros válidos encontrados en el archivo: **{len(lista_materiales_unicos)}**")
                             
                             if st.button("🚀 Confirmar e Importar a Base de Datos", type="primary", key="btn_confirmar_importacion"):
                                 with st.spinner("Procesando importación..."):
-                                    # 1. Obtener materiales ya existentes para evitar duplicar claves en Supabase
                                     res_existentes = supabase.table("cfg_descripciones").select("detalle").execute()
                                     materiales_existentes = {row["detalle"].strip().upper() for row in res_existentes.data} if res_existentes.data else set()
                                     
-                                    # 2. Filtrar únicamente los nuevos materiales
                                     nuevos_materiales = [
                                         {"detalle": mat} for mat in lista_materiales_unicos 
                                         if mat not in materiales_existentes
                                     ]
                                     
                                     if nuevos_materiales:
-                                        # Inserción por lotes en Supabase
                                         supabase.table("cfg_descripciones").insert(nuevos_materiales).execute()
                                         st.success(f"🎉 Se han importado con éxito **{len(nuevos_materiales)}** nuevos materiales.")
                                     else:
                                         st.warning("⚠️ Todos los materiales del archivo ya existen en el catálogo actual.")
-                                    
                                     st.rerun()
                         else:
                             st.error("❌ Estructura inválida. El documento debe contener una columna llamada exactamente **'Material'**.")
@@ -670,7 +633,6 @@ def mostrar(supervisor_id=None):
                         st.error(f"❌ Error al procesar el archivo: {e}")
                 # ----------------------------------------------------
                 
-                # Visualización y edición de datos del catálogo
                 try:
                     df_mats = pd.DataFrame(supabase.table("cfg_descripciones").select("*").order("detalle").execute().data)
                     st.data_editor(df_mats, column_config={"id": None}, hide_index=True, use_container_width=True)
@@ -691,14 +653,11 @@ def mostrar(supervisor_id=None):
                     df = pd.read_excel(archivo_historico)
                     df.columns = df.columns.str.strip()
 
-                    # Vista previa interactiva de los datos antes de migrar
                     st.markdown("<b>🔍 Vista previa de los datos a importar:</b>", unsafe_allow_html=True)
                     st.dataframe(df.head(10), use_container_width=True)
 
                     if st.button("🚀 Migrar Registros de Excel", type="primary"):
                         with st.spinner("Procesando y sincronizando con Supabase..."):
-                            
-                            # 1. Obtener OPs existentes en el taller para mapear IDs
                             res_taller = supabase.table("bitacoras_taller").select("id, n_orden").execute()
                             dict_ops = {str(r["n_orden"]).strip(): int(r["id"]) for r in res_taller.data} if res_taller.data else {}
                             
@@ -714,10 +673,8 @@ def mostrar(supervisor_id=None):
                                 if not n_orden or n_orden == 'nan': 
                                     continue
 
-                                # 2. Si la OP no existe en bitacoras_taller, la creamos automáticamente
                                 if n_orden not in dict_ops:
                                     fecha_op = str(row.get('fecha_inicio')) if pd.notna(row.get('fecha_inicio')) else date.today().isoformat()
-                                    # Limpiar formato de fecha si viene con hora o basura
                                     fecha_op = fecha_op.split("T")[0] if "T" in fecha_op else fecha_op[:10]
                                     
                                     nueva_op_res = supabase.table("bitacoras_taller").insert({
@@ -733,7 +690,6 @@ def mostrar(supervisor_id=None):
                                         dict_ops[n_orden] = new_id
                                         oks_creadas += 1
 
-                                # Funciones auxiliares de limpieza segura de tipos de datos
                                 def get_num(col):
                                     val = row.get(col)
                                     if pd.isna(val) or str(val).strip() in ['-', '', 'nan', 'None']:
@@ -756,7 +712,6 @@ def mostrar(supervisor_id=None):
                                     s = str(val).strip()
                                     return s.split("T")[0] if "T" in s else s[:10]
 
-                                # 3. Construir el registro detallado para bitacoras_lineas
                                 reg = {
                                     "bitacora_id": dict_ops[n_orden],
                                     "proceso_bloque": get_str('proceso_bloque').upper() if get_str('proceso_bloque') else "SECCIONADORA",
@@ -769,9 +724,7 @@ def mostrar(supervisor_id=None):
                                 }
                                 registros_lineas.append(reg)
                             
-                            # 4. Inserción masiva optimizada por bloques en Supabase
                             if registros_lineas:
-                                # Insertar en lotes de 100 para evitar saturar la API
                                 tam_lote = 100
                                 for i in range(0, len(registros_lineas), tam_lote):
                                     lote = registros_lineas[i:i + tam_lote]
