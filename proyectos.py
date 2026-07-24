@@ -184,34 +184,65 @@ def mostrar():
     # =========================================================
     with tab_registro:
         st.subheader("🆕 Alta de Proyecto Nuevo")
-        st.write("Complete la información comercial base requerida para aperturar el expediente operativo.")
+        st.write("Complete la información base para aperturar el expediente operativo. Los campos pueden quedar vacíos y completarse luego.")
 
-        with st.form("form_registro_minimo_proyecto", clear_on_submit=True):
-            with st.container(border=True):
-                st.markdown("#### 🔹 Datos de Carácter Obligatorio")
-                reg_nombre = st.text_input("Nombre del Proyecto:", placeholder="Ej: Fabricación de Muebles de Cocina - Edificio Los Sauces")
-                reg_cliente = st.text_input("Cliente / Razón Social o Propietario:", placeholder="Ej: Inmobiliaria San Jerónimo S.A.C.")
-                reg_partida = st.text_input("Partida Presupuestal / Nro de Contrato:", placeholder="Ej: PART-2026-99A")
+        with st.form("form_registro_integral_proyecto", clear_on_submit=True):
+            st.markdown("#### 🔹 Datos de Carácter Obligatorio")
+            c1, c2 = st.columns(2)
+            reg_nombre = c1.text_input("Nombre del Proyecto (*):", placeholder="Ej: Fabricación Muebles - Edificio Los Sauces")
+            reg_cliente = c2.text_input("Cliente / Razón Social (*):", placeholder="Ej: Inmobiliaria San Jerónimo S.A.C.")
             
-            st.info("💡 Los campos técnicos como Código, Responsable, Tableros y Fechas Globales se inicializarán automáticamente vacíos.")
+            st.markdown("#### 🔹 Datos Técnicos y Operativos (Opcionales)")
+            c3, c4, c5 = st.columns(3)
+            reg_codigo = c3.text_input("Código de Proyecto:", placeholder="Ej: 260626-05")
+            reg_partida = c4.text_input("Partida / Contrato:", placeholder="Ej: PART-2026-99A")
+            reg_responsable = c5.selectbox("Responsable / Supervisor:", options=lista_responsables_opciones, index=0)
+            
+            c6, c7, c8 = st.columns(3)
+            reg_tableros = c6.number_input("Nro. de Tableros:", min_value=0, value=0, step=1)
+            reg_f_ini = c7.date_input("Fecha Inicio Global:", value=date.today(), format="DD/MM/YYYY")
+            reg_f_fin = c8.date_input("Fecha Término Global:", value=date.today() + timedelta(days=30), format="DD/MM/YYYY")
 
-            if st.form_submit_button("🚀 INICIALIZAR PROYECTO EN EL SISTEMA", type="primary", use_container_width=True):
-                if not reg_nombre or not reg_cliente or not reg_partida:
-                    st.warning("⚠️ Para aperturar el proyecto debe indicar obligatoriamente el Nombre, Cliente y la Partida.")
+            st.info("💡 Todo lo que deje en blanco o con valores por defecto podrá ser editado directamente en la 'Matriz de Proyectos'.")
+
+            if st.form_submit_button("🚀 REGISTRAR PROYECTO EN EL SISTEMA", type="primary", use_container_width=True):
+                if not reg_nombre.strip() or not reg_cliente.strip():
+                    st.warning("⚠️ Para aperturar el proyecto debe indicar obligatoriamente el Nombre y el Cliente.")
                 else:
                     try:
-                        # ALINEACIÓN SUPABASE: Corrección de la columna física a 'estatus'
+                        # 1. Procesamiento de valores opcionales
+                        codigo_final = reg_codigo.strip() if reg_codigo.strip() else f"TEMP-{datetime.now().strftime('%M%S')}"
+                        partida_final = reg_partida.strip() if reg_partida.strip() else "-"
+                        sup_id = dict_sups.get(reg_responsable, None)
+                        
+                        # 2. Construcción del Payload seguro
                         payload_nuevo = {
-                            "proyecto_text": reg_nombre.strip(), "cliente": reg_cliente.strip(), "partida": reg_partida.strip(),
-                            "codigo": f"TEMP-{datetime.now().strftime('%M%S')}", "estatus": "En Cotización", "total_tableros": 0, "avance": 0.0,
-                            "f_ini": date.today().isoformat(), "f_fin": (date.today() + timedelta(days=30)).isoformat()
+                            "codigo": codigo_final,
+                            "proyecto_text": reg_nombre.strip(), 
+                            "cliente": reg_cliente.strip(), 
+                            "partida": partida_final,
+                            "estatus": "En Cotización", 
+                            "total_tableros": int(reg_tableros), 
+                            "avance": 0.0,
+                            "f_ini": reg_f_ini.isoformat() if reg_f_ini else None, 
+                            "f_fin": reg_f_fin.isoformat() if reg_f_fin else None
                         }
-                        conectar().table("proyectos").insert(payload_nuevo).execute()
-                        st.success(f"🎉 ¡Proyecto '{reg_nombre}' creado con éxito! Regrese a la primera pestaña para completar sus datos.")
-                        st.cache_data.clear()
-                        st.rerun()
+                        
+                        # Solo inyectamos supervisor_id si se seleccionó uno válido para evitar errores de Foreign Key en Supabase
+                        if sup_id is not None:
+                            payload_nuevo["supervisor_id"] = sup_id
+
+                        # 3. Inserción en Base de Datos
+                        res = conectar().table("proyectos").insert(payload_nuevo).execute()
+                        
+                        if res.data:
+                            st.success(f"🎉 ¡Proyecto '{reg_nombre}' creado con éxito! Regrese a la Matriz para visualizarlo.")
+                            st.cache_data.clear()
+                            st.rerun()
+                        else:
+                            st.error("❌ La base de datos no devolvió confirmación de la inserción.")
                     except Exception as e:
-                        st.error(f"Error de consistencia en Supabase: {e}")
+                        st.error(f"❌ Error de consistencia al registrar en Supabase: {e}")
 
     # =========================================================
     # PESTAÑA 3: MATRIZ DE PRODUCTOS (DESPIECE VINCULADO / IMPORTACIÓN MASIVA)
