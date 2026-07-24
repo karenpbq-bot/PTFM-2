@@ -38,7 +38,7 @@ def mostrar():
     except:
         df_drive_optim = pd.DataFrame()
 
-    # =========================================================
+   # =========================================================
     # 2. ORIGEN B: SUPABASE Y CONSOLIDACIÓN DE DATOS (Real)
     # =========================================================
     try:
@@ -54,6 +54,8 @@ def mostrar():
         for col in ["p_fab_i", "p_fab_f", "f_ini", "f_fin", "p_fab_i_ejecucion", "p_fab_f_ejecucion"]:
             if col in df_p.columns:
                 df_p[col] = pd.to_datetime(df_p[col], errors='coerce').dt.date
+                # LÍNEA CLAVE AÑADIDA: Convertimos los NaT (Not a Time) en nulos reales (None)
+                df_p[col] = df_p[col].apply(lambda x: None if pd.isna(x) else x)
 
         df_p["total_tableros"] = pd.to_numeric(df_p.get("total_tableros", 0), errors='coerce').fillna(0).astype(int)
 
