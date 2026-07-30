@@ -616,60 +616,88 @@ def mostrar(supervisor_id=None):
             elif sel_maestro == "Materiales (Descripciones)":
                 st.markdown("#### 🪵 Catálogo Maestro de Melamina y Tableros")
                 
-                # Formulario para registro manual (individual)
+                # Formulario para registro manual (individual) CON CÓDIGO
                 with st.form("form_mat"):
-                    nuevo_mat = st.text_input("Detalle/Nombre comercial del Tablero:")
+                    c_form1, c_form2 = st.columns([1, 3])
+                    nuevo_codigo = c_form1.text_input("Código (Ej. 1BLA):")
+                    nuevo_mat = c_form2.text_input("Detalle/Nombre comercial del Tablero:")
+                    
                     if st.form_submit_button("➕ Añadir Material"):
                         if nuevo_mat.strip():
-                            supabase.table("cfg_descripciones").insert({"detalle": nuevo_mat.strip().upper()}).execute()
-                            st.success("Material añadido."); st.rerun()
+                            # Se inserta tanto el detalle como el código en Supabase
+                            supabase.table("cfg_descripciones").insert({
+                                "detalle": nuevo_mat.strip().upper(),
+                                "codigo": nuevo_codigo.strip().upper() if nuevo_codigo.strip() else None
+                            }).execute()
+                            st.success("Material añadido con éxito."); st.rerun()
+                        else:
+                            st.warning("El nombre/detalle del material es obligatorio.")
                 
                 # --- NUEVA SECCIÓN: IMPORTACIÓN MASIVA DESDE EXCEL ---
                 st.markdown("---")
                 st.markdown("##### 📥 Importación Masiva desde Excel")
-                st.info("El archivo debe ser un Excel (.xlsx) y contener obligatoriamente la columna **'Material'**.")
+                st.info("El archivo debe ser un Excel (.xlsx) y puede contener las columnas **'Codigo'** y **'Material'**.")
                 
                 archivo_subido = st.file_uploader("Seleccione el archivo Excel de colores/tableros:", type=["xlsx", "xls"], key="uploader_materiales")
                 
                 if archivo_subido is not None:
                     try:
                         df_importado = pd.read_excel(archivo_subido)
+                        # Normalizar nombres de columnas a mayúsculas para evitar errores tipográficos
+                        df_importado.columns = [str(c).strip().upper() for c in df_importado.columns]
                         
-                        if "Material" in df_importado.columns:
-                            df_materiales = df_importado[["Material"]].dropna()
-                            df_materiales["Material"] = df_materiales["Material"].astype(str).str.strip().str.upper()
-                            lista_materiales_unicos = df_materiales["Material"].unique().tolist()
-                            lista_materiales_unicos = [m for m in lista_materiales_unicos if m]
+                        if "MATERIAL" in df_importado.columns:
+                            # Aseguramos que la columna CODIGO exista, si no la creamos vacía
+                            if "CODIGO" not in df_importado.columns:
+                                df_importado["CODIGO"] = ""
+                                
+                            df_materiales = df_importado[["CODIGO", "MATERIAL"]].dropna(subset=["MATERIAL"])
+                            df_materiales["MATERIAL"] = df_materiales["MATERIAL"].astype(str).str.strip().str.upper()
+                            df_materiales["CODIGO"] = df_materiales["CODIGO"].fillna("").astype(str).str.strip().str.upper()
                             
-                            st.write(f"📊 Registros válidos encontrados en el archivo: **{len(lista_materiales_unicos)}**")
+                            # Eliminamos duplicados basados en el nombre del material para la vista previa
+                            df_unicos = df_materiales.drop_duplicates(subset=["MATERIAL"])
+                            
+                            st.write(f"📊 Registros válidos encontrados en el archivo: **{len(df_unicos)}**")
                             
                             if st.button("🚀 Confirmar e Importar a Base de Datos", type="primary", key="btn_confirmar_importacion"):
                                 with st.spinner("Procesando importación..."):
                                     res_existentes = supabase.table("cfg_descripciones").select("detalle").execute()
                                     materiales_existentes = {row["detalle"].strip().upper() for row in res_existentes.data} if res_existentes.data else set()
                                     
-                                    nuevos_materiales = [
-                                        {"detalle": mat} for mat in lista_materiales_unicos 
-                                        if mat not in materiales_existentes
-                                    ]
+                                    nuevos_materiales = []
+                                    for _, row in df_unicos.iterrows():
+                                        mat_nombre = row["MATERIAL"]
+                                        if mat_nombre and mat_nombre not in materiales_existentes:
+                                            codigo_val = row["CODIGO"] if row["CODIGO"] else None
+                                            nuevos_materiales.append({"detalle": mat_nombre, "codigo": codigo_val})
+                                            # Añadimos al set local para evitar duplicados dentro del mismo lote
+                                            materiales_existentes.add(mat_nombre) 
                                     
                                     if nuevos_materiales:
                                         supabase.table("cfg_descripciones").insert(nuevos_materiales).execute()
-                                        st.success(f"🎉 Se han importado con éxito **{len(nuevos_materiales)}** nuevos materiales.")
+                                        st.success(f"🎉 Se han importado con éxito **{len(nuevos_materiales)}** nuevos materiales con sus códigos.")
                                     else:
                                         st.warning("⚠️ Todos los materiales del archivo ya existen en el catálogo actual.")
                                     st.rerun()
                         else:
-                            st.error("❌ Estructura inválida. El documento debe contener una columna llamada exactamente **'Material'**.")
+                            st.error("❌ Estructura inválida. El documento debe contener al menos una columna llamada **'Material'**.")
                     except Exception as e:
                         st.error(f"❌ Error al procesar el archivo: {e}")
                 # ----------------------------------------------------
                 
                 try:
-                    df_mats = pd.DataFrame(supabase.table("cfg_descripciones").select("*").order("detalle").execute().data)
-                    st.data_editor(df_mats, column_config={"id": None}, hide_index=True, use_container_width=True)
-                except: 
-                    st.info("Catálogo vacío.")
+                    df_mats = pd.DataFrame(supabase.table("cfg_descripciones").select("id, codigo, detalle").order("detalle").execute().data)
+                    # Reordenamos columnas para que ID no se vea, y el Código aparezca antes del Detalle
+                    if not df_mats.empty:
+                        config_grid = {
+                            "id": None,
+                            "codigo": st.column_config.TextColumn("CÓDIGO", width="small"),
+                            "detalle": st.column_config.TextColumn("NOMBRE DEL MATERIAL", width="large")
+                        }
+                        st.data_editor(df_mats, column_config=config_grid, hide_index=True, use_container_width=True)
+                except Exception as e_grid: 
+                    st.info("Catálogo vacío o error al cargar.")
 
         # =========================================================================
         # IMPORTACIÓN DIRECTA (Excel .xlsx) - OPTIMIZADA Y ROBUSTA
