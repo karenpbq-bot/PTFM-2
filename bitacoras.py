@@ -157,9 +157,14 @@ def mostrar(supervisor_id=None):
             op_val2 = cx3.selectbox("👥 RESPONSABLE 2:", options=lista_ops, index=idx_op2, key=f"op_val2_{bloque_id}")
             
             if btn_ins:
+                # Insertamos una línea vacía directamente en Supabase para que al recargar aparezca la nueva fila habilitada
                 supabase.table("bitacoras_lineas").insert({
-                    "bitacora_id": id_act, "proceso_bloque": bloque_id, "cantidad": 0.0, 
-                    "nombre_firma_operario": op_val1, "nombre_firma_operario2": op_val2
+                    "bitacora_id": id_act, 
+                    "proceso_bloque": bloque_id, 
+                    "cantidad": 0.0, 
+                    "descripcion": "",
+                    "nombre_firma_operario": op_val1, 
+                    "nombre_firma_operario2": op_val2
                 }).execute()
                 st.rerun()
             
@@ -502,18 +507,28 @@ def mostrar(supervisor_id=None):
                         supabase.table("bitacoras_taller").update({"estado": r_e['estado']}).eq("id", int(r_e['id'])).execute()
                     st.success("Estados guardados."); st.rerun()
                     
-                # MOTOR DE ELIMINACIÓN EN CASCADA
+                # MOTOR DE ELIMINACIÓN EN CASCADA ROBUSTO Y PERSISTENTE
                 if c_del.button("🔥 Eliminar Bitácoras Seleccionadas", type="primary", use_container_width=True):
                     filas_borrar = df_estados[df_estados["ELIMINAR"] == True]
                     if not filas_borrar.empty:
-                        ids_borrar = filas_borrar['id'].tolist()
+                        # Convertimos estrictamente los IDs a enteros para evitar errores de tipo en Supabase
+                        ids_borrar = [int(x) for x in filas_borrar['id'].tolist()]
                         try:
-                            supabase.table("bitacoras_lineas").delete().in_("bitacora_id", ids_borrar).execute()
-                            supabase.table("bitacoras_taller").delete().in_("id", ids_borrar).execute()
-                            st.success(f"Se eliminaron {len(ids_borrar)} bitácoras permanentemente.")
+                            borradas_exito = 0
+                            for id_b in ids_borrar:
+                                # 1. Borramos primero todas las líneas hijas asociadas a esta bitácora
+                                supabase.table("bitacoras_lineas").delete().eq("bitacora_id", id_b).execute()
+                                # 2. Borramos la cabecera principal de la bitácora
+                                supabase.table("bitacoras_taller").delete().eq("id", id_b).execute()
+                                borradas_exito += 1
+                                
+                            st.success(f"Se eliminaron {borradas_exito} bitácoras permanentemente de la base de datos.")
+                            # Limpiamos caché de sesión si se borró la bitácora activa
+                            if st.session_state.get('id_bitacora_activa') in ids_borrar:
+                                st.session_state.id_bitacora_activa = None
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Error al eliminar: {e}")
+                            st.error(f"Error crítico al eliminar en base de datos: {e}")
                     else:
                         st.warning("Debe marcar al menos una bitácora en la columna 🗑️ para eliminarla.")
                         
