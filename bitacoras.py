@@ -287,20 +287,34 @@ def mostrar(supervisor_id=None):
                 st.error(f"Falla de sincronización: {e}")
         
         # =========================================================================
-        # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - GARANTÍA DE SIMETRÍA Y FOLIO ÚNICO
+        # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - MOTOR DE FOLIO ÚNICO ADAPTATIVO
         # =========================================================================
         try:
             buffer_pdf = io.BytesIO()
-            doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=12, leftMargin=12, topMargin=12, bottomMargin=12)
+            # Márgenes reducidos al mínimo técnico para maximizar el área útil vertical (A4)
+            doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=10, leftMargin=10, topMargin=10, bottomMargin=10)
             story = []
             
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=8.5, leading=11.5)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=8.5, leading=11.5)
-            style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=1)
-            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=17, leading=20, alignment=1)
+            # --- CÁLCULO DE DENSIDAD DE FILAS PARA ESCALA DINÁMICA ---
+            total_filas_datos = len(ed_secc) + len(ed_escu) + len(ed_cant)
+            
+            # Ajuste dinámico de fuente y padding según el volumen de datos para asegurar una sola hoja
+            if total_filas_datos > 24:
+                f_size, f_lead, pad_v = 5.5, 7.5, 1.0
+            elif total_filas_datos > 16:
+                f_size, f_lead, pad_v = 6.5, 8.5, 1.5
+            elif total_filas_datos > 10:
+                f_size, f_lead, pad_v = 7.5, 9.5, 2.0
+            else:
+                f_size, f_lead, pad_v = 8.5, 11.5, 3.5
+
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=f_size, leading=f_lead)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=f_size, leading=f_lead)
+            style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=12, leading=14, alignment=1)
+            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
-            story.append(Spacer(1, 3))
+            story.append(Spacer(1, 2))
             
             data_s1 = [
                 [Paragraph("<b>FECHA:</b>", style_normal), Paragraph(u_fecha.strftime("%d/%m/%Y"), style_normal), Paragraph("<b>Nº ORDEN:</b>", style_normal), Paragraph(u_n_orden, style_normal)],
@@ -308,17 +322,18 @@ def mostrar(supervisor_id=None):
                 [Paragraph("<b>CLIENTE:</b>", style_normal), Paragraph(u_cliente, style_normal), Paragraph("<b>PROYECTO:</b>", style_normal), Paragraph(u_proyecto, style_normal)],
                 [Paragraph("<b>SOLICITADO POR:</b>", style_normal), Paragraph(u_sol_por, style_normal), Paragraph("<b>SUP. DE PRODUCCIÓN:</b>", style_normal), Paragraph(u_sup_prod, style_normal)]
             ]
-            t_s1 = Table(data_s1, colWidths=[110, 175, 110, 175])
+            # Ancho total adaptado a 592 puntos (ancho A4 595 - márgenes 20)
+            t_s1 = Table(data_s1, colWidths=[110, 186, 110, 186])
             t_s1.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (0,3), colors.lightgrey), 
                 ('BACKGROUND', (2,0), (2,3), colors.lightgrey), 
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 1.5),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 1.5)
+                ('TOPPADDING', (0,0), (-1,-1), pad_v),
+                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v)
             ]))
             story.append(t_s1)
-            story.append(Spacer(1, 3))
+            story.append(Spacer(1, 2))
             
             def inyectar_tabla_pdf(titulo, cabeceras, df_ed, op1, op2, ancho_cols):
                 op_text = f"{op1} / {op2}".strip(" / ")
@@ -342,7 +357,7 @@ def mostrar(supervisor_id=None):
                     rows_pdf.append(fila)
                 
                 rows_pdf.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_text}", style_normal), "", "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
-                        
+                    
                 t_block = Table(rows_pdf, colWidths=ancho_cols)
                 t_block.setStyle(TableStyle([
                     ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), 
@@ -352,16 +367,19 @@ def mostrar(supervisor_id=None):
                     ('SPAN', (0,-1), (6,-1)),
                     ('SPAN', (7,-1), (8,-1)),
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-                    ('TOPPADDING', (0,0), (-1,-2), 4.5), 
-                    ('BOTTOMPADDING', (0,0), (-1,-2), 4.5),
-                    ('TOPPADDING', (0,-1), (-1,-1), 9.0), 
-                    ('BOTTOMPADDING', (0,-1), (-1,-1), 9.0)
+                    ('TOPPADDING', (0,0), (-1,-2), pad_v), 
+                    ('BOTTOMPADDING', (0,0), (-1,-2), pad_v),
+                    ('TOPPADDING', (0,-1), (-1,-1), pad_v + 1), 
+                    ('BOTTOMPADDING', (0,-1), (-1,-1), pad_v + 1)
                 ]))
                 story.append(t_block)
-                story.append(Spacer(1, 3))
+                story.append(Spacer(1, 2))
 
-            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, [30, 217, 55, 35, 35, 35, 35, 60, 68])
-            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, [30, 217, 55, 35, 35, 35, 35, 60, 68])
+            # Distribución proporcional de anchos de columna (Suma total = 592 pt)
+            anchos_tabla_corte = [25, 227, 55, 35, 35, 35, 35, 60, 85]
+            
+            inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, anchos_tabla_corte)
+            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, anchos_tabla_corte)
             
             op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
             story.append(Paragraph("<b>CANTEO</b>", style_seccion_titulo))
@@ -383,7 +401,7 @@ def mostrar(supervisor_id=None):
                 rows_canteo.append(fila_c)
             rows_canteo.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_cant_text}", style_normal), "", "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
             
-            t_cant = Table(rows_canteo, colWidths=[30, 217, 55, 35, 35, 35, 35, 60, 68])
+            t_cant = Table(rows_canteo, colWidths=anchos_tabla_corte)
             t_cant.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
                 ('GRID', (0,0), (-1,-2), 0.5, colors.black),
@@ -392,13 +410,13 @@ def mostrar(supervisor_id=None):
                 ('SPAN', (0,-1), (6,-1)),
                 ('SPAN', (7,-1), (8,-1)),
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-2), 4.5),
-                ('BOTTOMPADDING', (0,0), (-1,-2), 4.5),
-                ('TOPPADDING', (0,-1), (-1,-1), 9.0),
-                ('BOTTOMPADDING', (0,-1), (-1,-1), 9.0)
+                ('TOPPADDING', (0,0), (-1,-2), pad_v),
+                ('BOTTOMPADDING', (0,0), (-1,-2), pad_v),
+                ('TOPPADDING', (0,-1), (-1,-1), pad_v + 1),
+                ('BOTTOMPADDING', (0,-1), (-1,-1), pad_v + 1)
             ]))
             story.append(t_cant)
-            story.append(Spacer(1, 3))
+            story.append(Spacer(1, 2))
 
             f_arm_p = u_log_armado_fecha.strftime("%d/%m/%Y") if u_log_armado_fecha else ""
             f_des_p = u_log_despacho_fecha.strftime("%d/%m/%Y") if u_log_despacho_fecha else ""
@@ -411,13 +429,13 @@ def mostrar(supervisor_id=None):
                 [Paragraph(f"VºBº SUP. PRODUCCIÓN: {u_log_armado_vob}", style_normal), Paragraph(f"VºBº ALMACÉN / DESPACHO: {u_log_despacho_vob}", style_normal)]
             ]
             
-            t_log = Table(data_log_tab, colWidths=[285, 285])
+            t_log = Table(data_log_tab, colWidths=[296, 296])
             t_log.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (1,0), colors.lightgrey), 
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-                ('TOPPADDING', (0,0), (-1,-1), 4.0), 
-                ('BOTTOMPADDING', (0,0), (-1,-1), 4.0)
+                ('TOPPADDING', (0,0), (-1,-1), pad_v), 
+                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v)
             ]))
             story.append(t_log)
             story.append(Spacer(1, 2))
@@ -427,28 +445,27 @@ def mostrar(supervisor_id=None):
                  Paragraph(f"CONDUCTOR: {u_log_salida_conductor}", style_normal), 
                  Paragraph(f"V°B° ALMACÉN: {u_log_salida_vob}", style_normal)]
             ]
-            t_sal = Table(data_salida, colWidths=[180, 240, 150])
+            t_sal = Table(data_salida, colWidths=[180, 240, 172])
             t_sal.setStyle(TableStyle([
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), 4.0), 
-                ('BOTTOMPADDING', (0,0), (-1,-1), 4.0)
+                ('TOPPADDING', (0,0), (-1,-1), pad_v), 
+                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v)
             ]))
             story.append(t_sal)
             story.append(Spacer(1, 2))
 
             texto_obs = u_log_observaciones.strip() if u_log_observaciones.strip() else "&nbsp;"
-            
             data_obs_final = [
                 [Paragraph(f"<b>OBSERVACIONES / INCIDENCIAS:</b> {texto_obs}", style_normal)]
             ]
             
-            t_obs_final = Table(data_obs_final, colWidths=[570])
+            t_obs_final = Table(data_obs_final, colWidths=[592])
             t_obs_final.setStyle(TableStyle([
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('TOPPADDING', (0,0), (-1,-1), 6.0),
-                ('BOTTOMPADDING', (0,0), (-1,-1), 14.0)
+                ('TOPPADDING', (0,0), (-1,-1), pad_v),
+                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v + 4)
             ]))
             story.append(t_obs_final)
             
