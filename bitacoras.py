@@ -134,7 +134,74 @@ def mostrar(supervisor_id=None):
                     df_bloque.at[idx, 'cantidad'] = None
                     df_bloque.at[idx, 'cant_final_pl_pzs'] = ""
             return df_bloque.head(cantidad_fija)
-       
+
+        # ASIGNACIÓN ESTRICTA: 6 filas para Seccionadora, 5 para Escuadradora y 9 para Canteo
+        df_secc = garantizar_filas_por_seccion(filtrar_bloque(df_l, 'SECCIONADORA'), 'SECCIONADORA', 6)
+        df_escu = garantizar_filas_por_seccion(filtrar_bloque(df_l, 'ESCUADRADORA'), 'ESCUADRADORA', 5)
+        df_cant = garantizar_filas_por_seccion(filtrar_bloque(df_l, 'CANTEO'), 'CANTEO', 9)
+
+        def generar_bloque_interfaz(titulo, bloque_id, df_bloque, col_salida_label):
+            st.markdown(f'<div class="section-header">{titulo}</div>', unsafe_allow_html=True)
+            op_actual1, op_actual2 = "", ""
+            df_con_datos = df_bloque[df_bloque['id'] != ""]
+            if not df_con_datos.empty:
+                op_actual1 = df_con_datos['nombre_firma_operario'].iloc[0] or ""
+                op_actual2 = df_con_datos['nombre_firma_operario2'].iloc[0] or ""
+                
+            cx1, cx2, cx3 = st.columns([2, 2, 2])
+            btn_ins = cx1.button(f"➕ Registro a {titulo.split(': ')[1]}", key=f"btn_ins_{bloque_id}")
+            
+            idx_op1 = lista_ops.index(op_actual1) if op_actual1 in lista_ops else 0
+            idx_op2 = lista_ops.index(op_actual2) if op_actual2 in lista_ops else 0
+            
+            op_val1 = cx2.selectbox("👨‍🔧 RESPONSABLE 1:", options=lista_ops, index=idx_op1, key=f"op_val1_{bloque_id}")
+            op_val2 = cx3.selectbox("👥 RESPONSABLE 2:", options=lista_ops, index=idx_op2, key=f"op_val2_{bloque_id}")
+            
+            if btn_ins:
+                supabase.table("bitacoras_lineas").insert({
+                    "bitacora_id": id_act, "proceso_bloque": bloque_id, "cantidad": 0.0, 
+                    "descripcion": "", "nombre_firma_operario": op_val1, "nombre_firma_operario2": op_val2
+                }).execute()
+                st.rerun()
+            
+            if bloque_id == 'CANTEO':
+                columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
+                config_columnas = {
+                    "id": None,
+                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width="small"),
+                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width="large"),
+                    "tipo_canto": st.column_config.SelectboxColumn("TIPO", options=lista_cantos, required=False, width="medium"),
+                    "fecha_inicio": st.column_config.TextColumn("F.I.", width="small"),
+                    "hora_inicio": st.column_config.TextColumn("H.I.", width="small"),
+                    "hora_termino": st.column_config.TextColumn("H.T.", width="small"),
+                    "fecha_termino": st.column_config.TextColumn("F.T.", width="small"),
+                    "cant_final_pl_pzs": st.column_config.TextColumn(col_salida_label, width="medium"),
+                    "obs_incidencias": st.column_config.TextColumn("OBS", width="small")
+                }
+            else:
+                columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_tablero_retazo', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
+                config_columnas = {
+                    "id": None,
+                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width="small"),
+                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width="large"),
+                    "tipo_tablero_retazo": st.column_config.SelectboxColumn("TIPO", options=lista_tipos_piezas, required=False, width="medium"),
+                    "fecha_inicio": st.column_config.TextColumn("F.I.", width="small"),
+                    "hora_inicio": st.column_config.TextColumn("H.I.", width="small"),
+                    "hora_termino": st.column_config.TextColumn("H.T.", width="small"),
+                    "fecha_termino": st.column_config.TextColumn("F.T.", width="small"),
+                    "cant_final_pl_pzs": st.column_config.TextColumn(col_salida_label, width="medium"),
+                    "obs_incidencias": st.column_config.TextColumn("OBS", width="small")
+                }
+
+            df_limpio = df_bloque[columnas_visibles].copy()
+            res_ed = st.data_editor(
+                df_limpio, column_config=config_columnas, hide_index=True, use_container_width=True, key=f"grid_{bloque_id}_{id_act}"
+            )
+            return res_ed, op_val1, op_val2
+
+        ed_secc, op_secc1, op_secc2 = generar_bloque_interfaz("🪚 SECCIÓN 2: CORTE SECCIONADORA", "SECCIONADORA", df_secc, "N° PL.")
+        ed_escu, op_escu1, op_escu2 = generar_bloque_interfaz("📐 SECCIÓN 3: CORTE ESCUADRADORA", "ESCUADRADORA", df_escu, "N° PZAS")
+        ed_cant, op_cant1, op_cant2 = generar_bloque_interfaz("⚙️ SECCIÓN 4: CANTEO", "CANTEO", df_cant, "ML CANTO")       
         def generar_bloque_interfaz(titulo, bloque_id, df_bloque, col_salida_label):
             st.markdown(f'<div class="section-header">{titulo}</div>', unsafe_allow_html=True)
             op_actual1, op_actual2 = "", ""
