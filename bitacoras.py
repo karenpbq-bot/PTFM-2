@@ -102,7 +102,7 @@ def mostrar(supervisor_id=None):
                     sub_df[col_f] = sub_df[col_f].apply(lambda x: f"{x[5:7]}/{x[8:10]}" if (x and len(str(x)) >= 10 and str(x)[4] == '-') else x)
             return sub_df
 
-        def garantizar_6_filas_limpias(df_bloque, bloque_id):
+        def garantizar_filas_balanceadas(df_bloque, bloque_id, min_filas_requeridas=2):
             columnas_base = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'tipo_tablero_retazo', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
             if df_bloque.empty:
                 df_bloque = pd.DataFrame(columns=columnas_base)
@@ -112,8 +112,10 @@ def mostrar(supervisor_id=None):
                     df_bloque[col] = None
             
             actuales = len(df_bloque)
-            if actuales < 6:
-                filas_faltantes = 6 - actuales
+            # Garantizamos un mínimo por defecto (ej. 4 filas para mantener estructura limpia)
+            min_defecto = 4
+            if actuales < min_defecto:
+                filas_faltantes = min_defecto - actuales
                 nuevas_filas = []
                 for _ in range(filas_faltantes):
                     nuevas_filas.append({
@@ -133,8 +135,12 @@ def mostrar(supervisor_id=None):
                 if row['id'] == "":
                     df_bloque.at[idx, 'cantidad'] = None
                     df_bloque.at[idx, 'cant_final_pl_pzs'] = ""
-            return df_bloque.head(6)
+            # Permitimos crecimiento hasta 12+ filas si la producción lo exige
+            return df_bloque.head(14)
 
+        df_secc = garantizar_filas_balanceadas(filtrar_bloque(df_l, 'SECCIONADORA'), 'SECCIONADORA')
+        df_escu = garantizar_filas_balanceadas(filtrar_bloque(df_l, 'ESCUADRADORA'), 'ESCUADRADORA')
+        df_cant = garantizar_filas_balanceadas(filtrar_bloque(df_l, 'CANTEO'), 'CANTEO')
         df_secc = garantizar_6_filas_limpias(filtrar_bloque(df_l, 'SECCIONADORA'), 'SECCIONADORA')
         df_escu = garantizar_6_filas_limpias(filtrar_bloque(df_l, 'ESCUADRADORA'), 'ESCUADRADORA')
         df_cant = garantizar_6_filas_limpias(filtrar_bloque(df_l, 'CANTEO'), 'CANTEO')
@@ -287,31 +293,32 @@ def mostrar(supervisor_id=None):
                 st.error(f"Falla de sincronización: {e}")
         
         # =========================================================================
-        # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - MOTOR DE FOLIO ÚNICO ADAPTATIVO
+        # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - FOLIO ÚNICO CON BALANCE ELÁSTICO
         # =========================================================================
         try:
             buffer_pdf = io.BytesIO()
-            # Márgenes reducidos al mínimo técnico para maximizar el área útil vertical (A4)
-            doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=10, leftMargin=10, topMargin=10, bottomMargin=10)
+            
+            # --- CÁLCULO DE DENSIDAD TOTAL DE LÍNEAS PARA EL BALANCE DE HOJA ---
+            filas_s = len([r for _, r in ed_secc.iterrows() if str(r.get('descripcion','')).strip() != ""])
+            filas_e = len([r for _, r in ed_escu.iterrows() if str(r.get('descripcion','')).strip() != ""])
+            filas_c = len([r for _, r in ed_cant.iterrows() if str(r.get('descripcion','')).strip() != ""])
+            total_datos_activos = max(filas_s, 1) + max(filas_e, 1) + max(filas_c, 1)
+            
+            # Márgenes y rellenos elásticos según la cantidad de datos para asegurar una sola hoja A4
+            if total_datos_activos > 15:
+                top_m, bot_m, pad_v, f_sz, f_ld = 6, 6, 1.0, 7.5, 9.5
+            elif total_datos_activos > 10:
+                top_m, bot_m, pad_v, f_sz, f_ld = 8, 8, 1.5, 8.0, 10.5
+            else:
+                top_m, bot_m, pad_v, f_sz, f_ld = 10, 10, 2.5, 8.5, 11.5
+
+            doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=10, leftMargin=10, topMargin=top_m, bottomMargin=bot_m)
             story = []
             
-            # --- CÁLCULO DE DENSIDAD DE FILAS PARA ESCALA DINÁMICA ---
-            total_filas_datos = len(ed_secc) + len(ed_escu) + len(ed_cant)
-            
-            # Ajuste dinámico de fuente y padding según el volumen de datos para asegurar una sola hoja
-            if total_filas_datos > 24:
-                f_size, f_lead, pad_v = 5.5, 7.5, 1.0
-            elif total_filas_datos > 16:
-                f_size, f_lead, pad_v = 6.5, 8.5, 1.5
-            elif total_filas_datos > 10:
-                f_size, f_lead, pad_v = 7.5, 9.5, 2.0
-            else:
-                f_size, f_lead, pad_v = 8.5, 11.5, 3.5
-
-            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=f_size, leading=f_lead)
-            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=f_size, leading=f_lead)
+            style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=f_sz, leading=f_ld)
+            style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=f_sz, leading=f_ld)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=12, leading=14, alignment=1)
-            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1)
+            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=9.5, leading=11.5, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
             story.append(Spacer(1, 2))
@@ -322,7 +329,6 @@ def mostrar(supervisor_id=None):
                 [Paragraph("<b>CLIENTE:</b>", style_normal), Paragraph(u_cliente, style_normal), Paragraph("<b>PROYECTO:</b>", style_normal), Paragraph(u_proyecto, style_normal)],
                 [Paragraph("<b>SOLICITADO POR:</b>", style_normal), Paragraph(u_sol_por, style_normal), Paragraph("<b>SUP. DE PRODUCCIÓN:</b>", style_normal), Paragraph(u_sup_prod, style_normal)]
             ]
-            # Ancho total adaptado a 592 puntos (ancho A4 595 - márgenes 20)
             t_s1 = Table(data_s1, colWidths=[110, 186, 110, 186])
             t_s1.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (0,3), colors.lightgrey), 
@@ -340,19 +346,20 @@ def mostrar(supervisor_id=None):
                 story.append(Paragraph(f"<b>{titulo}</b>", style_seccion_titulo))
                 rows_pdf = [[Paragraph(f"<b>{h}</b>", style_bold) for h in cabeceras]]
                 
+                # Omitimos filas completamente vacías si hay exceso para mantener balance de una hoja
                 for _, r in df_ed.iterrows():
+                    es_vacia = (str(r.get('id','')) == "" and str(r.get('descripcion','')).strip() == "")
+                    if total_datos_activos > 10 and es_vacia:
+                        continue # Salta filas vacías sobrantes si el reporte está muy cargado
+                        
                     fila = []
-                    es_vacia = (r['id'] == "")
                     for col_id in df_ed.columns:
                         if col_id != 'id':
-                            val_t = "" if es_vacia else str(r[col_id])
+                            val_t = "" if str(r.get('id','')) == "" else str(r[col_id])
                             if val_t.lower() == "nan" or val_t == "None" or val_t == "0.0": 
                                 val_t = ""
                             
-                            if val_t == "":
-                                p_celda = Paragraph("&nbsp;", style_normal)
-                            else:
-                                p_celda = Paragraph(val_t, style_normal)
+                            p_celda = Paragraph("&nbsp;" if val_t == "" else val_t, style_normal)
                             fila.append(p_celda)
                     rows_pdf.append(fila)
                 
@@ -375,30 +382,32 @@ def mostrar(supervisor_id=None):
                 story.append(t_block)
                 story.append(Spacer(1, 2))
 
-            # Distribución proporcional de anchos de columna (Suma total = 592 pt)
             anchos_tabla_corte = [25, 227, 55, 35, 35, 35, 35, 60, 85]
             
             inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, anchos_tabla_corte)
             inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, anchos_tabla_corte)
             
+            # Canteo con el mismo balance elástico
             op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
             story.append(Paragraph("<b>CANTEO</b>", style_seccion_titulo))
             rows_canteo = [[Paragraph(f"<b>{h}</b>", style_bold) for h in ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS"]]]
+            
+            columnas_canteo_mapeo = ['cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
             for _, r in ed_cant.iterrows():
+                es_vacia = (str(r.get('id','')) == "" and str(r.get('descripcion','')).strip() == "")
+                if total_datos_activos > 10 and es_vacia:
+                    continue
+                    
                 fila_c = []
-                es_vacia = (r['id'] == "")
-                columnas_canteo_mapeo = ['cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 for col_id in columnas_canteo_mapeo:
-                    val_t = "" if es_vacia else str(r[col_id])
+                    val_t = "" if str(r.get('id','')) == "" else str(r[col_id])
                     if val_t.lower() == "nan" or val_t == "None" or val_t == "0.0": 
                         val_t = ""
                     
-                    if val_t == "":
-                        p_celda = Paragraph("&nbsp;", style_normal)
-                    else:
-                        p_celda = Paragraph(val_t, style_normal)
+                    p_celda = Paragraph("&nbsp;" if val_t == "" else val_t, style_normal)
                     fila_c.append(p_celda)
                 rows_canteo.append(fila_c)
+                
             rows_canteo.append([Paragraph(f"<b>RESPONSABLE (S):</b> {op_cant_text}", style_normal), "", "", "", "", "", "", Paragraph("<b>V°B° SUP PROD:</b>", style_normal), ""])
             
             t_cant = Table(rows_canteo, colWidths=anchos_tabla_corte)
@@ -465,7 +474,7 @@ def mostrar(supervisor_id=None):
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black),
                 ('VALIGN', (0,0), (-1,-1), 'TOP'),
                 ('TOPPADDING', (0,0), (-1,-1), pad_v),
-                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v + 4)
+                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v + 3)
             ]))
             story.append(t_obs_final)
             
@@ -473,7 +482,7 @@ def mostrar(supervisor_id=None):
             c_pdf.download_button("🖨️ EXPORTAR EN UN SOLO FOLIO (PDF)", data=buffer_pdf.getvalue(), file_name=f"Format_B_{u_n_orden}.pdf", mime="application/pdf", use_container_width=True)
         except Exception as e_pdf:
             c_pdf.error(f"Aviso de compactación: {e_pdf}")
-
+            
     # =========================================================================
     # ENTORNO INICIAL (PESTAÑAS HISTORIAL, ALTA Y CONFIGURACIÓN MAESTROS)
     # =========================================================================
