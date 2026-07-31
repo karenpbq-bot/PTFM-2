@@ -290,31 +290,19 @@ def mostrar(supervisor_id=None):
                 st.error(f"Falla de sincronización: {e}")
         
         # =========================================================================
-        # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - FOLIO ÚNICO CON BALANCE ELÁSTICO
+        # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - FOLIO ÚNICO Y TÍTULOS LIMPIOS
         # =========================================================================
         try:
             buffer_pdf = io.BytesIO()
-            
-            # --- CÁLCULO DE DENSIDAD TOTAL DE LÍNEAS PARA EL BALANCE DE HOJA ---
-            filas_s = len([r for _, r in ed_secc.iterrows() if str(r.get('descripcion','')).strip() != ""])
-            filas_e = len([r for _, r in ed_escu.iterrows() if str(r.get('descripcion','')).strip() != ""])
-            filas_c = len([r for _, r in ed_cant.iterrows() if str(r.get('descripcion','')).strip() != ""])
-            total_datos_activos = max(filas_s, 1) + max(filas_e, 1) + max(filas_c, 1)
-            
-            # Márgenes y rellenos elásticos según la cantidad de datos para asegurar una sola hoja A4
-            if total_datos_activos > 15:
-                top_m, bot_m, pad_v, f_sz, f_ld = 6, 6, 1.0, 7.5, 9.5
-            elif total_datos_activos > 10:
-                top_m, bot_m, pad_v, f_sz, f_ld = 8, 8, 1.5, 8.0, 10.5
-            else:
-                top_m, bot_m, pad_v, f_sz, f_ld = 10, 10, 2.5, 8.5, 11.5
-
-            doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=10, leftMargin=10, topMargin=top_m, bottomMargin=bot_m)
+            doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=10, leftMargin=10, topMargin=10, bottomMargin=10)
             story = []
             
+            f_sz, f_ld, pad_v = 8.0, 10.5, 2.0
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=f_sz, leading=f_ld)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=f_sz, leading=f_ld)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=12, leading=14, alignment=1)
+            
+            # TÍTULO CENTRADO Y SIN ICONOS (EXACTO COMO LO SOLICITA EL ESTÁNDAR)
             style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=9.5, leading=11.5, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
@@ -343,16 +331,12 @@ def mostrar(supervisor_id=None):
                 story.append(Paragraph(f"<b>{titulo}</b>", style_seccion_titulo))
                 rows_pdf = [[Paragraph(f"<b>{h}</b>", style_bold) for h in cabeceras]]
                 
-                # Omitimos filas completamente vacías si hay exceso para mantener balance de una hoja
                 for _, r in df_ed.iterrows():
-                    es_vacia = (str(r.get('id','')) == "" and str(r.get('descripcion','')).strip() == "")
-                    if total_datos_activos > 10 and es_vacia:
-                        continue # Salta filas vacías sobrantes si el reporte está muy cargado
-                        
                     fila = []
+                    es_vacia = (str(r.get('id','')) == "")
                     for col_id in df_ed.columns:
                         if col_id != 'id':
-                            val_t = "" if str(r.get('id','')) == "" else str(r[col_id])
+                            val_t = "" if es_vacia else str(r[col_id])
                             if val_t.lower() == "nan" or val_t == "None" or val_t == "0.0": 
                                 val_t = ""
                             
@@ -381,23 +365,21 @@ def mostrar(supervisor_id=None):
 
             anchos_tabla_corte = [25, 227, 55, 35, 35, 35, 35, 60, 85]
             
+            # TÍTULOS LIMPIOS Y CENTRADOS SIN ICONOS
             inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, anchos_tabla_corte)
             inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, anchos_tabla_corte)
             
-            # Canteo con el mismo balance elástico
+            # CANTEO CENTRADO Y SIN ICONO
             op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
             story.append(Paragraph("<b>CANTEO</b>", style_seccion_titulo))
             rows_canteo = [[Paragraph(f"<b>{h}</b>", style_bold) for h in ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS"]]]
             
             columnas_canteo_mapeo = ['cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
             for _, r in ed_cant.iterrows():
-                es_vacia = (str(r.get('id','')) == "" and str(r.get('descripcion','')).strip() == "")
-                if total_datos_activos > 10 and es_vacia:
-                    continue
-                    
                 fila_c = []
+                es_vacia = (str(r.get('id','')) == "")
                 for col_id in columnas_canteo_mapeo:
-                    val_t = "" if str(r.get('id','')) == "" else str(r[col_id])
+                    val_t = "" if es_vacia else str(r[col_id])
                     if val_t.lower() == "nan" or val_t == "None" or val_t == "0.0": 
                         val_t = ""
                     
@@ -428,52 +410,38 @@ def mostrar(supervisor_id=None):
             f_des_p = u_log_despacho_fecha.strftime("%d/%m/%Y") if u_log_despacho_fecha else ""
             f_sal_p = u_log_salida_fecha.strftime("%d/%m/%Y") if u_log_salida_fecha else ""
 
-            data_log_tab = [
-                [Paragraph("<b>ZONA DE ARMADO (Piezas en Planta)</b>", style_bold), Paragraph("<b>ZONA DE DESPACHO (Directo a Obra)</b>", style_bold)],
-                [Paragraph(f"FECHA RECEPCIÓN: {f_arm_p}", style_normal), Paragraph(f"FECHA RECEPCIÓN: {f_des_p}", style_normal)],
-                [Paragraph(f"Nº PALLETS / PIEZAS: {u_log_armado_cant}", style_normal), Paragraph(f"Nº PALLETS / PIEZAS: {u_log_despacho_cant}", style_normal)],
-                [Paragraph(f"VºBº SUP. PRODUCCIÓN: {u_log_armado_vob}", style_normal), Paragraph(f"VºBº ALMACÉN / DESPACHO: {u_log_despacho_vob}", style_normal)]
+            data_tres_columnas = [
+                [
+                    Paragraph("<b>ZONA DE ARMADO</b>", style_bold), 
+                    Paragraph("<b>ZONA DE DESPACHO</b>", style_bold), 
+                    Paragraph("<b>ZONA DE SALIDA</b>", style_bold)
+                ],
+                [
+                    Paragraph(f"FECHA: {f_arm_p}", style_normal), 
+                    Paragraph(f"FECHA: {f_des_p}", style_normal), 
+                    Paragraph(f"SALIDA A OBRA: {f_sal_p}", style_normal)
+                ],
+                [
+                    Paragraph(f"Nº PALLETS: {u_log_armado_cant}", style_normal), 
+                    Paragraph(f"Nº PALLETS: {u_log_despacho_cant}", style_normal), 
+                    Paragraph(f"CONDUCTOR: {u_log_salida_conductor}", style_normal)
+                ],
+                [
+                    Paragraph(f"VºBº SUP. PROD: {u_log_armado_vob}", style_normal), 
+                    Paragraph(f"V°B° ALMACÉN: {u_log_despacho_vob}", style_normal), 
+                    Paragraph(f"V°B° ALMACÉN: {u_log_salida_vob}", style_normal)
+                ]
             ]
             
-            t_log = Table(data_log_tab, colWidths=[296, 296])
-            t_log.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (1,0), colors.lightgrey), 
+            t_log_tres = Table(data_tres_columnas, colWidths=[197, 197, 198])
+            t_log_tres.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), 
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
                 ('TOPPADDING', (0,0), (-1,-1), pad_v), 
                 ('BOTTOMPADDING', (0,0), (-1,-1), pad_v)
             ]))
-            story.append(t_log)
-            story.append(Spacer(1, 2))
-
-            data_salida = [
-                [Paragraph(f"FECHA SALIDA A OBRA: {f_sal_p}", style_normal), 
-                 Paragraph(f"CONDUCTOR: {u_log_salida_conductor}", style_normal), 
-                 Paragraph(f"V°B° ALMACÉN: {u_log_salida_vob}", style_normal)]
-            ]
-            t_sal = Table(data_salida, colWidths=[180, 240, 172])
-            t_sal.setStyle(TableStyle([
-                ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), pad_v), 
-                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v)
-            ]))
-            story.append(t_sal)
-            story.append(Spacer(1, 2))
-
-            texto_obs = u_log_observaciones.strip() if u_log_observaciones.strip() else "&nbsp;"
-            data_obs_final = [
-                [Paragraph(f"<b>OBSERVACIONES / INCIDENCIAS:</b> {texto_obs}", style_normal)]
-            ]
-            
-            t_obs_final = Table(data_obs_final, colWidths=[592])
-            t_obs_final.setStyle(TableStyle([
-                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('TOPPADDING', (0,0), (-1,-1), pad_v),
-                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v + 3)
-            ]))
-            story.append(t_obs_final)
+            story.append(t_log_tres)
             
             doc_pdf.build(story)
             c_pdf.download_button("🖨️ EXPORTAR EN UN SOLO FOLIO (PDF)", data=buffer_pdf.getvalue(), file_name=f"Format_B_{u_n_orden}.pdf", mime="application/pdf", use_container_width=True)
