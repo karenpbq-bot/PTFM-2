@@ -141,10 +141,7 @@ def mostrar(supervisor_id=None):
         df_secc = garantizar_filas_balanceadas(filtrar_bloque(df_l, 'SECCIONADORA'), 'SECCIONADORA')
         df_escu = garantizar_filas_balanceadas(filtrar_bloque(df_l, 'ESCUADRADORA'), 'ESCUADRADORA')
         df_cant = garantizar_filas_balanceadas(filtrar_bloque(df_l, 'CANTEO'), 'CANTEO')
-        df_secc = garantizar_6_filas_limpias(filtrar_bloque(df_l, 'SECCIONADORA'), 'SECCIONADORA')
-        df_escu = garantizar_6_filas_limpias(filtrar_bloque(df_l, 'ESCUADRADORA'), 'ESCUADRADORA')
-        df_cant = garantizar_6_filas_limpias(filtrar_bloque(df_l, 'CANTEO'), 'CANTEO')
-
+       
         def generar_bloque_interfaz(titulo, bloque_id, df_bloque, col_salida_label):
             st.markdown(f'<div class="section-header">{titulo}</div>', unsafe_allow_html=True)
             op_actual1, op_actual2 = "", ""
