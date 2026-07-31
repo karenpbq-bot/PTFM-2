@@ -102,7 +102,7 @@ def mostrar(supervisor_id=None):
                     sub_df[col_f] = sub_df[col_f].apply(lambda x: f"{x[5:7]}/{x[8:10]}" if (x and len(str(x)) >= 10 and str(x)[4] == '-') else x)
             return sub_df
 
-        def garantizar_filas_balanceadas(df_bloque, bloque_id, min_filas_requeridas=2):
+        def garantizar_filas_por_seccion(df_bloque, bloque_id, cantidad_fija):
             columnas_base = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'tipo_tablero_retazo', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
             if df_bloque.empty:
                 df_bloque = pd.DataFrame(columns=columnas_base)
@@ -112,10 +112,8 @@ def mostrar(supervisor_id=None):
                     df_bloque[col] = None
             
             actuales = len(df_bloque)
-            # Garantizamos un mínimo por defecto (ej. 4 filas para mantener estructura limpia)
-            min_defecto = 4
-            if actuales < min_defecto:
-                filas_faltantes = min_defecto - actuales
+            if actuales < cantidad_fija:
+                filas_faltantes = cantidad_fija - actuales
                 nuevas_filas = []
                 for _ in range(filas_faltantes):
                     nuevas_filas.append({
@@ -135,12 +133,7 @@ def mostrar(supervisor_id=None):
                 if row['id'] == "":
                     df_bloque.at[idx, 'cantidad'] = None
                     df_bloque.at[idx, 'cant_final_pl_pzs'] = ""
-            # Permitimos crecimiento hasta 12+ filas si la producción lo exige
-            return df_bloque.head(14)
-
-        df_secc = garantizar_filas_balanceadas(filtrar_bloque(df_l, 'SECCIONADORA'), 'SECCIONADORA')
-        df_escu = garantizar_filas_balanceadas(filtrar_bloque(df_l, 'ESCUADRADORA'), 'ESCUADRADORA')
-        df_cant = garantizar_filas_balanceadas(filtrar_bloque(df_l, 'CANTEO'), 'CANTEO')
+            return df_bloque.head(cantidad_fija)
        
         def generar_bloque_interfaz(titulo, bloque_id, df_bloque, col_salida_label):
             st.markdown(f'<div class="section-header">{titulo}</div>', unsafe_allow_html=True)
