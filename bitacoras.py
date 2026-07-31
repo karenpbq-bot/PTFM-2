@@ -290,7 +290,7 @@ def mostrar(supervisor_id=None):
                 st.error(f"Falla de sincronización: {e}")
         
         # =========================================================================
-        # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - FOLIO ÚNICO Y TÍTULOS LIMPIOS
+        # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - FOLIO ÚNICO Y ANCHOS CALIBRADOS
         # =========================================================================
         try:
             buffer_pdf = io.BytesIO()
@@ -301,8 +301,6 @@ def mostrar(supervisor_id=None):
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=f_sz, leading=f_ld)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=f_sz, leading=f_ld)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=12, leading=14, alignment=1)
-            
-            # TÍTULO CENTRADO Y SIN ICONOS (EXACTO COMO LO SOLICITA EL ESTÁNDAR)
             style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=9.5, leading=11.5, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
@@ -363,13 +361,13 @@ def mostrar(supervisor_id=None):
                 story.append(t_block)
                 story.append(Spacer(1, 2))
 
-            anchos_tabla_corte = [25, 227, 55, 35, 35, 35, 35, 60, 85]
+            # ANCHOS CALIBRADOS CON COLUMNA '#' 15% MÁS ANCHA (29 pt) Y SUMA EXACTA DE 592 pt
+            anchos_tabla_corte = [29, 223, 55, 35, 35, 35, 35, 60, 85]
             
-            # TÍTULOS LIMPIOS Y CENTRADOS SIN ICONOS
             inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, anchos_tabla_corte)
             inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, anchos_tabla_corte)
             
-            # CANTEO CENTRADO Y SIN ICONO
+            # CANTEO CON ANCHOS CALIBRADOS
             op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
             story.append(Paragraph("<b>CANTEO</b>", style_seccion_titulo))
             rows_canteo = [[Paragraph(f"<b>{h}</b>", style_bold) for h in ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "ML CANTO", "OBS"]]]
