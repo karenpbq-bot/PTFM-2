@@ -321,13 +321,13 @@ def mostrar(supervisor_id=None):
        # =========================================================================
         # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - FOLIO ÚNICO Y ANCHOS CALIBRADOS
         # =========================================================================
-       try:
+        try:
             buffer_pdf = io.BytesIO()
             doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=10, leftMargin=10, topMargin=10, bottomMargin=10)
             story = []
             
-            # LETRA AMPLIADA UN 10% ADICIONAL (10.5 pt con leading compacto de 13.0 pt)
-            f_sz, f_ld, pad_v = 10.5, 13.0, 1.5
+            # VALORES AMPLIADOS UN 10% ADICIONAL (Letra 10.5pt y filas más altas con pad_v = 3.0)
+            f_sz, f_ld, pad_v = 10.5, 13.0, 3.0
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=f_sz, leading=f_ld)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=f_sz, leading=f_ld)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=12, leading=14, alignment=1)
