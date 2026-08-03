@@ -326,7 +326,8 @@ def mostrar(supervisor_id=None):
             doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=10, leftMargin=10, topMargin=10, bottomMargin=10)
             story = []
             
-            f_sz, f_ld, pad_v = 8.0, 10.5, 2.0
+            # Tipografía más grande pero con interlineado compacto (leading ajustado)
+            f_sz, f_ld, pad_v = 9.0, 11.0, 1.5
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=f_sz, leading=f_ld)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=f_sz, leading=f_ld)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=12, leading=14, alignment=1)
