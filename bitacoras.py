@@ -348,8 +348,8 @@ def mostrar(supervisor_id=None):
                 ('BACKGROUND', (2,0), (2,3), colors.lightgrey), 
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-                ('TOPPADDING', (0,0), (-1,-1), pad_v + 3.5),
-                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v + 3.5)
+                ('TOPPADDING', (0,0), (-1,-1), pad_v + 1),
+                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v + 1)
             ]))
             story.append(t_s1)
             story.append(Spacer(1, 2))
@@ -385,8 +385,8 @@ def mostrar(supervisor_id=None):
                     ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
                     ('TOPPADDING', (0,0), (-1,-2), pad_v), 
                     ('BOTTOMPADDING', (0,0), (-1,-2), pad_v),
-                    ('TOPPADDING', (0,-1), (-1,-1), pad_v + 3.5), 
-                    ('BOTTOMPADDING', (0,-1), (-1,-1), pad_v + 3.5)
+                    ('TOPPADDING', (0,-1), (-1,-1), pad_v + 4.5), 
+                    ('BOTTOMPADDING', (0,-1), (-1,-1), pad_v + 4.5)
                 ]))
                 story.append(t_block)
                 story.append(Spacer(1, 2))
@@ -428,8 +428,8 @@ def mostrar(supervisor_id=None):
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
                 ('TOPPADDING', (0,0), (-1,-2), pad_v),
                 ('BOTTOMPADDING', (0,0), (-1,-2), pad_v),
-                ('TOPPADDING', (0,-1), (-1,-1), pad_v + 4),
-                ('BOTTOMPADDING', (0,-1), (-1,-1), pad_v + 4)
+                ('TOPPADDING', (0,-1), (-1,-1), pad_v + 4.5),
+                ('BOTTOMPADDING', (0,-1), (-1,-1), pad_v + 4.5)
             ]))
             story.append(t_cant)
             story.append(Spacer(1, 2))
@@ -466,8 +466,8 @@ def mostrar(supervisor_id=None):
                 ('BACKGROUND', (0,0), (-1,0), colors.lightgrey), 
                 ('GRID', (0,0), (-1,-1), 0.5, colors.black), 
                 ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), 
-                ('TOPPADDING', (0,0), (-1,-1), pad_v), 
-                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v)
+                ('TOPPADDING', (0,0), (-1,-1), pad_v + 5.5), 
+                ('BOTTOMPADDING', (0,0), (-1,-1), pad_v + 5.5)
             ]))
             story.append(t_log_tres)
             
