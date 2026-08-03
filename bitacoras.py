@@ -318,7 +318,7 @@ def mostrar(supervisor_id=None):
             except Exception as e:
                 st.error(f"Falla de sincronización: {e}")
         
-        # =========================================================================
+       # =========================================================================
         # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - FOLIO ÚNICO Y ANCHOS CALIBRADOS
         # =========================================================================
         try:
@@ -326,12 +326,12 @@ def mostrar(supervisor_id=None):
             doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=10, leftMargin=10, topMargin=10, bottomMargin=10)
             story = []
             
-            # Tipografía más grande pero con interlineado compacto (leading ajustado)
-            f_sz, f_ld, pad_v = 9.0, 11.0, 1.5
+            # VALORES AMPLIADOS PARA NOTAR EL CAMBIO DE INMEDIATO (Letra más grande: 9.5pt)
+            f_sz, f_ld, pad_v = 9.5, 12.0, 2.5
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=f_sz, leading=f_ld)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=f_sz, leading=f_ld)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=12, leading=14, alignment=1)
-            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=9.5, leading=11.5, alignment=1)
+            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=10.0, leading=12.0, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
             story.append(Spacer(1, 2))
