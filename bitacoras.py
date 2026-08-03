@@ -321,17 +321,17 @@ def mostrar(supervisor_id=None):
        # =========================================================================
         # RECONSTRUCCIÓN CRÍTICA DE REPORTLAB - FOLIO ÚNICO Y ANCHOS CALIBRADOS
         # =========================================================================
-        try:
+       try:
             buffer_pdf = io.BytesIO()
             doc_pdf = SimpleDocTemplate(buffer_pdf, pagesize=A4, rightMargin=10, leftMargin=10, topMargin=10, bottomMargin=10)
             story = []
             
-            # VALORES AMPLIADOS PARA NOTAR EL CAMBIO DE INMEDIATO (Letra más grande: 9.5pt)
-            f_sz, f_ld, pad_v = 9.5, 12.0, 2.5
+            # LETRA AMPLIADA UN 10% ADICIONAL (10.5 pt con leading compacto de 13.0 pt)
+            f_sz, f_ld, pad_v = 10.5, 13.0, 1.5
             style_normal = ParagraphStyle('Norm', fontName='Helvetica', fontSize=f_sz, leading=f_ld)
             style_bold = ParagraphStyle('Bld', fontName='Helvetica-Bold', fontSize=f_sz, leading=f_ld)
             style_title = ParagraphStyle('Tit', fontName='Helvetica-Bold', fontSize=12, leading=14, alignment=1)
-            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=10.0, leading=12.0, alignment=1)
+            style_seccion_titulo = ParagraphStyle('SecTit', fontName='Helvetica-Bold', fontSize=11.0, leading=13.0, alignment=1)
             
             story.append(Paragraph("<b>BITÁCORA DE PRODUCCIÓN</b>", style_title))
             story.append(Spacer(1, 2))
