@@ -28,6 +28,7 @@ def mostrar():
     
     # SOLUCIÓN: Incorporamos "-" como opción válida de responsable en el drop-down por si no tiene asignado ninguno
     lista_responsables_opciones = ["-"] + list(dict_sups.keys())
+    
     # =========================================================
     # PESTAÑA 1: MATRIZ DE PROYECTOS (EDICIÓN INTEGRAL DIRECTA)
     # =========================================================
