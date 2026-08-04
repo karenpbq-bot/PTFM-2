@@ -608,7 +608,7 @@ def mostrar(supervisor_id=None):
                 f_n = st.date_input("FECHA:", value=date.today(), format="DD/MM/YYYY")
                 o_n = st.text_input("Nº ORDEN:")
                 m_n = st.text_input("TIPO DE MUEBLE:")
-               mt_n = st.selectbox("MOTIVO:", options=lista_mot)
+                mt_n = st.selectbox("MOTIVO:", options=lista_mot)
                 cl_n = st.text_input("CLIENTE:")
                 pr_n = st.selectbox("PROYECTO:", options=lista_proy)
                 sl_n = st.selectbox("SOLICITADO POR:", options=lista_usu)
