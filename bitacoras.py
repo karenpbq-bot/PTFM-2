@@ -206,32 +206,34 @@ def mostrar(supervisor_id=None):
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width="small"),
-                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width="large"),
-                    "tipo_canto": st.column_config.SelectboxColumn("TIPO", options=lista_cantos, required=False, width="medium"),
+                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width=80),
+                    # Descripción reducida para ceder espacio a TIPO y Salida
+                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width=240),
+                    # TIPO y ML CANTO expandidos explícitamente a 140px
+                    "tipo_canto": st.column_config.SelectboxColumn("TIPO", options=lista_cantos, required=False, width=140),
                     "fecha_inicio": st.column_config.TextColumn("F.I.", width="small"),
                     "hora_inicio": st.column_config.TextColumn("H.I.", width="small"),
                     "hora_termino": st.column_config.TextColumn("H.T.", width="small"),
                     "fecha_termino": st.column_config.TextColumn("F.T.", width="small"),
-                    "cant_final_pl_pzs": st.column_config.TextColumn(col_salida_label, width="medium"),
+                    "cant_final_pl_pzs": st.column_config.TextColumn(col_salida_label, width=140),
                     "obs_incidencias": st.column_config.TextColumn("OBS", width="small")
                 }
             else:
-                # INTEGRACIÓN HORIZONTAL DE LA COLUMNA TIPO MAESTRA EN SECCIONES 2 Y 3
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_tablero_retazo', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width="small"),
-                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width="large"),
-                    "tipo_tablero_retazo": st.column_config.SelectboxColumn("TIPO", options=lista_tipos_piezas, required=False, width="medium"),
+                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width=80),
+                    # Descripción reducida para ceder espacio a TIPO y Salida
+                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width=240),
+                    # TIPO y N° PL/PZAS expandidos explícitamente a 140px
+                    "tipo_tablero_retazo": st.column_config.SelectboxColumn("TIPO", options=lista_tipos_piezas, required=False, width=140),
                     "fecha_inicio": st.column_config.TextColumn("F.I.", width="small"),
                     "hora_inicio": st.column_config.TextColumn("H.I.", width="small"),
                     "hora_termino": st.column_config.TextColumn("H.T.", width="small"),
                     "fecha_termino": st.column_config.TextColumn("F.T.", width="small"),
-                    "cant_final_pl_pzs": st.column_config.TextColumn(col_salida_label, width="medium"),
+                    "cant_final_pl_pzs": st.column_config.TextColumn(col_salida_label, width=140),
                     "obs_incidencias": st.column_config.TextColumn("OBS", width="small")
                 }
-
             df_limpio = df_bloque[columnas_visibles].copy()
             res_ed = st.data_editor(
                 df_limpio, column_config=config_columnas, hide_index=True, use_container_width=True, key=f"grid_{bloque_id}_{id_act}"
@@ -393,12 +395,13 @@ def mostrar(supervisor_id=None):
                 story.append(t_block)
                 story.append(Spacer(1, 2))
 
-            # ANCHOS CALIBRADOS: Columna '#' +30% (38 pt) y DESCRIPCIÓN reducida (214 pt)
-            # Suma total exacta mantenida: 38 + 214 + 55 + 35 + 35 + 35 + 35 + 60 + 85 = 592 pt
-            anchos_tabla_corte = [38, 214, 55, 35, 35, 35, 35, 60, 85]
+            # ANCHOS CALIBRADOS: TIPO (+15% = 63 pt), Salida (+15% = 69 pt), Descripción reducida a 197 pt
+            # Suma total exacta mantenida: 38 + 197 + 63 + 35 + 35 + 35 + 35 + 69 + 85 = 592 pt
+            anchos_tabla_corte = [38, 197, 63, 35, 35, 35, 35, 69, 85]
             
             inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, anchos_tabla_corte)
             inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, anchos_tabla_corte)            
+            
             # CANTEO CON ANCHOS CALIBRADOS
             op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
             story.append(Paragraph("<b>CANTEO</b>", style_seccion_titulo))
