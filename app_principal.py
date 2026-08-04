@@ -121,8 +121,8 @@ elif menu == "Producción Proyectada":
 elif menu == "Rendimiento Producción":
     produccion_cortes.mostrar()
 
-elif menu == "Rendimiento de Corte":
-    cortes.mostrar()
+# elif menu == "Rendimiento de Corte":
+#    cortes.mostrar()
 
 elif menu == "Avance de Optimización":
     tableros_req.mostrar()  # <--- Apunta ahora al archivo tableros_req.py
@@ -130,14 +130,14 @@ elif menu == "Avance de Optimización":
 elif menu == "Bitácoras de Producción":
     bitacoras.mostrar(supervisor_id=id_usuario) # <--- Enrutamiento al nuevo formato horizontal irrestricto
 
-elif menu == "Seguimiento": 
-    seguimiento.mostrar(supervisor_id=id_usuario if rol_usuario == "Supervisor" else None)
+# elif menu == "Seguimiento": 
+#   seguimiento.mostrar(supervisor_id=id_usuario if rol_usuario == "Supervisor" else None)
 
-elif menu == "Gantt": 
-    ejecucion.mostrar()
+# elif menu == "Gantt": 
+#    ejecucion.mostrar()
 
 elif menu == "Usuarios":
     usuarios.mostrar()
 
-elif menu == "Incidencias":
-    incidencias.mostrar()
+# elif menu == "Incidencias":
+#    incidencias.mostrar()
