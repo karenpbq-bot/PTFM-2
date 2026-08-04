@@ -55,6 +55,36 @@ def mostrar(supervisor_id=None):
     if 'id_bitacora_activa' not in st.session_state:
         st.session_state.id_bitacora_activa = None
 
+    # --- NUEVO: CARGA DE LISTAS DESPLEGABLES (PROYECTOS, RESPONSABLES, MOTIVOS) ---
+    try:
+        # Trae proyectos que estén en Cotización o Ejecución
+        res_proy = supabase.table("proyectos").select("proyecto_text").in_("estatus", ["En Cotización", "En ejecución"]).order("proyecto_text").execute()
+        lista_proy = [""] + [p['proyecto_text'] for p in res_proy.data] if res_proy.data else [""]
+    except:
+        lista_proy = [""]
+        
+    try:
+        # Trae usuarios que sean Gerentes o de Diseño
+        res_usu = supabase.table("usuarios").select("nombre_completo").in_("rol", ["Gerente", "Diseño"]).order("nombre_completo").execute()
+        lista_usu = [""] + [u['nombre_completo'] for u in res_usu.data] if res_usu.data else [""]
+    except:
+        lista_usu = [""]
+        
+    try:
+        # Trae la lista de la nueva tabla de motivos
+        res_mot = supabase.table("cfg_motivos").select("motivo").order("motivo").execute()
+        lista_mot = [""] + [m['motivo'] for m in res_mot.data] if res_mot.data else [""]
+    except:
+        lista_mot = [""]
+
+    # Función para evitar errores si en el pasado se guardó un nombre que ya no está en la lista
+    def safe_idx(lista, val):
+        if not val: return 0
+        if val in lista: return lista.index(val)
+        lista.append(val)
+        return len(lista) - 1
+    # -----------------------------------------------------------------------------
+
     # =========================================================================
     # VISTA DE EDICIÓN / APERTURA SIMÉTRICA
     # =========================================================================
@@ -78,10 +108,10 @@ def mostrar(supervisor_id=None):
             u_fecha = c1.date_input("FECHA (DD/MM/AAAA):", value=fecha_dt, format="DD/MM/YYYY")
             u_n_orden = c2.text_input("Nº ORDEN:", value=cab['n_orden'] or "")
             u_tipo_mueble = c1.text_input("TIPO DE MUEBLE:", value=cab['tipo_mueble'] or "")
-            u_motivo = c2.text_input("MOTIVO:", value=cab['motivo'] or "")
+            u_motivo = c2.selectbox("MOTIVO:", options=lista_mot, index=safe_idx(lista_mot, cab['motivo']))
             u_cliente = c1.text_input("CLIENTE:", value=cab['cliente'] or "")
-            u_proyecto = c2.text_input("PROYECTO:", value=cab['proyecto'] or "")
-            u_sol_por = c1.text_input("SOLICITADO POR:", value=cab['solicitado_por'] or "")
+            u_proyecto = c2.selectbox("PROYECTO:", options=lista_proy, index=safe_idx(lista_proy, cab['proyecto']))
+            u_sol_por = c1.selectbox("SOLICITADO POR:", options=lista_usu, index=safe_idx(lista_usu, cab['solicitado_por']))
             u_sup_prod = c2.text_input("SUP. PROD.:", value=cab['sup_production'] or "")
             u_estado = st.selectbox("ESTADO DE LA BITÁCORA:", ["Pendiente", "En Proceso", "Cerrada"], index=["Pendiente", "En Proceso", "Cerrada"].index(cab['estado']))
 
@@ -578,10 +608,10 @@ def mostrar(supervisor_id=None):
                 f_n = st.date_input("FECHA:", value=date.today(), format="DD/MM/YYYY")
                 o_n = st.text_input("Nº ORDEN:")
                 m_n = st.text_input("TIPO DE MUEBLE:")
-                mt_n = st.text_input("MOTIVO:")
+               mt_n = st.selectbox("MOTIVO:", options=lista_mot)
                 cl_n = st.text_input("CLIENTE:")
-                pr_n = st.text_input("PROYECTO:")
-                sl_n = st.text_input("SOLICITADO POR:")
+                pr_n = st.selectbox("PROYECTO:", options=lista_proy)
+                sl_n = st.selectbox("SOLICITADO POR:", options=lista_usu)
                 sp_n = st.text_input("SUP. DE PRODUCCION:", value="DOMÉNICO MORÓN")
                 
                 if st.form_submit_button("🚀 Inicializar Bitácora", type="primary"):
@@ -609,7 +639,9 @@ def mostrar(supervisor_id=None):
         # ADICIÓN DEL CUARTO MAESTRO DINÁMICO EN LA PESTAÑA DE GESTIÓN CORPORATIVA
         with tab_config:
             st.caption("Administración corporativa de catálogos activos para los componentes predictivos de planta.")
-            sel_maestro = st.selectbox("Seleccione el Catálogo a gestionar:", ["Responsables (Operarios)", "Materiales (Descripciones)", "Tipos de Canto", "Origen de Material (Tablero/Retazo)"])
+            
+            # 1️⃣ CORRECCIÓN: "Motivos de Bitácora" agregado a la lista
+            sel_maestro = st.selectbox("Seleccione el Catálogo a gestionar:", ["Responsables (Operarios)", "Materiales (Descripciones)", "Tipos de Canto", "Origen de Material (Tablero/Retazo)", "Motivos de Bitácora"])
             
             if sel_maestro == "Responsables (Operarios)":
                 st.markdown("#### 👨‍🔧 Registro de Operarios de Planta")
@@ -623,7 +655,21 @@ def mostrar(supervisor_id=None):
                     df_ops = pd.DataFrame(supabase.table("cfg_operarios").select("*").order("nombre").execute().data)
                     st.data_editor(df_ops, column_config={"id": None}, hide_index=True, use_container_width=True)
                 except: st.info("Catálogo vacío.")
-                
+
+            # 2️⃣ CORRECCIÓN: Cambiado de 'if' a 'elif'
+            elif sel_maestro == "Motivos de Bitácora":
+                st.markdown("#### 📌 Catálogo de Motivos")
+                with st.form("form_motivo"):
+                    nuevo_mot = st.text_input("Nuevo Motivo:")
+                    if st.form_submit_button("➕ Añadir Motivo"):
+                        if nuevo_mot.strip():
+                            supabase.table("cfg_motivos").insert({"motivo": nuevo_mot.strip().upper()}).execute()
+                            st.success("Motivo registrado."); st.rerun()
+                try:
+                    df_mots = pd.DataFrame(supabase.table("cfg_motivos").select("*").order("motivo").execute().data)
+                    st.data_editor(df_mots, column_config={"id": None}, hide_index=True, use_container_width=True)
+                except: st.info("Catálogo vacío.")
+                    
             elif sel_maestro == "Materiales (Descripciones)":
                 st.markdown("#### 🪵 Catálogo Maestro de Melamina y Tableros")
                 
