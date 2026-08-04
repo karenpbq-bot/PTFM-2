@@ -18,16 +18,16 @@ def mostrar():
     # REINGENIERÍA: La Matriz de proyectos es la pestaña principal por defecto
     tab_listado, tab_registro, tab_matriz = st.tabs(["📋 Matriz de Proyectos", "🆕 Registrar Proyecto Nuevo", "📦 Matriz de Productos"])
 
-    # Carga inicial de supervisores para el mapeo relacional de IDs a Nombres reales
-    df_sups = obtener_supervisores()
-    dict_sups = {r['nombre_real']: r['id'] for _, r in df_sups.iterrows()}
-    dict_sups_inv = {r['id']: r['nombre_real'] for _, r in df_sups.iterrows()}
+    # Carga inicial de responsables (Filtrado estricto: Gerente, Supervisor, Diseño)
+    res_resp = conectar().table("usuarios").select("id, nombre_completo").in_("rol", ["Gerente", "Supervisor", "Diseño"]).execute()
+    
+    dict_sups = {r['nombre_completo']: r['id'] for r in res_resp.data} if res_resp.data else {}
+    dict_sups_inv = {r['id']: r['nombre_completo'] for r in res_resp.data} if res_resp.data else {}
 
     lista_estados = ["En Cotización", "En ejecución", "Cerrado"]
     
     # SOLUCIÓN: Incorporamos "-" como opción válida de responsable en el drop-down por si no tiene asignado ninguno
     lista_responsables_opciones = ["-"] + list(dict_sups.keys())
-
     # =========================================================
     # PESTAÑA 1: MATRIZ DE PROYECTOS (EDICIÓN INTEGRAL DIRECTA)
     # =========================================================
