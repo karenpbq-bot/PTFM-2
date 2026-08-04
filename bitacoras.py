@@ -169,8 +169,9 @@ def mostrar(supervisor_id=None):
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_canto', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width="small"),
-                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width="large"),
+                    # Ancho incrementado a 80px (30% más) para '#', y descripción ajustada
+                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width=80),
+                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width=275),
                     "tipo_canto": st.column_config.SelectboxColumn("TIPO", options=lista_cantos, required=False, width="medium"),
                     "fecha_inicio": st.column_config.TextColumn("F.I.", width="small"),
                     "hora_inicio": st.column_config.TextColumn("H.I.", width="small"),
@@ -183,8 +184,9 @@ def mostrar(supervisor_id=None):
                 columnas_visibles = ['id', 'cantidad', 'descripcion', 'tipo_tablero_retazo', 'fecha_inicio', 'hora_inicio', 'hora_termino', 'fecha_termino', 'cant_final_pl_pzs', 'obs_incidencias']
                 config_columnas = {
                     "id": None,
-                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width="small"),
-                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width="large"),
+                    # Ancho incrementado a 80px (30% más) para '#', y descripción ajustada
+                    "cantidad": st.column_config.NumberColumn("#", format="%.2f", width=80),
+                    "descripcion": st.column_config.SelectboxColumn("DESCRIPCIÓN", options=lista_mats, required=False, width=275),
                     "tipo_tablero_retazo": st.column_config.SelectboxColumn("TIPO", options=lista_tipos_piezas, required=False, width="medium"),
                     "fecha_inicio": st.column_config.TextColumn("F.I.", width="small"),
                     "hora_inicio": st.column_config.TextColumn("H.I.", width="small"),
@@ -391,12 +393,12 @@ def mostrar(supervisor_id=None):
                 story.append(t_block)
                 story.append(Spacer(1, 2))
 
-            # ANCHOS CALIBRADOS CON COLUMNA '#' 15% MÁS ANCHA (29 pt) Y SUMA EXACTA DE 592 pt
-            anchos_tabla_corte = [29, 223, 55, 35, 35, 35, 35, 60, 85]
+            # ANCHOS CALIBRADOS: Columna '#' +30% (38 pt) y DESCRIPCIÓN reducida (214 pt)
+            # Suma total exacta mantenida: 38 + 214 + 55 + 35 + 35 + 35 + 35 + 60 + 85 = 592 pt
+            anchos_tabla_corte = [38, 214, 55, 35, 35, 35, 35, 60, 85]
             
             inyectar_tabla_pdf("CORTE SECCIONADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PL.", "OBS"], ed_secc, op_secc1, op_secc2, anchos_tabla_corte)
-            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, anchos_tabla_corte)
-            
+            inyectar_tabla_pdf("CORTE ESCUADRADORA", ["#", "DESCRIPCIÓN", "TIPO", "F.I.", "H.I.", "H.T.", "F.T.", "N° PZAS", "OBS"], ed_escu, op_escu1, op_escu2, anchos_tabla_corte)            
             # CANTEO CON ANCHOS CALIBRADOS
             op_cant_text = f"{op_cant1} / {op_cant2}".strip(" / ")
             story.append(Paragraph("<b>CANTEO</b>", style_seccion_titulo))
