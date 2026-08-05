@@ -1,22 +1,11 @@
 # =========================================================
-# 1. IMPORTACIONES (SANEADO Y DIAGNÓSTICO)
+# 1. IMPORTACIONES (SANEADO Y INTEGRADO)
 # =========================================================
 import streamlit as st
 import pandas as pd
 from datetime import timedelta, datetime, date
 import plotly.express as px
-
-# --- ESCUDO DE DIAGNÓSTICO PARA LEER EL ERROR CENSURADO ---
-try:
-    from base_datos import *
-except KeyError as e:
-    st.error(f"🚨 EL MISTERIO RESUELTO: Streamlit no encuentra la llave exacta: **{str(e)}**")
-    st.info("Revisa en 'Settings > Secrets' que el texto tenga el formato correcto. Por ejemplo, si la llave que falta es 'supabase', debes asegurarte de que el texto en la nube tenga los corchetes [supabase] escritos exactamente así, en minúsculas.")
-    st.stop()
-except Exception as e:
-    st.error(f"🚨 Error interno detectado: {e}")
-    st.stop()
-# ----------------------------------------------------------
+from base_datos import *
 import os  # <-- Manejo seguro de rutas de archivos de la empresa
 
 # Importación limpia de todos los submódulos operativos del sistema
