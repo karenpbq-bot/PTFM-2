@@ -133,9 +133,12 @@ def mostrar():
 
             # --- FRENTE: OPTIMIZACIÓN (Google Drive) ---
             tableros_optimizados = 0
-            # Ahora busca la coincidencia exacta en la columna 'codigo'
             if not df_drive_optim.empty and "codigo" in df_drive_optim.columns and "Cant" in df_drive_optim.columns:
-                filtro_op = df_drive_optim[df_drive_optim["codigo"].astype(str).str.strip() == cod_p]
+                # Normalización extrema para evitar que diferencias invisibles (mayúsculas o espacios) rompan el cruce
+                df_drive_optim["codigo_clean"] = df_drive_optim["codigo"].astype(str).str.replace(".0", "", regex=False).str.strip().str.upper()
+                cod_p_clean = str(cod_p).replace(".0", "").strip().upper()
+                
+                filtro_op = df_drive_optim[df_drive_optim["codigo_clean"] == cod_p_clean]
                 tableros_optimizados = pd.to_numeric(filtro_op["Cant"], errors="coerce").sum()
             
             av_optim = (tableros_optimizados / tableros_totales * 100) if tableros_totales > 0 else 0.0
