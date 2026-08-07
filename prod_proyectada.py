@@ -82,7 +82,7 @@ def mostrar():
         df_prods = descargar_completa("productos", "id, proyecto_id, ml, ctd")
         df_est = descargar_completa("estatus_muebles", "producto_id, culminado, entregado")
         df_bit_t = descargar_completa("bitacoras_taller", "id, proyecto")
-        df_bit_l = descargar_completa("bitacoras_lineas", "bitacora_id, cant_final_pl_pzs, cantidad")
+        df_bit_l = descargar_completa("bitacoras_lineas", "bitacora_id, cant_final_pl_pzs, cantidad, tipo_tablero_retazo, descripcion")
 
         # Aseguramos los formatos numéricos y estructuras base
         if not df_prods.empty:
@@ -146,20 +146,38 @@ def mostrar():
 
             # --- FRENTE: PRODUCCIÓN / CORTE (Bitácoras) ---
             tableros_procesados = 0.0
+            retazos_procesados = 0.0
+            
             if not df_bit_t.empty and not df_bit_l.empty:
                 # Filtrar bitacoras por el nombre del proyecto
                 df_bit_t['proyecto_clean'] = df_bit_t['proyecto'].astype(str).str.strip().str.lower()
                 ids_taller = df_bit_t[df_bit_t['proyecto_clean'] == nom_p.lower()]['id'].tolist()
                 
-                df_l_filtrado = df_bit_l[df_bit_l['bitacora_id'].isin(ids_taller)]
+                df_l_filtrado = df_bit_l[df_bit_l['bitacora_id'].isin(ids_taller)].copy()
                 
-                # Sumatoria del número de TABLEROS (planchas) procesados en la seccionadora/escuadradora
-                cant_cortada = pd.to_numeric(df_l_filtrado['cant_final_pl_pzs'], errors='coerce')
-                cant_planeada = pd.to_numeric(df_l_filtrado['cantidad'], errors='coerce')
-                tableros_procesados = cant_cortada.fillna(cant_planeada).sum()
+                if 'tipo_tablero_retazo' in df_l_filtrado.columns and 'descripcion' in df_l_filtrado.columns:
+                    tipo_str = df_l_filtrado['tipo_tablero_retazo'].fillna('').astype(str).str.upper()
+                    desc_str = df_l_filtrado['descripcion'].fillna('').astype(str).str.upper()
+                    
+                    # 1. Filtro y suma EXCLUSIVA de TABLEROS
+                    es_tablero = tipo_str.str.contains('TABLERO', na=False) | desc_str.str.contains('TABLERO', na=False)
+                    df_tableros = df_l_filtrado[es_tablero]
+                    
+                    cant_cortada_t = pd.to_numeric(df_tableros['cant_final_pl_pzs'], errors='coerce')
+                    cant_planeada_t = pd.to_numeric(df_tableros['cantidad'], errors='coerce')
+                    tableros_procesados = cant_cortada_t.fillna(cant_planeada_t).sum()
+                    
+                    # 2. Filtro y suma EXCLUSIVA de RETAZOS
+                    es_retazo = tipo_str.str.contains('RETAZO', na=False) | desc_str.str.contains('RETAZO', na=False)
+                    df_retazos = df_l_filtrado[es_retazo]
+                    
+                    cant_cortada_r = pd.to_numeric(df_retazos['cant_final_pl_pzs'], errors='coerce')
+                    cant_planeada_r = pd.to_numeric(df_retazos['cantidad'], errors='coerce')
+                    retazos_procesados = cant_cortada_r.fillna(cant_planeada_r).sum()
             
-            # NUEVO CÁLCULO HOMOLOGADO: (Tableros Procesados / Tableros Previstos) * 100
+            # CÁLCULO HOMOLOGADO: El % de avance se mide SOLO contra tableros enteros
             av_prod = (tableros_procesados / tableros_totales * 100) if tableros_totales > 0 else 0.0
+            pend_prod_tableros = max(0.0, tableros_totales - tableros_procesados)
             
             # Cálculo de pendientes basado en tableros reales, no en porcentajes abstractos
             pend_prod_tableros = max(0.0, tableros_totales - tableros_procesados)
@@ -205,6 +223,7 @@ def mostrar():
                 "F. Fin": f_fin,
                 "ML Totales": round(ml_totales, 1),
                 "Tableros Req.": tableros_totales,
+                "Retazos Usados": int(retazos_procesados), # <--- NUEVA LÍNEA AÑADIDA
                 "% Optimiz.": av_optim,
                 "% Producc.": av_prod,
                 "% Instalac.": av_inst
