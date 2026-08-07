@@ -121,24 +121,26 @@ def mostrar():
                         p_f_ini = row['f_ini'].isoformat() if isinstance(row['f_ini'], (date, datetime)) else str(row['f_ini'])
                         p_f_fin = row['f_fin'].isoformat() if isinstance(row['f_fin'], (date, datetime)) else str(row['f_fin'])
 
-                        # Comparación de auditoría relacional
-                        orig_estatus = str(original_row['estatus'] if 'estatus' in original_row and original_row['estatus'] else "En Cotización").strip()
+                        # Comparación de auditoría relacional robusta y saneamiento de nulos
+                        orig_estatus = str(original_row['estatus']).strip() if pd.notna(original_row.get('estatus')) and str(original_row.get('estatus')).strip() != "" else "En Cotización"
+                        orig_tableros = int(original_row['total_tableros']) if pd.notna(original_row.get('total_tableros')) else 0
 
                         if (p_text != str(original_row['proyecto_text']).strip() or 
                             p_client != str(original_row['cliente']).strip() or 
                             p_partida != str(original_row['partida']).strip() or 
                             p_resp_id != original_row['supervisor_id'] or 
-                            p_tableros != int(original_row['total_tableros'] if original_row['total_tableros'] else 0) or 
+                            p_tableros != orig_tableros or 
                             p_estado != orig_estatus or 
                             p_f_ini != (original_row['f_ini'].isoformat() if isinstance(original_row['f_ini'], (date, datetime)) else str(original_row['f_ini'])) or 
                             p_f_fin != (original_row['f_fin'].isoformat() if isinstance(original_row['f_fin'], (date, datetime)) else str(original_row['f_fin']))):
                             
-                            if not p_text or p_text == "-" or not p_client or p_client == "-" or not p_partida or p_partida == "-":
-                                st.error(f"❌ Los campos obligatorios no pueden quedar vacíos en el Código: {row['codigo']}")
+                            # Validación de campos críticos (Se remueve la restricción de guion "-" para la Partida opcional)
+                            if not p_text or p_text == "-" or not p_client or p_client == "-":
+                                st.error(f"❌ El Nombre y el Cliente son obligatorios. Complete la información para el Código: {row['codigo']}")
                                 continue
                                 
                             try:
-                                # ALINEACIÓN SUPABASE: Inyección directa en la columna física 'estatus'
+                                # ALINEACIÓN SUPABASE: Inyección directa en la columna física
                                 payload_update = {
                                     "proyecto_text": p_text, "cliente": p_client, "partida": p_partida,
                                     "supervisor_id": p_resp_id, "total_tableros": p_tableros, "estatus": p_estado,
