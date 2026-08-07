@@ -145,20 +145,24 @@ def mostrar():
             pend_optim = max(0.0, tableros_totales - tableros_optimizados)
 
             # --- FRENTE: PRODUCCIÓN / CORTE (Bitácoras) ---
-            piezas_producidas = 0.0
+            tableros_procesados = 0.0
             if not df_bit_t.empty and not df_bit_l.empty:
                 # Filtrar bitacoras por el nombre del proyecto
                 df_bit_t['proyecto_clean'] = df_bit_t['proyecto'].astype(str).str.strip().str.lower()
                 ids_taller = df_bit_t[df_bit_t['proyecto_clean'] == nom_p.lower()]['id'].tolist()
                 
                 df_l_filtrado = df_bit_l[df_bit_l['bitacora_id'].isin(ids_taller)]
-                # Usa cant_final_pl_pzs, si está vacío, usa cantidad
+                
+                # Sumatoria del número de TABLEROS (planchas) procesados en la seccionadora/escuadradora
                 cant_cortada = pd.to_numeric(df_l_filtrado['cant_final_pl_pzs'], errors='coerce')
                 cant_planeada = pd.to_numeric(df_l_filtrado['cantidad'], errors='coerce')
-                piezas_producidas = cant_cortada.fillna(cant_planeada).sum()
+                tableros_procesados = cant_cortada.fillna(cant_planeada).sum()
             
-            av_prod = (piezas_producidas / muebles_totales * 100) if muebles_totales > 0 else 0.0
-            pend_prod_tableros = max(0.0, tableros_totales * (1.0 - (av_prod / 100.0)))
+            # NUEVO CÁLCULO HOMOLOGADO: (Tableros Procesados / Tableros Previstos) * 100
+            av_prod = (tableros_procesados / tableros_totales * 100) if tableros_totales > 0 else 0.0
+            
+            # Cálculo de pendientes basado en tableros reales, no en porcentajes abstractos
+            pend_prod_tableros = max(0.0, tableros_totales - tableros_procesados)
 
             # --- FRENTE: INSTALACIÓN (Estatus Muebles) ---
             ml_instalado = 0.0
