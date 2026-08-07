@@ -28,14 +28,18 @@ def mostrar():
         st.error("❌ La columna 'Cant' no se encuentra en el archivo. Verifique los encabezados.")
         st.stop()
 
-    # 2. SELECCIÓN DE PROYECTO O IDENTIFICADOR (OP)
-    if "Proyecto" in df.columns:
+    # 2. SELECCIÓN DE PROYECTO O IDENTIFICADOR (CÓDIGO EXACTO)
+    # Damos prioridad absoluta a la nueva columna 'codigo' homologada con Supabase
+    if "codigo" in df.columns:
+        columna_agrupadora = "codigo"
+        df["codigo"] = df["codigo"].astype(str).str.strip()
+    elif "Proyecto" in df.columns:
         columna_agrupadora = "Proyecto"
     elif "OP" in df.columns:
         columna_agrupadora = "OP"
         df["OP"] = df["OP"].astype(str).str.replace(".0", "", regex=False).str.strip()
     else:
-        st.error("❌ El archivo no cuenta con una columna 'Proyecto' o 'OP' para indexar frentes.")
+        st.error("❌ El archivo no cuenta con la columna 'codigo' para indexar frentes.")
         st.stop()
 
     lista_proyectos = sorted(df[columna_agrupadora].dropna().unique())
