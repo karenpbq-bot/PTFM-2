@@ -11,7 +11,8 @@ def mostrar():
     url_excel = f"https://docs.google.com/spreadsheets/d/{FILE_ID}/export?format=xlsx"
 
     try:
-        df = pd.read_excel(url_excel, sheet_name="Sheet1")
+        # Quitamos la restricción de sheet_name
+        df = pd.read_excel(url_excel)
     except Exception as e:
         try:
             df = pd.read_csv("Cortes holzher- OP Gildo 29052026.xlsx - Sheet1.csv")
