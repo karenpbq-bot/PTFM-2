@@ -33,10 +33,12 @@ def mostrar():
     try:
         FILE_ID = "1ATuNF0Js31QZCo3g3wDUfP3O2PzFjNjW"
         url_excel = f"https://docs.google.com/spreadsheets/d/{FILE_ID}/export?format=xlsx"
-        df_drive_optim = pd.read_excel(url_excel, sheet_name="Sheet1")
-        df_drive_optim.columns = df_drive_optim.columns.str.strip()
-    except:
+        # Quitamos sheet_name="Sheet1" para que descargue la primera hoja por defecto, sin importar su nombre
+        df_drive_optim = pd.read_excel(url_excel)
+        df_drive_optim.columns = df_drive_optim.columns.astype(str).str.strip()
+    except Exception as e:
         df_drive_optim = pd.DataFrame()
+        st.warning(f"⚠️ Alerta: No se pudo descargar el archivo de optimización desde Google Drive. Detalle técnico: {e}")
 
    # =========================================================
     # 2. ORIGEN B: SUPABASE Y CONSOLIDACIÓN DE DATOS (Real)
